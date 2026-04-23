@@ -98,6 +98,37 @@ def insert_run(
     )
 
 
+def insert_cached_asset(
+    conn: sqlite3.Connection,
+    cache_key: str,
+    asset_kind: str,
+    source_scene_manifest_hash: str,
+    source_endpoint_id: str,
+    asset_path: str,
+    content_hash: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO cached_assets (
+            cache_key,
+            asset_kind,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            asset_path,
+            content_hash
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            cache_key,
+            asset_kind,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            asset_path,
+            content_hash,
+        ),
+    )
+
+
 def bootstrap_minimal_run(
     db_path: Path | str,
     *,

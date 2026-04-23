@@ -71,3 +71,23 @@ def test_bootstrap_minimal_run_path(tmp_path):
     assert manifest_count == 1
     assert manifest_row == ("earth_search", "earth_search", "data/manifests/manifest-hash-001.json")
     assert run_row == ("new", "earth_search", "synchronous", "full", "cold")
+
+
+def test_cached_assets_schema_supports_preprocessing_records(tmp_path):
+    db = tmp_path / "cached-assets.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(cached_assets)")
+        }
+
+    assert {
+        "cache_key",
+        "asset_kind",
+        "source_scene_manifest_hash",
+        "source_endpoint_id",
+        "asset_path",
+        "content_hash",
+    } <= columns

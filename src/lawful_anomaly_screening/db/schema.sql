@@ -36,8 +36,11 @@ CREATE TABLE IF NOT EXISTS runs (
 
 CREATE TABLE IF NOT EXISTS cached_assets (
     cache_key TEXT PRIMARY KEY,
+    asset_kind TEXT NOT NULL,
+    source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+    source_endpoint_id TEXT NOT NULL,
     asset_path TEXT NOT NULL,
-    cache_status TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
