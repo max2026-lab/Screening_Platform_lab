@@ -169,6 +169,14 @@ def build_tile_feature_input(
         "x_index": x_index,
         "y_index": y_index,
         "is_valid": (x_index + y_index) % 5 != 0,
+        "score_inputs": {
+            "optical_signal": round(0.72 + (x_index * 0.03) + (y_index * 0.015), 6),
+            "optical_baseline": round(0.18 + (y_index * 0.01), 6),
+            "persistence_detections": 2 + ((x_index + y_index) % 4),
+            "persistence_observations": 5,
+            "cloud_fraction": round(0.03 * ((x_index + y_index) % 4), 6),
+            "noise_fraction": round(0.02 * ((x_index * 2 + y_index) % 3), 6),
+        },
     }
     tile_payload["tile_id"] = create_tile_id(tile_payload)
     return tile_payload
@@ -196,16 +204,50 @@ def generate_fixed_tile_grid(
     return sorted(tiles, key=lambda tile: tile["tile_id"])
 
 
+def compute_optical_anomaly(optical_signal: float, optical_baseline: float) -> float:
+    return round(max(0.0, optical_signal - optical_baseline), 6)
+
+
+def compute_persistence(detections: float, observations: float) -> float:
+    if observations <= 0:
+        return 0.0
+    return round(max(0.0, min(1.0, detections / observations)), 6)
+
+
+def compute_cloud_penalty(cloud_fraction: float) -> float:
+    return round(max(0.0, cloud_fraction), 6)
+
+
+def compute_noise_penalty(noise_fraction: float) -> float:
+    return round(max(0.0, noise_fraction), 6)
+
+
+def compute_tile_score(
+    optical_anomaly: float,
+    persistence: float,
+    cloud_penalty: float,
+    noise_penalty: float,
+) -> float:
+    return round(optical_anomaly + persistence - cloud_penalty - noise_penalty, 6)
+
+
 def score_retained_tile(tile_feature_input: dict) -> dict:
-    x_index = tile_feature_input["x_index"]
-    y_index = tile_feature_input["y_index"]
-    optical_anomaly = round(0.45 + (x_index * 0.04) + (y_index * 0.02), 6)
-    persistence = round(0.35 + (y_index * 0.03), 6)
-    cloud_penalty = round(0.01 * ((x_index + y_index) % 4), 6)
-    noise_penalty = round(0.005 * ((x_index * 2 + y_index) % 5), 6)
-    retained_score = round(
-        optical_anomaly + persistence - cloud_penalty - noise_penalty,
-        6,
+    score_inputs = tile_feature_input["score_inputs"]
+    optical_anomaly = compute_optical_anomaly(
+        score_inputs["optical_signal"],
+        score_inputs["optical_baseline"],
+    )
+    persistence = compute_persistence(
+        score_inputs["persistence_detections"],
+        score_inputs["persistence_observations"],
+    )
+    cloud_penalty = compute_cloud_penalty(score_inputs["cloud_fraction"])
+    noise_penalty = compute_noise_penalty(score_inputs["noise_fraction"])
+    tile_score = compute_tile_score(
+        optical_anomaly,
+        persistence,
+        cloud_penalty,
+        noise_penalty,
     )
     return {
         "tile_id": tile_feature_input["tile_id"],
@@ -213,16 +255,13 @@ def score_retained_tile(tile_feature_input: dict) -> dict:
         "source_endpoint_id": tile_feature_input["source_endpoint_id"],
         "composite_metadata_cache_key": tile_feature_input["composite_metadata_cache_key"],
         "tile_feature_input_cache_key": tile_feature_input["tile_feature_input_cache_key"],
-        "tile_size_m": tile_feature_input["tile_size_m"],
-        "x_index": tile_feature_input["x_index"],
-        "y_index": tile_feature_input["y_index"],
         "is_valid": tile_feature_input["is_valid"],
         "optical_anomaly": optical_anomaly,
         "persistence": persistence,
         "cloud_penalty": cloud_penalty,
         "noise_penalty": noise_penalty,
-        "retained_score": retained_score,
-        "top_valid_selection_flag": False,
+        "tile_score": tile_score,
+        "selected_for_polygonization": False,
     }
 
 
@@ -231,13 +270,13 @@ def flag_top_valid_tiles(tile_records: list[dict]) -> list[dict]:
     selected_count = 0 if not valid_tiles else max(1, math.ceil(len(valid_tiles) * 0.15))
     ranked_valid = sorted(
         valid_tiles,
-        key=lambda tile: (-tile["retained_score"], tile["tile_id"]),
+        key=lambda tile: (-tile["tile_score"], tile["tile_id"]),
     )
     selected_ids = {tile["tile_id"] for tile in ranked_valid[:selected_count]}
 
     flagged_tiles = []
     for tile in tile_records:
         updated = dict(tile)
-        updated["top_valid_selection_flag"] = tile["tile_id"] in selected_ids
+        updated["selected_for_polygonization"] = tile["tile_id"] in selected_ids
         flagged_tiles.append(updated)
     return flagged_tiles

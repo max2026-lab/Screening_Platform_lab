@@ -136,17 +136,10 @@ def insert_tile(
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
     composite_metadata_cache_key: str,
-    tile_feature_input_cache_key: str,
     tile_size_m: int,
     x_index: int,
     y_index: int,
     is_valid: bool,
-    optical_anomaly: float,
-    persistence: float,
-    cloud_penalty: float,
-    noise_penalty: float,
-    retained_score: float,
-    top_valid_selection_flag: bool,
 ) -> None:
     conn.execute(
         """
@@ -155,35 +148,109 @@ def insert_tile(
             source_scene_manifest_hash,
             source_endpoint_id,
             composite_metadata_cache_key,
-            tile_feature_input_cache_key,
             tile_size_m,
             x_index,
             y_index,
-            is_valid,
-            optical_anomaly,
-            persistence,
-            cloud_penalty,
-            noise_penalty,
-            retained_score,
-            top_valid_selection_flag
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            is_valid
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             tile_id,
             source_scene_manifest_hash,
             source_endpoint_id,
             composite_metadata_cache_key,
-            tile_feature_input_cache_key,
             tile_size_m,
             x_index,
             y_index,
             int(is_valid),
+        ),
+    )
+
+
+def insert_tile_feature(
+    conn: sqlite3.Connection,
+    *,
+    tile_feature_input_cache_key: str,
+    tile_id: str,
+    source_scene_manifest_hash: str,
+    source_endpoint_id: str,
+    optical_signal: float,
+    optical_baseline: float,
+    persistence_detections: float,
+    persistence_observations: float,
+    cloud_fraction: float,
+    noise_fraction: float,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO tile_features (
+            tile_feature_input_cache_key,
+            tile_id,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            optical_signal,
+            optical_baseline,
+            persistence_detections,
+            persistence_observations,
+            cloud_fraction,
+            noise_fraction
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            tile_feature_input_cache_key,
+            tile_id,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            optical_signal,
+            optical_baseline,
+            persistence_detections,
+            persistence_observations,
+            cloud_fraction,
+            noise_fraction,
+        ),
+    )
+
+
+def insert_tile_score(
+    conn: sqlite3.Connection,
+    *,
+    tile_id: str,
+    tile_feature_input_cache_key: str,
+    source_scene_manifest_hash: str,
+    source_endpoint_id: str,
+    optical_anomaly: float,
+    persistence: float,
+    cloud_penalty: float,
+    noise_penalty: float,
+    tile_score: float,
+    selected_for_polygonization: bool,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO tile_scores (
+            tile_id,
+            tile_feature_input_cache_key,
+            source_scene_manifest_hash,
+            source_endpoint_id,
             optical_anomaly,
             persistence,
             cloud_penalty,
             noise_penalty,
-            retained_score,
-            int(top_valid_selection_flag),
+            tile_score,
+            selected_for_polygonization
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            tile_id,
+            tile_feature_input_cache_key,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            optical_anomaly,
+            persistence,
+            cloud_penalty,
+            noise_penalty,
+            tile_score,
+            int(selected_for_polygonization),
         ),
     )
 

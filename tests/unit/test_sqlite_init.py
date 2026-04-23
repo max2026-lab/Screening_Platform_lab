@@ -23,6 +23,8 @@ def test_sqlite_init(tmp_path):
         "geofence_hits",
         "export_records",
         "tiles",
+        "tile_features",
+        "tile_scores",
     } <= tables
 
 
@@ -99,9 +101,17 @@ def test_tiles_schema_supports_retained_scoring_records(tmp_path):
     init_db(db)
 
     with sqlite3.connect(db) as conn:
-        columns = {
+        tile_columns = {
             row[1]
             for row in conn.execute("PRAGMA table_info(tiles)")
+        }
+        tile_feature_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(tile_features)")
+        }
+        tile_score_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(tile_scores)")
         }
 
     assert {
@@ -109,15 +119,32 @@ def test_tiles_schema_supports_retained_scoring_records(tmp_path):
         "source_scene_manifest_hash",
         "source_endpoint_id",
         "composite_metadata_cache_key",
-        "tile_feature_input_cache_key",
         "tile_size_m",
         "x_index",
         "y_index",
         "is_valid",
+    } <= tile_columns
+    assert {
+        "tile_feature_input_cache_key",
+        "tile_id",
+        "source_scene_manifest_hash",
+        "source_endpoint_id",
+        "optical_signal",
+        "optical_baseline",
+        "persistence_detections",
+        "persistence_observations",
+        "cloud_fraction",
+        "noise_fraction",
+    } <= tile_feature_columns
+    assert {
+        "tile_id",
+        "tile_feature_input_cache_key",
+        "source_scene_manifest_hash",
+        "source_endpoint_id",
         "optical_anomaly",
         "persistence",
         "cloud_penalty",
         "noise_penalty",
-        "retained_score",
-        "top_valid_selection_flag",
-    } <= columns
+        "tile_score",
+        "selected_for_polygonization",
+    } <= tile_score_columns

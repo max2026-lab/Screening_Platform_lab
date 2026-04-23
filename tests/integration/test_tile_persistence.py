@@ -1,7 +1,14 @@
 import sqlite3
 
 from lawful_anomaly_screening.db.repositories.cache_repository import CacheRepository
-from lawful_anomaly_screening.db.sqlite import connect, init_db, insert_source_scene_manifest, insert_tile
+from lawful_anomaly_screening.db.sqlite import (
+    connect,
+    init_db,
+    insert_source_scene_manifest,
+    insert_tile,
+    insert_tile_feature,
+    insert_tile_score,
+)
 from lawful_anomaly_screening.sources.manifest_builder import (
     build_composite_metadata_manifest,
     build_preprocessing_manifest,
@@ -49,39 +56,117 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
     tile_input_record = repository.persist_tile_feature_input(tile_feature_input)
     tile_feature_input["tile_feature_input_cache_key"] = tile_input_record["cache_key"]
     scored_tile = score_retained_tile(tile_feature_input)
-    scored_tile["top_valid_selection_flag"] = True
+    scored_tile["selected_for_polygonization"] = True
 
     with connect(db_path) as conn:
-        insert_tile(conn, **scored_tile)
+        insert_tile(
+            conn,
+            tile_id=tile_feature_input["tile_id"],
+            source_scene_manifest_hash=tile_feature_input["source_scene_manifest_hash"],
+            source_endpoint_id=tile_feature_input["source_endpoint_id"],
+            composite_metadata_cache_key=tile_feature_input["composite_metadata_cache_key"],
+            tile_size_m=tile_feature_input["tile_size_m"],
+            x_index=tile_feature_input["x_index"],
+            y_index=tile_feature_input["y_index"],
+            is_valid=tile_feature_input["is_valid"],
+        )
+        insert_tile_feature(
+            conn,
+            tile_feature_input_cache_key=tile_input_record["cache_key"],
+            tile_id=tile_feature_input["tile_id"],
+            source_scene_manifest_hash=tile_feature_input["source_scene_manifest_hash"],
+            source_endpoint_id=tile_feature_input["source_endpoint_id"],
+            optical_signal=tile_feature_input["score_inputs"]["optical_signal"],
+            optical_baseline=tile_feature_input["score_inputs"]["optical_baseline"],
+            persistence_detections=tile_feature_input["score_inputs"]["persistence_detections"],
+            persistence_observations=tile_feature_input["score_inputs"]["persistence_observations"],
+            cloud_fraction=tile_feature_input["score_inputs"]["cloud_fraction"],
+            noise_fraction=tile_feature_input["score_inputs"]["noise_fraction"],
+        )
+        insert_tile_score(
+            conn,
+            tile_id=scored_tile["tile_id"],
+            tile_feature_input_cache_key=scored_tile["tile_feature_input_cache_key"],
+            source_scene_manifest_hash=scored_tile["source_scene_manifest_hash"],
+            source_endpoint_id=scored_tile["source_endpoint_id"],
+            optical_anomaly=scored_tile["optical_anomaly"],
+            persistence=scored_tile["persistence"],
+            cloud_penalty=scored_tile["cloud_penalty"],
+            noise_penalty=scored_tile["noise_penalty"],
+            tile_score=scored_tile["tile_score"],
+            selected_for_polygonization=scored_tile["selected_for_polygonization"],
+        )
         conn.commit()
 
     with sqlite3.connect(db_path) as conn:
-        row = conn.execute(
+        tile_row = conn.execute(
             """
             SELECT
                 tile_id,
                 source_scene_manifest_hash,
                 source_endpoint_id,
                 composite_metadata_cache_key,
-                tile_feature_input_cache_key,
-                tile_size_m,
-                optical_anomaly,
-                persistence,
-                cloud_penalty,
-                noise_penalty,
-                retained_score,
-                top_valid_selection_flag
+                tile_size_m
             FROM tiles
             WHERE tile_id = ?
             """,
             (scored_tile["tile_id"],),
         ).fetchone()
+        tile_feature_row = conn.execute(
+            """
+            SELECT
+                tile_feature_input_cache_key,
+                optical_signal,
+                optical_baseline,
+                persistence_detections,
+                persistence_observations,
+                cloud_fraction,
+                noise_fraction
+            FROM tile_features
+            WHERE tile_id = ?
+            """,
+            (scored_tile["tile_id"],),
+        ).fetchone()
+        tile_score_row = conn.execute(
+            """
+            SELECT
+                tile_id,
+                tile_feature_input_cache_key,
+                optical_anomaly,
+                persistence,
+                cloud_penalty,
+                noise_penalty,
+                tile_score,
+                selected_for_polygonization
+            FROM tile_scores
+            WHERE tile_id = ?
+            """,
+            (scored_tile["tile_id"],),
+        ).fetchone()
 
-    assert row[0] == scored_tile["tile_id"]
-    assert row[1] == "manifest-hash-001"
-    assert row[2] == "earth_search"
-    assert row[3] == composite_record["cache_key"]
-    assert row[4] == tile_input_record["cache_key"]
-    assert row[5] == 320
-    assert row[10] == scored_tile["retained_score"]
-    assert row[11] == 1
+    assert tile_row == (
+        scored_tile["tile_id"],
+        "manifest-hash-001",
+        "earth_search",
+        composite_record["cache_key"],
+        320,
+    )
+    assert tile_feature_row == (
+        tile_input_record["cache_key"],
+        tile_feature_input["score_inputs"]["optical_signal"],
+        tile_feature_input["score_inputs"]["optical_baseline"],
+        tile_feature_input["score_inputs"]["persistence_detections"],
+        tile_feature_input["score_inputs"]["persistence_observations"],
+        tile_feature_input["score_inputs"]["cloud_fraction"],
+        tile_feature_input["score_inputs"]["noise_fraction"],
+    )
+    assert tile_score_row == (
+        scored_tile["tile_id"],
+        tile_input_record["cache_key"],
+        scored_tile["optical_anomaly"],
+        scored_tile["persistence"],
+        scored_tile["cloud_penalty"],
+        scored_tile["noise_penalty"],
+        scored_tile["tile_score"],
+        1,
+    )

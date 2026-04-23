@@ -3,6 +3,11 @@ from lawful_anomaly_screening.sources.manifest_builder import (
     build_composite_metadata_manifest,
     build_preprocessing_manifest,
     build_tile_feature_input,
+    compute_cloud_penalty,
+    compute_noise_penalty,
+    compute_optical_anomaly,
+    compute_persistence,
+    compute_tile_score,
     create_cache_key,
     flag_top_valid_tiles,
     generate_fixed_tile_grid,
@@ -63,17 +68,29 @@ def test_retained_tile_score_integrity():
         "cloud_penalty",
         "noise_penalty",
     )
-    assert scored_tile["retained_score"] == round(
+    assert scored_tile["tile_score"] == round(
         scored_tile["optical_anomaly"]
         + scored_tile["persistence"]
         - scored_tile["cloud_penalty"]
         - scored_tile["noise_penalty"],
         6,
     )
+    assert "tile_score" in scored_tile
+    assert "selected_for_polygonization" in scored_tile
     assert "radar_support" not in scored_tile
     assert "topographic_support" not in scored_tile
     assert "edge_contrast_support" not in scored_tile
     assert "context_fit_adjustment" not in scored_tile
+    assert "retained_score" not in scored_tile
+    assert "top_valid_selection_flag" not in scored_tile
+
+
+def test_retained_formula_helpers():
+    assert compute_optical_anomaly(0.82, 0.21) == 0.61
+    assert compute_persistence(4, 5) == 0.8
+    assert compute_cloud_penalty(0.125) == 0.125
+    assert compute_noise_penalty(0.04) == 0.04
+    assert compute_tile_score(0.61, 0.8, 0.125, 0.04) == 1.245
 
 
 def test_top_valid_tile_selection_flags_only_top_15_percent():
@@ -86,12 +103,12 @@ def test_top_valid_tile_selection_flags_only_top_15_percent():
         scored_tiles.append(score_retained_tile(tile))
 
     flagged_tiles = flag_top_valid_tiles(scored_tiles)
-    selected_tiles = [tile for tile in flagged_tiles if tile["top_valid_selection_flag"]]
+    selected_tiles = [tile for tile in flagged_tiles if tile["selected_for_polygonization"]]
     valid_tiles = [tile for tile in flagged_tiles if tile["is_valid"]]
 
     assert all(tile["is_valid"] for tile in selected_tiles)
     assert len(selected_tiles) == 3
-    ranked_valid = sorted(valid_tiles, key=lambda tile: (-tile["retained_score"], tile["tile_id"]))
+    ranked_valid = sorted(valid_tiles, key=lambda tile: (-tile["tile_score"], tile["tile_id"]))
     assert sorted(tile["tile_id"] for tile in selected_tiles) == sorted(
         tile["tile_id"] for tile in ranked_valid[:3]
     )

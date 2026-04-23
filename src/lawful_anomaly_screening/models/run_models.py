@@ -42,14 +42,35 @@ class TileRecord:
     source_scene_manifest_hash: str
     source_endpoint_id: str
     composite_metadata_cache_key: str
-    tile_feature_input_cache_key: str
     tile_size_m: int
     x_index: int
     y_index: int
     is_valid: bool
+
+
+@dataclass(frozen=True)
+class TileFeatureRecord:
+    tile_feature_input_cache_key: str
+    tile_id: str
+    source_scene_manifest_hash: str
+    source_endpoint_id: str
+    optical_signal: float
+    optical_baseline: float
+    persistence_detections: float
+    persistence_observations: float
+    cloud_fraction: float
+    noise_fraction: float
+
+
+@dataclass(frozen=True)
+class TileScoreRecord:
+    tile_id: str
+    tile_feature_input_cache_key: str
+    source_scene_manifest_hash: str
+    source_endpoint_id: str
     optical_anomaly: float
     persistence: float
     cloud_penalty: float
     noise_penalty: float
-    retained_score: float
-    top_valid_selection_flag: bool
+    tile_score: float
+    selected_for_polygonization: bool

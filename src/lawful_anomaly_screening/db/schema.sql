@@ -64,16 +64,37 @@ CREATE TABLE IF NOT EXISTS tiles (
     source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
     source_endpoint_id TEXT NOT NULL,
     composite_metadata_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
-    tile_feature_input_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
     tile_size_m INTEGER NOT NULL,
     x_index INTEGER NOT NULL,
     y_index INTEGER NOT NULL,
     is_valid INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tile_features (
+    tile_feature_input_cache_key TEXT PRIMARY KEY REFERENCES cached_assets(cache_key),
+    tile_id TEXT NOT NULL REFERENCES tiles(tile_id),
+    source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+    source_endpoint_id TEXT NOT NULL,
+    optical_signal REAL NOT NULL,
+    optical_baseline REAL NOT NULL,
+    persistence_detections REAL NOT NULL,
+    persistence_observations REAL NOT NULL,
+    cloud_fraction REAL NOT NULL,
+    noise_fraction REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tile_scores (
+    tile_id TEXT PRIMARY KEY REFERENCES tiles(tile_id),
+    tile_feature_input_cache_key TEXT NOT NULL REFERENCES tile_features(tile_feature_input_cache_key),
+    source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+    source_endpoint_id TEXT NOT NULL,
     optical_anomaly REAL NOT NULL,
     persistence REAL NOT NULL,
     cloud_penalty REAL NOT NULL,
     noise_penalty REAL NOT NULL,
-    retained_score REAL NOT NULL,
-    top_valid_selection_flag INTEGER NOT NULL DEFAULT 0,
+    tile_score REAL NOT NULL,
+    selected_for_polygonization INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
