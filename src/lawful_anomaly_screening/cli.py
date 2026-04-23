@@ -6,9 +6,13 @@ from pathlib import Path
 import sys
 
 from . import __version__
+from .db.repositories.manifest_repository import ManifestRepository
+from .db.sqlite import bootstrap_minimal_run, init_db
 from .exceptions import LegalGateError
 from .legal import LEGAL_OUTCOME_ALLOWED, evaluate_legal_gate
 from .settings import load_settings
+from .sources.earth_search import load_endpoint_registry
+from .sources.manifest_builder import build_manifest
 
 
 def _load_json(path: Path) -> object:
@@ -51,8 +55,6 @@ def cmd_show_baseline(_: argparse.Namespace) -> int:
 
 
 def cmd_init_db(_: argparse.Namespace) -> int:
-    from .db.sqlite import init_db
-
     init_db(load_settings().db_path)
     print("ok")
     return 0
@@ -75,7 +77,28 @@ def cmd_create_run(_: argparse.Namespace) -> int:
     outcome = _legal_gate_outcome(_)
     if outcome != LEGAL_OUTCOME_ALLOWED:
         raise LegalGateError(f"legal gate {outcome}")
-    print("run created")
+    settings = load_settings()
+    baseline = _load_baseline()
+    init_db(settings.db_path)
+
+    registry = load_endpoint_registry()
+    source_endpoint_id = _.source_endpoint_id or registry.primary_endpoint_id
+    manifest = build_manifest(source_endpoint_id=source_endpoint_id)
+    manifest_repository = ManifestRepository(settings.db_path)
+    manifest_record = manifest_repository.persist_manifest(manifest)
+
+    run_id = _.run_id or f"run-{manifest_record['source_scene_manifest_hash'][:8]}"
+    run_record = bootstrap_minimal_run(
+        settings.db_path,
+        processing_baseline_id=baseline["processing_baseline_id"],
+        score_formula_version=baseline["score_formula_version"],
+        source_scene_manifest_hash=manifest_record["source_scene_manifest_hash"],
+        source_endpoint_id=manifest_record["source_endpoint_id"],
+        run_id=run_id,
+        source_name=manifest_record["source_name"],
+        manifest_path=manifest_record["manifest_path"],
+    )
+    print(json.dumps(run_record, indent=2))
     return 0
 
 
@@ -90,6 +113,11 @@ def _add_legal_gate_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["clear", "hit", "missing", "unknown"],
         default="missing",
     )
+
+
+def _add_create_run_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", default=None)
+    parser.add_argument("--source-endpoint-id", default=None)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -108,6 +136,8 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(name)
         if name in {"legal-check", "create-run"}:
             _add_legal_gate_arguments(p)
+        if name == "create-run":
+            _add_create_run_arguments(p)
         p.set_defaults(func=func)
     return parser
 

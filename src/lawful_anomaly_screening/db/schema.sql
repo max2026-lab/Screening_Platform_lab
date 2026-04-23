@@ -16,8 +16,9 @@ CREATE TABLE IF NOT EXISTS feature_versions (
 
 CREATE TABLE IF NOT EXISTS source_scene_manifests (
     source_scene_manifest_hash TEXT PRIMARY KEY,
+    source_endpoint_id TEXT NOT NULL,
     source_name TEXT NOT NULL,
-    manifest_path TEXT,
+    manifest_path TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -26,6 +27,7 @@ CREATE TABLE IF NOT EXISTS runs (
     status TEXT NOT NULL,
     processing_baseline_id TEXT NOT NULL REFERENCES processing_baselines(processing_baseline_id),
     source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+    source_endpoint_id TEXT NOT NULL,
     execution_mode TEXT NOT NULL,
     rerun_mode TEXT NOT NULL,
     cache_status TEXT NOT NULL,

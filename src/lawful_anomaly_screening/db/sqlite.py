@@ -44,18 +44,20 @@ def insert_processing_baseline(
 def insert_source_scene_manifest(
     conn: sqlite3.Connection,
     source_scene_manifest_hash: str,
+    source_endpoint_id: str,
     source_name: str = "earth_search",
-    manifest_path: str | None = None,
+    manifest_path: str = "",
 ) -> None:
     conn.execute(
         """
         INSERT OR REPLACE INTO source_scene_manifests (
             source_scene_manifest_hash,
+            source_endpoint_id,
             source_name,
             manifest_path
-        ) VALUES (?, ?, ?)
+        ) VALUES (?, ?, ?, ?)
         """,
-        (source_scene_manifest_hash, source_name, manifest_path),
+        (source_scene_manifest_hash, source_endpoint_id, source_name, manifest_path),
     )
 
 
@@ -64,6 +66,7 @@ def insert_run(
     run_id: str,
     processing_baseline_id: str,
     source_scene_manifest_hash: str,
+    source_endpoint_id: str,
     status: str = "new",
     execution_mode: str = "synchronous",
     rerun_mode: str = "full",
@@ -76,16 +79,18 @@ def insert_run(
             status,
             processing_baseline_id,
             source_scene_manifest_hash,
+            source_endpoint_id,
             execution_mode,
             rerun_mode,
             cache_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
             status,
             processing_baseline_id,
             source_scene_manifest_hash,
+            source_endpoint_id,
             execution_mode,
             rerun_mode,
             cache_status,
@@ -99,9 +104,10 @@ def bootstrap_minimal_run(
     processing_baseline_id: str,
     score_formula_version: str,
     source_scene_manifest_hash: str,
+    source_endpoint_id: str,
     run_id: str,
     source_name: str = "earth_search",
-    manifest_path: str | None = None,
+    manifest_path: str = "",
     run_status: str = "new",
 ) -> dict[str, Any]:
     with connect(db_path) as conn:
@@ -113,6 +119,7 @@ def bootstrap_minimal_run(
         insert_source_scene_manifest(
             conn,
             source_scene_manifest_hash=source_scene_manifest_hash,
+            source_endpoint_id=source_endpoint_id,
             source_name=source_name,
             manifest_path=manifest_path,
         )
@@ -121,11 +128,13 @@ def bootstrap_minimal_run(
             run_id=run_id,
             processing_baseline_id=processing_baseline_id,
             source_scene_manifest_hash=source_scene_manifest_hash,
+            source_endpoint_id=source_endpoint_id,
             status=run_status,
         )
         conn.commit()
     return {
         "processing_baseline_id": processing_baseline_id,
         "source_scene_manifest_hash": source_scene_manifest_hash,
+        "source_endpoint_id": source_endpoint_id,
         "run_id": run_id,
     }
