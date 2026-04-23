@@ -25,3 +25,12 @@ class CachedAssetRecord:
     source_scene_manifest_hash: str
     source_endpoint_id: str
     asset_path: str
+
+
+@dataclass(frozen=True)
+class CompositeMetadataRecord:
+    source_scene_manifest_hash: str
+    source_endpoint_id: str
+    preprocessing_manifest_cache_key: str
+    preprocessing_season_window_name: str
+    composite_season_window_name: str

@@ -74,6 +74,46 @@ def build_preprocessing_manifest(
     }
 
 
+def is_valid_composite_season(
+    preprocessing_manifest: dict,
+    composite_season_window_name: str,
+    *,
+    preprocessing_config: dict | None = None,
+) -> bool:
+    config = preprocessing_config or load_preprocessing_config()
+    if composite_season_window_name not in config["season_windows"]:
+        return False
+    return composite_season_window_name == preprocessing_manifest["season_window_name"]
+
+
+def build_composite_metadata_manifest(
+    preprocessing_manifest: dict,
+    preprocessing_manifest_cache_key: str,
+    *,
+    composite_season_window_name: str,
+    preprocessing_config: dict | None = None,
+) -> dict:
+    config = preprocessing_config or load_preprocessing_config()
+    if not is_valid_composite_season(
+        preprocessing_manifest,
+        composite_season_window_name,
+        preprocessing_config=config,
+    ):
+        raise ValueError(f"invalid composite season: {composite_season_window_name}")
+
+    return {
+        "manifest_version": "phase1-composite-metadata-v1",
+        "execution_mode": "synchronous",
+        "source_scene_manifest_hash": preprocessing_manifest["source_scene_manifest_hash"],
+        "source_endpoint_id": preprocessing_manifest["source_endpoint_id"],
+        "preprocessing_manifest_cache_key": preprocessing_manifest_cache_key,
+        "preprocessing_season_window_name": preprocessing_manifest["season_window_name"],
+        "composite_season_window_name": composite_season_window_name,
+        "season_window": config["season_windows"][composite_season_window_name],
+        "cloud_mask": preprocessing_manifest["cloud_mask"],
+    }
+
+
 def create_cache_key(asset_kind: str, payload: dict) -> str:
     digest_input = {
         "asset_kind": asset_kind,

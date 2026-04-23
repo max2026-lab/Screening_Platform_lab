@@ -13,14 +13,18 @@ class CacheRepository:
         self.db_path = Path(db_path)
         self.cache_root = Path(cache_root)
 
-    def persist_preprocessing_manifest(self, preprocessing_manifest: dict) -> dict:
-        asset_kind = "preprocessing_manifest"
-        content_hash = create_cache_key(asset_kind, preprocessing_manifest)
+    def _persist_cached_json(
+        self,
+        *,
+        asset_kind: str,
+        payload: dict,
+    ) -> dict:
+        content_hash = create_cache_key(asset_kind, payload)
         asset_path = cache_asset_reference(content_hash, asset_kind, self.cache_root)
         asset_file = Path(asset_path)
         asset_file.parent.mkdir(parents=True, exist_ok=True)
         asset_file.write_text(
-            json.dumps(preprocessing_manifest, indent=2, sort_keys=True),
+            json.dumps(payload, indent=2, sort_keys=True),
             encoding="utf-8",
         )
 
@@ -29,8 +33,8 @@ class CacheRepository:
                 conn,
                 cache_key=content_hash,
                 asset_kind=asset_kind,
-                source_scene_manifest_hash=preprocessing_manifest["source_scene_manifest_hash"],
-                source_endpoint_id=preprocessing_manifest["source_endpoint_id"],
+                source_scene_manifest_hash=payload["source_scene_manifest_hash"],
+                source_endpoint_id=payload["source_endpoint_id"],
                 asset_path=asset_path,
                 content_hash=content_hash,
             )
@@ -39,11 +43,23 @@ class CacheRepository:
         return {
             "cache_key": content_hash,
             "asset_kind": asset_kind,
-            "source_scene_manifest_hash": preprocessing_manifest["source_scene_manifest_hash"],
-            "source_endpoint_id": preprocessing_manifest["source_endpoint_id"],
+            "source_scene_manifest_hash": payload["source_scene_manifest_hash"],
+            "source_endpoint_id": payload["source_endpoint_id"],
             "asset_path": asset_path,
             "content_hash": content_hash,
         }
+
+    def persist_preprocessing_manifest(self, preprocessing_manifest: dict) -> dict:
+        return self._persist_cached_json(
+            asset_kind="preprocessing_manifest",
+            payload=preprocessing_manifest,
+        )
+
+    def persist_composite_metadata(self, composite_metadata_manifest: dict) -> dict:
+        return self._persist_cached_json(
+            asset_kind="composite_metadata",
+            payload=composite_metadata_manifest,
+        )
 
     def fetch_cached_asset_row(self, cache_key: str) -> sqlite3.Row | None:
         with connect(self.db_path) as conn:
