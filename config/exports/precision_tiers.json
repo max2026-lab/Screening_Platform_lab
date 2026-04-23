@@ -21,7 +21,7 @@
   },
   "report_pdf": {
     "precision": "configurable",
-    "allow_exact_coordinates": false,
+    "allow_exact_coordinates": true,
     "allowed_precision_values": [
       "coarse",
       "restricted",

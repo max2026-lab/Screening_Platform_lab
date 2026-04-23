@@ -11,4 +11,18 @@ def test_baseline_shape():
     assert data["execution"]["persistence"] == "sqlite"
     assert data["scene_cloud_filter"] == {"operator": "lt", "value": 30}
     assert data["protected_area_sources"] == ["UNESCO", "WDPA"]
+    assert data["retained_automated_scoring"] == [
+        "optical_anomaly",
+        "persistence",
+        "texture_support",
+        "compactness_support",
+        "cloud_penalty",
+        "noise_penalty",
+    ]
     assert data["deferred_automated_scoring"]["excluded_from_automated_scoring"] is True
+    assert data["deferred_automated_scoring"]["components"] == [
+        "radar_support",
+        "topographic_support",
+        "edge_contrast_support",
+        "context_fit_adjustment",
+    ]

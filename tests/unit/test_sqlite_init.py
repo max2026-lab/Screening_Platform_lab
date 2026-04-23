@@ -1,6 +1,6 @@
 import sqlite3
 
-from lawful_anomaly_screening.db.sqlite import init_db
+from lawful_anomaly_screening.db.sqlite import bootstrap_minimal_run, init_db
 
 
 def test_sqlite_init(tmp_path):
@@ -23,3 +23,40 @@ def test_sqlite_init(tmp_path):
         "geofence_hits",
         "export_records",
     } <= tables
+
+
+def test_bootstrap_minimal_run_path(tmp_path):
+    db = tmp_path / "bootstrap.sqlite3"
+    init_db(db)
+
+    result = bootstrap_minimal_run(
+        db,
+        processing_baseline_id="baseline_v1_5_default",
+        score_formula_version="v1.5.1-phase0",
+        source_scene_manifest_hash="manifest-hash-001",
+        run_id="run-001",
+    )
+
+    assert result["run_id"] == "run-001"
+
+    with sqlite3.connect(db) as conn:
+        baseline_count = conn.execute(
+            "SELECT COUNT(*) FROM processing_baselines WHERE processing_baseline_id = ?",
+            ("baseline_v1_5_default",),
+        ).fetchone()[0]
+        manifest_count = conn.execute(
+            "SELECT COUNT(*) FROM source_scene_manifests WHERE source_scene_manifest_hash = ?",
+            ("manifest-hash-001",),
+        ).fetchone()[0]
+        run_row = conn.execute(
+            """
+            SELECT status, execution_mode, rerun_mode, cache_status
+            FROM runs
+            WHERE run_id = ?
+            """,
+            ("run-001",),
+        ).fetchone()
+
+    assert baseline_count == 1
+    assert manifest_count == 1
+    assert run_row == ("new", "synchronous", "full", "cold")
