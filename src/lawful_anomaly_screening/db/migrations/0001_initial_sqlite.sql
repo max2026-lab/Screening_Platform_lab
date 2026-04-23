@@ -1,0 +1,1 @@
+-- Initial SQLite schema for v1.5.1 scaffold.

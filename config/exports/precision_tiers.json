@@ -1,0 +1,18 @@
+{
+  "public": {
+    "precision": "coarse",
+    "allow_exact_coordinates": false
+  },
+  "shared": {
+    "precision": "coarse",
+    "allow_exact_coordinates": false
+  },
+  "field": {
+    "precision": "exact",
+    "allow_exact_coordinates": true
+  },
+  "reviewer": {
+    "precision": "restricted",
+    "allow_exact_coordinates": false
+  }
+}

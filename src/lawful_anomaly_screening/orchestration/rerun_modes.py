@@ -1,0 +1,1 @@
+RERUN_MODE_FULL = "full"

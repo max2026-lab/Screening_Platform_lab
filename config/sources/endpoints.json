@@ -1,0 +1,6 @@
+{
+  "earth_search": {
+    "provider": "earth-search",
+    "synchronous_only": true
+  }
+}

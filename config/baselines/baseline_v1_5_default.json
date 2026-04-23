@@ -1,0 +1,17 @@
+{
+  "baseline_name": "v1.5-default",
+  "execution": {
+    "mode": "synchronous",
+    "persistence": "sqlite",
+    "tile_size": 320
+  },
+  "scene_filters": {
+    "max_cloud_cover_percent": 30
+  },
+  "analysis": {
+    "deferred_scoring_enabled": false
+  },
+  "legal": {
+    "gate_required_before_analysis": true
+  }
+}
