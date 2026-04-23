@@ -22,5 +22,4 @@ exports/*
 !data/manifests/.gitkeep
 !data/rasters/.gitkeep
 !data/tmp/.gitkeep
-uv.lock
 *.egg-info/

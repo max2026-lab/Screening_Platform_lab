@@ -7,12 +7,25 @@
     "precision": "coarse",
     "allow_exact_coordinates": false
   },
+  "reviewer": {
+    "precision": "exact",
+    "allow_exact_coordinates": true
+  },
+  "internal": {
+    "precision": "exact",
+    "allow_exact_coordinates": true
+  },
   "field": {
     "precision": "exact",
     "allow_exact_coordinates": true
   },
-  "reviewer": {
-    "precision": "restricted",
-    "allow_exact_coordinates": false
+  "report_pdf": {
+    "precision": "configurable",
+    "allow_exact_coordinates": false,
+    "allowed_precision_values": [
+      "coarse",
+      "restricted",
+      "exact"
+    ]
   }
 }

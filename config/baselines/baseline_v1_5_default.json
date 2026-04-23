@@ -1,15 +1,31 @@
 {
-  "baseline_name": "v1.5-default",
+  "processing_baseline_id": "baseline_v1_5_default",
+  "score_formula_version": "v1.5.1-phase0",
   "execution": {
     "mode": "synchronous",
     "persistence": "sqlite",
     "tile_size": 320
   },
-  "scene_filters": {
-    "max_cloud_cover_percent": 30
+  "scene_cloud_filter": {
+    "operator": "lt",
+    "value": 30
   },
-  "analysis": {
-    "deferred_scoring_enabled": false
+  "protected_area_sources": [
+    "UNESCO",
+    "WDPA"
+  ],
+  "retained_automated_scoring": [
+    "spectral_anomaly_score",
+    "temporal_change_score",
+    "context_consistency_score"
+  ],
+  "deferred_automated_scoring": {
+    "excluded_from_automated_scoring": true,
+    "components": [
+      "polygonization_score",
+      "narrative_summary_score",
+      "manual_evidence_packaging_score"
+    ]
   },
   "legal": {
     "gate_required_before_analysis": true

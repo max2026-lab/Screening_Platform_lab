@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 from pathlib import Path
 import sys
 
 from . import __version__
 from .exceptions import LegalGateError
+from .legal import LEGAL_OUTCOME_ALLOWED, evaluate_legal_gate
 from .settings import load_settings
 
 
@@ -19,9 +19,11 @@ def _load_baseline() -> dict:
     return _load_json(load_settings().baseline_path)
 
 
-def _legal_gate_passed() -> bool:
-    baseline = _load_baseline()
-    return bool(baseline["legal"]["gate_required_before_analysis"])
+def _legal_gate_outcome(args: argparse.Namespace) -> str:
+    return evaluate_legal_gate(
+        attestation_status=getattr(args, "attestation", None),
+        geofence_status=getattr(args, "geofence", None),
+    )
 
 
 def cmd_version(_: argparse.Namespace) -> int:
@@ -62,17 +64,32 @@ def cmd_validate_aoi(_: argparse.Namespace) -> int:
 
 
 def cmd_legal_check(_: argparse.Namespace) -> int:
-    if _legal_gate_passed():
-        print("legal gate passed")
+    outcome = _legal_gate_outcome(_)
+    print(outcome)
+    if outcome == LEGAL_OUTCOME_ALLOWED:
         return 0
-    raise LegalGateError("legal gate failed")
+    return 1
 
 
 def cmd_create_run(_: argparse.Namespace) -> int:
-    if not _legal_gate_passed():
-        raise SystemExit("legal gate failed")
+    outcome = _legal_gate_outcome(_)
+    if outcome != LEGAL_OUTCOME_ALLOWED:
+        raise LegalGateError(f"legal gate {outcome}")
     print("run created")
     return 0
+
+
+def _add_legal_gate_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--attestation",
+        choices=["present", "missing", "unknown"],
+        default="missing",
+    )
+    parser.add_argument(
+        "--geofence",
+        choices=["clear", "hit", "missing", "unknown"],
+        default="missing",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,6 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
     }
     for name, func in commands.items():
         p = sub.add_parser(name)
+        if name in {"legal-check", "create-run"}:
+            _add_legal_gate_arguments(p)
         p.set_defaults(func=func)
     return parser
 
