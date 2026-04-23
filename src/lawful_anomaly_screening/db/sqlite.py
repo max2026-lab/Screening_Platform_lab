@@ -129,6 +129,65 @@ def insert_cached_asset(
     )
 
 
+def insert_tile(
+    conn: sqlite3.Connection,
+    *,
+    tile_id: str,
+    source_scene_manifest_hash: str,
+    source_endpoint_id: str,
+    composite_metadata_cache_key: str,
+    tile_feature_input_cache_key: str,
+    tile_size_m: int,
+    x_index: int,
+    y_index: int,
+    is_valid: bool,
+    optical_anomaly: float,
+    persistence: float,
+    cloud_penalty: float,
+    noise_penalty: float,
+    retained_score: float,
+    top_valid_selection_flag: bool,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO tiles (
+            tile_id,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            composite_metadata_cache_key,
+            tile_feature_input_cache_key,
+            tile_size_m,
+            x_index,
+            y_index,
+            is_valid,
+            optical_anomaly,
+            persistence,
+            cloud_penalty,
+            noise_penalty,
+            retained_score,
+            top_valid_selection_flag
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            tile_id,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            composite_metadata_cache_key,
+            tile_feature_input_cache_key,
+            tile_size_m,
+            x_index,
+            y_index,
+            int(is_valid),
+            optical_anomaly,
+            persistence,
+            cloud_penalty,
+            noise_penalty,
+            retained_score,
+            int(top_valid_selection_flag),
+        ),
+    )
+
+
 def bootstrap_minimal_run(
     db_path: Path | str,
     *,

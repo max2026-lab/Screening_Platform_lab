@@ -34,3 +34,22 @@ class CompositeMetadataRecord:
     preprocessing_manifest_cache_key: str
     preprocessing_season_window_name: str
     composite_season_window_name: str
+
+
+@dataclass(frozen=True)
+class TileRecord:
+    tile_id: str
+    source_scene_manifest_hash: str
+    source_endpoint_id: str
+    composite_metadata_cache_key: str
+    tile_feature_input_cache_key: str
+    tile_size_m: int
+    x_index: int
+    y_index: int
+    is_valid: bool
+    optical_anomaly: float
+    persistence: float
+    cloud_penalty: float
+    noise_penalty: float
+    retained_score: float
+    top_valid_selection_flag: bool

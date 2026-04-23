@@ -58,3 +58,22 @@ CREATE TABLE IF NOT EXISTS export_records (
     precision_tier TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS tiles (
+    tile_id TEXT PRIMARY KEY,
+    source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+    source_endpoint_id TEXT NOT NULL,
+    composite_metadata_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
+    tile_feature_input_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
+    tile_size_m INTEGER NOT NULL,
+    x_index INTEGER NOT NULL,
+    y_index INTEGER NOT NULL,
+    is_valid INTEGER NOT NULL,
+    optical_anomaly REAL NOT NULL,
+    persistence REAL NOT NULL,
+    cloud_penalty REAL NOT NULL,
+    noise_penalty REAL NOT NULL,
+    retained_score REAL NOT NULL,
+    top_valid_selection_flag INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

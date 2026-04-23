@@ -22,6 +22,7 @@ def test_sqlite_init(tmp_path):
         "cached_assets",
         "geofence_hits",
         "export_records",
+        "tiles",
     } <= tables
 
 
@@ -90,4 +91,33 @@ def test_cached_assets_schema_supports_preprocessing_records(tmp_path):
         "source_endpoint_id",
         "asset_path",
         "content_hash",
+    } <= columns
+
+
+def test_tiles_schema_supports_retained_scoring_records(tmp_path):
+    db = tmp_path / "tiles.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(tiles)")
+        }
+
+    assert {
+        "tile_id",
+        "source_scene_manifest_hash",
+        "source_endpoint_id",
+        "composite_metadata_cache_key",
+        "tile_feature_input_cache_key",
+        "tile_size_m",
+        "x_index",
+        "y_index",
+        "is_valid",
+        "optical_anomaly",
+        "persistence",
+        "cloud_penalty",
+        "noise_penalty",
+        "retained_score",
+        "top_valid_selection_flag",
     } <= columns

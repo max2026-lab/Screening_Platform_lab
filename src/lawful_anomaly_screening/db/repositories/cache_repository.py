@@ -61,6 +61,12 @@ class CacheRepository:
             payload=composite_metadata_manifest,
         )
 
+    def persist_tile_feature_input(self, tile_feature_input: dict) -> dict:
+        return self._persist_cached_json(
+            asset_kind="tile_feature_input",
+            payload=tile_feature_input,
+        )
+
     def fetch_cached_asset_row(self, cache_key: str) -> sqlite3.Row | None:
         with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
