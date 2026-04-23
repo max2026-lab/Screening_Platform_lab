@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 from lawful_anomaly_screening.db.repositories.cache_repository import CacheRepository
@@ -76,10 +77,10 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
             tile_id=tile_feature_input["tile_id"],
             source_scene_manifest_hash=tile_feature_input["source_scene_manifest_hash"],
             source_endpoint_id=tile_feature_input["source_endpoint_id"],
-            optical_signal=tile_feature_input["score_inputs"]["optical_signal"],
-            optical_baseline=tile_feature_input["score_inputs"]["optical_baseline"],
-            persistence_detections=tile_feature_input["score_inputs"]["persistence_detections"],
-            persistence_observations=tile_feature_input["score_inputs"]["persistence_observations"],
+            target_bands=tile_feature_input["score_inputs"]["target_bands"],
+            baseline_median_bands=tile_feature_input["score_inputs"]["baseline_median_bands"],
+            baseline_std_bands=tile_feature_input["score_inputs"]["baseline_std_bands"],
+            valid_season_optical_values=tile_feature_input["score_inputs"]["valid_season_optical_values"],
             cloud_fraction=tile_feature_input["score_inputs"]["cloud_fraction"],
             noise_fraction=tile_feature_input["score_inputs"]["noise_fraction"],
         )
@@ -116,10 +117,10 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
             """
             SELECT
                 tile_feature_input_cache_key,
-                optical_signal,
-                optical_baseline,
-                persistence_detections,
-                persistence_observations,
+                target_bands_json,
+                baseline_median_bands_json,
+                baseline_std_bands_json,
+                valid_season_optical_values_json,
                 cloud_fraction,
                 noise_fraction
             FROM tile_features
@@ -153,10 +154,10 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
     )
     assert tile_feature_row == (
         tile_input_record["cache_key"],
-        tile_feature_input["score_inputs"]["optical_signal"],
-        tile_feature_input["score_inputs"]["optical_baseline"],
-        tile_feature_input["score_inputs"]["persistence_detections"],
-        tile_feature_input["score_inputs"]["persistence_observations"],
+        json.dumps(tile_feature_input["score_inputs"]["target_bands"], sort_keys=True),
+        json.dumps(tile_feature_input["score_inputs"]["baseline_median_bands"], sort_keys=True),
+        json.dumps(tile_feature_input["score_inputs"]["baseline_std_bands"], sort_keys=True),
+        json.dumps(tile_feature_input["score_inputs"]["valid_season_optical_values"]),
         tile_feature_input["score_inputs"]["cloud_fraction"],
         tile_feature_input["score_inputs"]["noise_fraction"],
     )

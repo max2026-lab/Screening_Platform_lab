@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import sqlite3
 from typing import Any
 
@@ -174,10 +175,10 @@ def insert_tile_feature(
     tile_id: str,
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
-    optical_signal: float,
-    optical_baseline: float,
-    persistence_detections: float,
-    persistence_observations: float,
+    target_bands: dict[str, float],
+    baseline_median_bands: dict[str, float],
+    baseline_std_bands: dict[str, float],
+    valid_season_optical_values: list[float],
     cloud_fraction: float,
     noise_fraction: float,
 ) -> None:
@@ -188,10 +189,10 @@ def insert_tile_feature(
             tile_id,
             source_scene_manifest_hash,
             source_endpoint_id,
-            optical_signal,
-            optical_baseline,
-            persistence_detections,
-            persistence_observations,
+            target_bands_json,
+            baseline_median_bands_json,
+            baseline_std_bands_json,
+            valid_season_optical_values_json,
             cloud_fraction,
             noise_fraction
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -201,10 +202,10 @@ def insert_tile_feature(
             tile_id,
             source_scene_manifest_hash,
             source_endpoint_id,
-            optical_signal,
-            optical_baseline,
-            persistence_detections,
-            persistence_observations,
+            json.dumps(target_bands, sort_keys=True),
+            json.dumps(baseline_median_bands, sort_keys=True),
+            json.dumps(baseline_std_bands, sort_keys=True),
+            json.dumps(valid_season_optical_values),
             cloud_fraction,
             noise_fraction,
         ),

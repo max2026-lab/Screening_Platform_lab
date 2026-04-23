@@ -54,10 +54,10 @@ class TileFeatureRecord:
     tile_id: str
     source_scene_manifest_hash: str
     source_endpoint_id: str
-    optical_signal: float
-    optical_baseline: float
-    persistence_detections: float
-    persistence_observations: float
+    target_bands_json: str
+    baseline_median_bands_json: str
+    baseline_std_bands_json: str
+    valid_season_optical_values_json: str
     cloud_fraction: float
     noise_fraction: float
 

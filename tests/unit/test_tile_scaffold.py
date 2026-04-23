@@ -71,12 +71,14 @@ def test_retained_tile_score_integrity():
     assert scored_tile["tile_score"] == round(
         scored_tile["optical_anomaly"]
         + scored_tile["persistence"]
-        - scored_tile["cloud_penalty"]
-        - scored_tile["noise_penalty"],
+        + scored_tile["cloud_penalty"]
+        + scored_tile["noise_penalty"],
         6,
     )
     assert "tile_score" in scored_tile
     assert "selected_for_polygonization" in scored_tile
+    assert scored_tile["cloud_penalty"] <= 0
+    assert scored_tile["noise_penalty"] <= 0
     assert "radar_support" not in scored_tile
     assert "topographic_support" not in scored_tile
     assert "edge_contrast_support" not in scored_tile
@@ -86,11 +88,31 @@ def test_retained_tile_score_integrity():
 
 
 def test_retained_formula_helpers():
-    assert compute_optical_anomaly(0.82, 0.21) == 0.61
-    assert compute_persistence(4, 5) == 0.8
-    assert compute_cloud_penalty(0.125) == 0.125
-    assert compute_noise_penalty(0.04) == 0.04
-    assert compute_tile_score(0.61, 0.8, 0.125, 0.04) == 1.245
+    assert compute_optical_anomaly(
+        {"b02": 1.0, "b03": 1.2, "b04": 1.4},
+        {"b02": 0.6, "b03": 0.8, "b04": 1.0},
+        {"b02": 0.1, "b03": 0.2, "b04": 0.1},
+    ) == 33.333333
+    assert compute_persistence([1.0, 2.0, 2.5, 1.5]) == 12.5
+    assert compute_cloud_penalty(0.4) == -12.0
+    assert compute_noise_penalty(0.2) == -6.0
+    assert compute_tile_score(30.0, 12.5, -12.0, -6.0) == 24.5
+
+
+def test_component_ranges_and_signed_penalties():
+    optical_anomaly = compute_optical_anomaly(
+        {"b02": 2.0},
+        {"b02": 0.0},
+        {"b02": 0.01},
+    )
+    persistence = compute_persistence([0.0, 2.0, 3.0, 4.0])
+    cloud_penalty = compute_cloud_penalty(1.5)
+    noise_penalty = compute_noise_penalty(0.9)
+
+    assert 0.0 <= optical_anomaly <= 40.0
+    assert 0.0 <= persistence <= 25.0
+    assert -30.0 <= cloud_penalty <= 0.0
+    assert -30.0 <= noise_penalty <= 0.0
 
 
 def test_top_valid_tile_selection_flags_only_top_15_percent():

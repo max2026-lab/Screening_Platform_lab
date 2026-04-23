@@ -170,10 +170,27 @@ def build_tile_feature_input(
         "y_index": y_index,
         "is_valid": (x_index + y_index) % 5 != 0,
         "score_inputs": {
-            "optical_signal": round(0.72 + (x_index * 0.03) + (y_index * 0.015), 6),
-            "optical_baseline": round(0.18 + (y_index * 0.01), 6),
-            "persistence_detections": 2 + ((x_index + y_index) % 4),
-            "persistence_observations": 5,
+            "target_bands": {
+                "b02": round(0.62 + (x_index * 0.04), 6),
+                "b03": round(0.71 + (y_index * 0.03), 6),
+                "b04": round(0.84 + ((x_index + y_index) * 0.025), 6),
+            },
+            "baseline_median_bands": {
+                "b02": 0.42,
+                "b03": 0.5,
+                "b04": 0.58,
+            },
+            "baseline_std_bands": {
+                "b02": 0.08,
+                "b03": 0.1,
+                "b04": 0.12,
+            },
+            "valid_season_optical_values": [
+                round(1.2 + (x_index * 0.35), 6),
+                round(1.6 + (y_index * 0.25), 6),
+                round(2.1 + ((x_index + y_index) * 0.2), 6),
+                round(2.4 + (y_index * 0.15), 6),
+            ],
             "cloud_fraction": round(0.03 * ((x_index + y_index) % 4), 6),
             "noise_fraction": round(0.02 * ((x_index * 2 + y_index) % 3), 6),
         },
@@ -204,22 +221,51 @@ def generate_fixed_tile_grid(
     return sorted(tiles, key=lambda tile: tile["tile_id"])
 
 
-def compute_optical_anomaly(optical_signal: float, optical_baseline: float) -> float:
-    return round(max(0.0, optical_signal - optical_baseline), 6)
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
 
 
-def compute_persistence(detections: float, observations: float) -> float:
-    if observations <= 0:
+def compute_optical_anomaly(
+    target_bands: dict[str, float],
+    baseline_median_bands: dict[str, float],
+    baseline_std_bands: dict[str, float],
+) -> float:
+    band_names = sorted(
+        set(target_bands) & set(baseline_median_bands) & set(baseline_std_bands)
+    )
+    if not band_names:
         return 0.0
-    return round(max(0.0, min(1.0, detections / observations)), 6)
+
+    z_deviations = []
+    for band_name in band_names:
+        std_value = baseline_std_bands[band_name]
+        if std_value <= 0:
+            continue
+        z_deviations.append(
+            abs(target_bands[band_name] - baseline_median_bands[band_name]) / std_value
+        )
+
+    if not z_deviations:
+        return 0.0
+
+    mean_absolute_z_deviation = sum(z_deviations) / len(z_deviations)
+    return round(_clamp(mean_absolute_z_deviation * 10.0, 0.0, 40.0), 6)
+
+
+def compute_persistence(valid_season_optical_values: list[float]) -> float:
+    if not valid_season_optical_values:
+        return 0.0
+    hit_count = sum(1 for value in valid_season_optical_values if value >= 2.0)
+    hit_ratio = hit_count / len(valid_season_optical_values)
+    return round(_clamp(25.0 * hit_ratio, 0.0, 25.0), 6)
 
 
 def compute_cloud_penalty(cloud_fraction: float) -> float:
-    return round(max(0.0, cloud_fraction), 6)
+    return round(_clamp(-30.0 * max(cloud_fraction, 0.0), -30.0, 0.0), 6)
 
 
 def compute_noise_penalty(noise_fraction: float) -> float:
-    return round(max(0.0, noise_fraction), 6)
+    return round(_clamp(-30.0 * max(noise_fraction, 0.0), -30.0, 0.0), 6)
 
 
 def compute_tile_score(
@@ -228,19 +274,17 @@ def compute_tile_score(
     cloud_penalty: float,
     noise_penalty: float,
 ) -> float:
-    return round(optical_anomaly + persistence - cloud_penalty - noise_penalty, 6)
+    return round(_clamp(optical_anomaly + persistence + cloud_penalty + noise_penalty, 0.0, 100.0), 6)
 
 
 def score_retained_tile(tile_feature_input: dict) -> dict:
     score_inputs = tile_feature_input["score_inputs"]
     optical_anomaly = compute_optical_anomaly(
-        score_inputs["optical_signal"],
-        score_inputs["optical_baseline"],
+        score_inputs["target_bands"],
+        score_inputs["baseline_median_bands"],
+        score_inputs["baseline_std_bands"],
     )
-    persistence = compute_persistence(
-        score_inputs["persistence_detections"],
-        score_inputs["persistence_observations"],
-    )
+    persistence = compute_persistence(score_inputs["valid_season_optical_values"])
     cloud_penalty = compute_cloud_penalty(score_inputs["cloud_fraction"])
     noise_penalty = compute_noise_penalty(score_inputs["noise_fraction"])
     tile_score = compute_tile_score(
