@@ -131,6 +131,50 @@ class ExportRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def fetch_export_candidates(self, run_id: str) -> list[dict]:
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    cp.candidate_id,
+                    cp.current_state,
+                    cp.parent_tile_id,
+                    cp.bounds_json,
+                    cp.centroid_json,
+                    cp.area_m2,
+                    cp.perimeter_m,
+                    cp.pixel_count,
+                    cp.boundary_touching,
+                    cp.possible_duplicate,
+                    cp.duplicate_resolution_action,
+                    cs.parent_tile_score,
+                    cs.candidate_score
+                FROM candidate_polygons cp
+                JOIN runs r
+                    ON r.source_scene_manifest_hash = cp.source_scene_manifest_hash
+                    AND r.source_endpoint_id = cp.source_endpoint_id
+                LEFT JOIN candidate_scores cs
+                    ON cs.candidate_id = cp.candidate_id
+                WHERE r.run_id = ?
+                ORDER BY
+                    COALESCE(cs.candidate_score, -1.0) DESC,
+                    COALESCE(cs.parent_tile_score, -1.0) DESC,
+                    cp.candidate_id ASC
+                """,
+                (run_id,),
+            ).fetchall()
+
+        candidates = []
+        for row in rows:
+            candidate = dict(row)
+            candidate["bounds"] = json.loads(candidate.pop("bounds_json"))
+            candidate["centroid"] = json.loads(candidate.pop("centroid_json"))
+            candidate["boundary_touching"] = bool(candidate["boundary_touching"])
+            candidate["possible_duplicate"] = bool(candidate["possible_duplicate"])
+            candidates.append(candidate)
+        return candidates
+
     @staticmethod
     def _create_export_record_id(
         *,

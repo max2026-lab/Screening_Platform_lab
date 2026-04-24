@@ -7,16 +7,19 @@ import sys
 
 from . import __version__
 from .db.repositories.acceptance_repository import AcceptanceRepository
+from .db.repositories.export_repository import ExportRepository
 from .db.repositories.manifest_repository import ManifestRepository
 from .db.repositories.paid_repository import PaidRepository
 from .db.repositories.review_repository import ReviewRepository
 from .db.sqlite import bootstrap_minimal_run, init_db
 from .exceptions import (
+    ExportPolicyError,
     LegalGateError,
     PaidFlowError,
     ReviewDecisionError,
     ReviewStateError,
 )
+from .orchestration.scaffold_run import scaffold_run_for_run_id
 from .legal import LEGAL_OUTCOME_ALLOWED, evaluate_legal_gate
 from .paid.order_service import (
     ORDER_STATUS_CANCELLED,
@@ -125,9 +128,22 @@ def cmd_create_run(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_scaffold_run(args: argparse.Namespace) -> int:
+    try:
+        summary = scaffold_run_for_run_id(
+            load_settings().db_path,
+            run_id=args.run_id,
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
 def cmd_review_queue(args: argparse.Namespace) -> int:
     repository = ReviewRepository(load_settings().db_path)
-    queue = repository.list_review_queue(limit=args.limit)
+    queue = repository.list_review_queue(run_id=args.run_id, limit=args.limit)
     print(json.dumps(queue, indent=2))
     return 0
 
@@ -160,6 +176,22 @@ def cmd_review_decide(args: argparse.Namespace) -> int:
         "candidate": repository.fetch_candidate(args.candidate_id),
     }
     print(json.dumps(payload, indent=2))
+    return 0
+
+
+def cmd_export_create(args: argparse.Namespace) -> int:
+    repository = ExportRepository(load_settings().db_path)
+    candidates = repository.fetch_export_candidates(args.run_id)
+    if not candidates:
+        print(f"no export candidates found for run: {args.run_id}", file=sys.stderr)
+        return 1
+    export_record = repository.persist_export(
+        run_id=args.run_id,
+        audience=args.audience,
+        requested_precision=args.requested_precision,
+        candidates=candidates,
+    )
+    print(json.dumps(export_record, indent=2))
     return 0
 
 
@@ -326,7 +358,12 @@ def _add_create_run_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_review_queue_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", default=None)
     parser.add_argument("--limit", type=int, default=None)
+
+
+def _add_scaffold_run_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
 
 
 def _add_review_show_arguments(parser: argparse.ArgumentParser) -> None:
@@ -381,6 +418,12 @@ def _add_paid_order_status_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--audience", required=True)
+    parser.add_argument("--requested-precision", default=None)
+
+
 def _add_kpi_summary_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--aoi-area-km2", required=True, type=float)
@@ -409,9 +452,11 @@ def build_parser() -> argparse.ArgumentParser:
         "validate-aoi": cmd_validate_aoi,
         "legal-check": cmd_legal_check,
         "create-run": cmd_create_run,
+        "scaffold-run": cmd_scaffold_run,
         "review-queue": cmd_review_queue,
         "review-show": cmd_review_show,
         "review-decide": cmd_review_decide,
+        "export-create": cmd_export_create,
         "paid-quote-create": cmd_paid_quote_create,
         "paid-quote-show": cmd_paid_quote_show,
         "paid-order-create": cmd_paid_order_create,
@@ -429,10 +474,14 @@ def build_parser() -> argparse.ArgumentParser:
             _add_create_run_arguments(p)
         if name == "review-queue":
             _add_review_queue_arguments(p)
+        if name == "scaffold-run":
+            _add_scaffold_run_arguments(p)
         if name == "review-show":
             _add_review_show_arguments(p)
         if name == "review-decide":
             _add_review_decide_arguments(p)
+        if name == "export-create":
+            _add_export_create_arguments(p)
         if name == "paid-quote-create":
             _add_paid_quote_create_arguments(p)
         if name == "paid-quote-show":
@@ -458,7 +507,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except (LegalGateError, PaidFlowError, ReviewDecisionError, ReviewStateError) as exc:
+    except (
+        ExportPolicyError,
+        LegalGateError,
+        PaidFlowError,
+        ReviewDecisionError,
+        ReviewStateError,
+    ) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
