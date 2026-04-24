@@ -69,6 +69,8 @@ def cmd_show_config(_: argparse.Namespace) -> int:
             "baseline_path": str(settings.baseline_path),
             "logging_config_path": str(settings.logging_config_path),
             "export_precision_path": str(settings.export_precision_path),
+            "endpoints_path": str(settings.endpoints_path),
+            "preprocessing_config_path": str(settings.preprocessing_config_path),
         },
         indent=2,
     ))

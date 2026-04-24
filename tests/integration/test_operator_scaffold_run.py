@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import os
+import subprocess
+import sys
 
 from lawful_anomaly_screening.cli import main
+from lawful_anomaly_screening.settings import REPO_ROOT
 
 
 def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows(
@@ -188,3 +192,57 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     ) == 0
     reproducibility_payload = json.loads(capsys.readouterr().out)
     assert reproducibility_payload["status"] == "pass"
+
+
+def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
+    db_path = tmp_path / "operator-outside-cwd.sqlite3"
+    outside_cwd = tmp_path / "outside-cwd"
+    outside_cwd.mkdir()
+
+    env = os.environ.copy()
+    env["LAWFUL_ANOMALY_DB_PATH"] = str(db_path)
+
+    def run_cli(*args: str) -> str:
+        completed = subprocess.run(
+            [sys.executable, "-m", "lawful_anomaly_screening.cli", *args],
+            cwd=outside_cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return completed.stdout
+
+    assert run_cli("init-db").strip() == "ok"
+
+    create_run_payload = json.loads(
+        run_cli(
+            "create-run",
+            "--attestation",
+            "present",
+            "--geofence",
+            "clear",
+            "--run-id",
+            "run-001",
+        )
+    )
+    scaffold_run_payload = json.loads(run_cli("scaffold-run", "--run-id", "run-001"))
+    export_payload = json.loads(
+        run_cli(
+            "export-create",
+            "--run-id",
+            "run-001",
+            "--audience",
+            "report_pdf",
+            "--requested-precision",
+            "restricted",
+        )
+    )
+
+    assert create_run_payload["run_id"] == "run-001"
+    assert scaffold_run_payload["candidate_count"] > 0
+    assert export_payload["run_id"] == "run-001"
+    assert export_payload["precision_tier"] == "restricted"
+    assert (outside_cwd / export_payload["artifact_path"]).is_file()
+    assert not (outside_cwd / "config").exists()
+    assert (REPO_ROOT / "config" / "sources" / "endpoints.json").is_file()

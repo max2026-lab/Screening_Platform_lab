@@ -5,9 +5,9 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
+from lawful_anomaly_screening.settings import load_settings
 from lawful_anomaly_screening.sources.earth_search import discover_scenes, load_endpoint_registry
 
-PREPROCESSING_CONFIG_PATH = Path("config/sources/preprocessing.json")
 RETAINED_TILE_SCORE_FIELDS = (
     "optical_anomaly",
     "persistence",
@@ -57,8 +57,9 @@ def manifest_payload_reference(manifest_hash: str, root: Path | str = Path("data
     return (Path(root) / f"{manifest_hash}.json").as_posix()
 
 
-def load_preprocessing_config(path: Path | str = PREPROCESSING_CONFIG_PATH) -> dict:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+def load_preprocessing_config(path: Path | str | None = None) -> dict:
+    resolved_path = Path(path) if path is not None else load_settings().preprocessing_config_path
+    return json.loads(resolved_path.read_text(encoding="utf-8"))
 
 
 def build_preprocessing_manifest(

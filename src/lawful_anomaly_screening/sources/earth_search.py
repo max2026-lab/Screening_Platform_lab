@@ -4,8 +4,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
-
-ENDPOINTS_PATH = Path("config/sources/endpoints.json")
+from lawful_anomaly_screening.settings import load_settings
 
 
 @dataclass(frozen=True)
@@ -31,8 +30,9 @@ class EndpointRegistry:
         return [self.endpoints[endpoint_id] for endpoint_id in self.fallback_endpoint_ids]
 
 
-def load_endpoint_registry(path: Path | str = ENDPOINTS_PATH) -> EndpointRegistry:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+def load_endpoint_registry(path: Path | str | None = None) -> EndpointRegistry:
+    resolved_path = Path(path) if path is not None else load_settings().endpoints_path
+    data = json.loads(resolved_path.read_text(encoding="utf-8"))
     endpoint_ids = [data["primary"], *data["fallbacks"]]
     endpoints = {
         endpoint_id: SourceEndpoint(
