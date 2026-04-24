@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from . import __version__
+from .db.repositories.acceptance_repository import AcceptanceRepository
 from .db.repositories.manifest_repository import ManifestRepository
 from .db.repositories.paid_repository import PaidRepository
 from .db.repositories.review_repository import ReviewRepository
@@ -28,6 +29,13 @@ from .paid.up42_archive import Up42ArchiveClient
 from .settings import load_settings
 from .sources.earth_search import load_endpoint_registry
 from .sources.manifest_builder import build_manifest
+from .orchestration.acceptance import (
+    build_acceptance_summary,
+    build_kpi_summary,
+    render_acceptance_summary_markdown,
+    reproducibility_check,
+    top10_stability_rate,
+)
 
 
 def _load_json(path: Path) -> object:
@@ -237,6 +245,68 @@ def cmd_paid_order_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_kpi_summary_from_args(args: argparse.Namespace) -> dict:
+    repository = AcceptanceRepository(load_settings().db_path)
+    run = repository.fetch_run(args.run_id)
+    if run is None:
+        print(f"run not found: {args.run_id}", file=sys.stderr)
+        raise SystemExit(1)
+    return build_kpi_summary(
+        run_id=args.run_id,
+        source_scene_manifest_hash=run["source_scene_manifest_hash"],
+        candidate_rows=repository.fetch_candidate_rows(args.run_id),
+        aoi_area_km2=args.aoi_area_km2,
+        time_to_first_review_package_hours=args.time_to_first_review_package_hours,
+        paid_escalation_count=repository.count_paid_escalations(args.run_id),
+    )
+
+
+def cmd_kpi_summary(args: argparse.Namespace) -> int:
+    summary = _build_kpi_summary_from_args(args)
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
+def cmd_acceptance_check(args: argparse.Namespace) -> int:
+    kpi_summary = _build_kpi_summary_from_args(args)
+    stability_value = None
+    if args.retuned_run_id is not None:
+        repository = AcceptanceRepository(load_settings().db_path)
+        stability_value = top10_stability_rate(
+            repository.fetch_candidate_rows(args.run_id),
+            repository.fetch_candidate_rows(args.retuned_run_id),
+        )
+    summary = build_acceptance_summary(
+        kpi_summary=kpi_summary,
+        top10_stability_rate_value=stability_value,
+    )
+    if args.output == "markdown":
+        print(render_acceptance_summary_markdown(summary), end="")
+    else:
+        print(json.dumps(summary, indent=2))
+    return 0 if summary["status"] in {"pass", "warn"} else 1
+
+
+def cmd_reproducibility_check(args: argparse.Namespace) -> int:
+    repository = AcceptanceRepository(load_settings().db_path)
+    baseline_run = repository.fetch_run(args.run_id)
+    comparison_run = repository.fetch_run(args.comparison_run_id)
+    if baseline_run is None:
+        print(f"run not found: {args.run_id}", file=sys.stderr)
+        return 1
+    if comparison_run is None:
+        print(f"run not found: {args.comparison_run_id}", file=sys.stderr)
+        return 1
+    result = reproducibility_check(
+        baseline_manifest_hash=baseline_run["source_scene_manifest_hash"],
+        comparison_manifest_hash=comparison_run["source_scene_manifest_hash"],
+        baseline_candidates=repository.fetch_candidate_rows(args.run_id),
+        comparison_candidates=repository.fetch_candidate_rows(args.comparison_run_id),
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "pass" else 1
+
+
 def _add_legal_gate_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--attestation",
@@ -311,6 +381,23 @@ def _add_paid_order_status_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_kpi_summary_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--aoi-area-km2", required=True, type=float)
+    parser.add_argument("--time-to-first-review-package-hours", type=float, default=None)
+
+
+def _add_acceptance_check_arguments(parser: argparse.ArgumentParser) -> None:
+    _add_kpi_summary_arguments(parser)
+    parser.add_argument("--retuned-run-id", default=None)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
+def _add_reproducibility_check_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--comparison-run-id", required=True)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -330,6 +417,9 @@ def build_parser() -> argparse.ArgumentParser:
         "paid-order-create": cmd_paid_order_create,
         "paid-order-show": cmd_paid_order_show,
         "paid-order-status": cmd_paid_order_status,
+        "kpi-summary": cmd_kpi_summary,
+        "acceptance-check": cmd_acceptance_check,
+        "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
         p = sub.add_parser(name)
@@ -353,6 +443,12 @@ def build_parser() -> argparse.ArgumentParser:
             _add_paid_order_show_arguments(p)
         if name == "paid-order-status":
             _add_paid_order_status_arguments(p)
+        if name == "kpi-summary":
+            _add_kpi_summary_arguments(p)
+        if name == "acceptance-check":
+            _add_acceptance_check_arguments(p)
+        if name == "reproducibility-check":
+            _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)
     return parser
 
