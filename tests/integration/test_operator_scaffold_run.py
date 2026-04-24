@@ -260,6 +260,9 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert execute_run_payload["scene_summary"]["scene_count"] > 0
     assert execute_run_payload["scene_summary"]["start_date"] == "2024-01-01"
     assert execute_run_payload["scene_summary"]["end_date"] == "2024-03-31"
+    assert execute_run_payload["aoi_execution_geometry"]["tile_count"] == execute_run_payload["tile_count"]
+    assert execute_run_payload["aoi_execution_geometry"]["selected_tile_count"] == execute_run_payload["selected_tile_count"]
+    assert len(execute_run_payload["aoi_execution_geometry"]["derived_tile_bbox"]) == 4
     assert export_payload["run_id"] == "run-001"
     assert export_payload["precision_tier"] == "restricted"
     assert (outside_cwd / export_payload["artifact_path"]).is_file()

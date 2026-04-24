@@ -29,4 +29,10 @@ def execute_run(
         "start_date": run_metadata["start_date"],
         "end_date": run_metadata["end_date"],
     }
+    summary["aoi_execution_geometry"] = {
+        "aoi_bbox": run_metadata["aoi_bbox"],
+        "derived_tile_bbox": summary["execution_geometry"]["derived_tile_bbox"],
+        "tile_count": summary["tile_count"],
+        "selected_tile_count": summary["selected_tile_count"],
+    }
     return summary

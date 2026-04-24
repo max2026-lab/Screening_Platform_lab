@@ -28,6 +28,7 @@ def validate_aoi_file(path: Path | str) -> dict[str, Any]:
 
     return {
         "aoi_path": resolved_path.as_posix(),
+        "aoi_geometry": geom,
         "aoi_geometry_type": geom["type"],
         "aoi_bbox": bbox,
         "aoi_hash": aoi_hash,
@@ -71,3 +72,55 @@ def _calculate_bbox(geom: dict[str, Any]) -> list[float]:
 def validate_aoi(_: object) -> bool:
     # Keep the existing stub if needed, but we probably want to use validate_aoi_file
     return True
+
+
+def derive_execution_geometry_summary(
+    aoi_geometry: dict[str, Any] | None,
+    aoi_bbox: list[float] | None,
+    *,
+    base_tile_size_m: int = 320,
+) -> dict[str, Any]:
+    if not aoi_bbox:
+        return {
+            "aoi_bbox": None,
+            "derived_tile_bbox": [0.0, 0.0, 1280.0, 1600.0],
+            "grid_width": 4,
+            "grid_height": 5,
+            "tile_size_m": base_tile_size_m,
+            "geometry_complexity": 0,
+        }
+
+    min_lon, min_lat, max_lon, max_lat = aoi_bbox
+    span_lon = max(max_lon - min_lon, 0.0001)
+    span_lat = max(max_lat - min_lat, 0.0001)
+    geometry_complexity = _count_geometry_vertices(aoi_geometry)
+    width = max(2, min(8, int(round(span_lon)) + 2))
+    height = max(2, min(8, int(round(span_lat)) + 2 + (1 if geometry_complexity > 5 else 0)))
+
+    derived_tile_bbox = [
+        round(min_lon, 6),
+        round(min_lat, 6),
+        round(min_lon + (width * span_lon / max(1, width - 1)), 6),
+        round(min_lat + (height * span_lat / max(1, height - 1)), 6),
+    ]
+
+    return {
+        "aoi_bbox": [round(value, 6) for value in aoi_bbox],
+        "derived_tile_bbox": derived_tile_bbox,
+        "grid_width": width,
+        "grid_height": height,
+        "tile_size_m": base_tile_size_m,
+        "geometry_complexity": geometry_complexity,
+    }
+
+
+def _count_geometry_vertices(aoi_geometry: dict[str, Any] | None) -> int:
+    if not aoi_geometry:
+        return 0
+    geom_type = aoi_geometry.get("type")
+    coordinates = aoi_geometry.get("coordinates", [])
+    if geom_type == "Polygon":
+        return sum(len(ring) for ring in coordinates)
+    if geom_type == "MultiPolygon":
+        return sum(len(ring) for polygon in coordinates for ring in polygon)
+    return 0

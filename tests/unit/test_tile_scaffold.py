@@ -13,6 +13,7 @@ from lawful_anomaly_screening.sources.manifest_builder import (
     generate_fixed_tile_grid,
     score_retained_tile,
 )
+from lawful_anomaly_screening.aoi.validation import derive_execution_geometry_summary
 
 
 def _composite_manifest() -> tuple[dict, str]:
@@ -189,3 +190,53 @@ def test_top_valid_tile_selection_flags_only_top_15_percent():
     assert sorted(tile["tile_id"] for tile in selected_tiles) == sorted(
         tile["tile_id"] for tile in ranked_valid[:3]
     )
+
+
+def test_same_aoi_geometry_yields_same_tile_layout():
+    composite_manifest, composite_cache_key = _composite_manifest()
+    geometry = derive_execution_geometry_summary(
+        {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 3], [0, 3], [0, 0]]]},
+        [0.0, 0.0, 4.0, 3.0],
+    )
+    grid_one = generate_fixed_tile_grid(
+        composite_manifest,
+        composite_cache_key,
+        width=geometry["grid_width"],
+        height=geometry["grid_height"],
+        grid_bounds=geometry["derived_tile_bbox"],
+    )
+    grid_two = generate_fixed_tile_grid(
+        composite_manifest,
+        composite_cache_key,
+        width=geometry["grid_width"],
+        height=geometry["grid_height"],
+        grid_bounds=geometry["derived_tile_bbox"],
+    )
+    assert [tile["tile_id"] for tile in grid_one] == [tile["tile_id"] for tile in grid_two]
+
+
+def test_different_aoi_geometry_yields_different_tile_layout():
+    composite_manifest, composite_cache_key = _composite_manifest()
+    small_geometry = derive_execution_geometry_summary(
+        {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]},
+        [0.0, 0.0, 2.0, 2.0],
+    )
+    large_geometry = derive_execution_geometry_summary(
+        {"type": "Polygon", "coordinates": [[[0, 0], [6, 0], [6, 5], [0, 5], [0, 0]]]},
+        [0.0, 0.0, 6.0, 5.0],
+    )
+    small_grid = generate_fixed_tile_grid(
+        composite_manifest,
+        composite_cache_key,
+        width=small_geometry["grid_width"],
+        height=small_geometry["grid_height"],
+        grid_bounds=small_geometry["derived_tile_bbox"],
+    )
+    large_grid = generate_fixed_tile_grid(
+        composite_manifest,
+        composite_cache_key,
+        width=large_geometry["grid_width"],
+        height=large_geometry["grid_height"],
+        grid_bounds=large_geometry["derived_tile_bbox"],
+    )
+    assert [tile["tile_id"] for tile in small_grid] != [tile["tile_id"] for tile in large_grid]

@@ -157,6 +157,8 @@ def create_tile_id(tile_payload: dict) -> str:
         "source_endpoint_id": tile_payload["source_endpoint_id"],
         "composite_metadata_cache_key": tile_payload["composite_metadata_cache_key"],
         "tile_size_m": tile_payload["tile_size_m"],
+        "grid_bounds": tile_payload.get("grid_bounds"),
+        "tile_bounds": tile_payload.get("bounds"),
         "x_index": tile_payload["x_index"],
         "y_index": tile_payload["y_index"],
     }
@@ -171,6 +173,8 @@ def build_tile_feature_input(
     x_index: int,
     y_index: int,
     tile_size_m: int = 320,
+    grid_bounds: list[float] | None = None,
+    tile_bounds: list[float] | None = None,
 ) -> dict:
     tile_payload = {
         "manifest_version": "phase1-tile-feature-input-v1",
@@ -182,6 +186,8 @@ def build_tile_feature_input(
         "composite_metadata_cache_key": composite_metadata_cache_key,
         "composite_season_window_name": composite_metadata_manifest["composite_season_window_name"],
         "tile_size_m": tile_size_m,
+        "grid_bounds": grid_bounds,
+        "bounds": tile_bounds,
         "x_index": x_index,
         "y_index": y_index,
         "is_valid": (x_index + y_index) % 5 != 0,
@@ -230,7 +236,12 @@ def generate_fixed_tile_grid(
     tile_size_m: int = 320,
     width: int = 4,
     height: int = 5,
+    grid_bounds: list[float] | None = None,
 ) -> list[dict]:
+    resolved_grid_bounds = grid_bounds or [0.0, 0.0, float(width * tile_size_m), float(height * tile_size_m)]
+    min_x, min_y, max_x, max_y = resolved_grid_bounds
+    tile_span_x = (max_x - min_x) / max(1, width)
+    tile_span_y = (max_y - min_y) / max(1, height)
     tiles = [
         build_tile_feature_input(
             composite_metadata_manifest,
@@ -239,6 +250,13 @@ def generate_fixed_tile_grid(
             x_index=x_index,
             y_index=y_index,
             tile_size_m=tile_size_m,
+            grid_bounds=resolved_grid_bounds,
+            tile_bounds=[
+                round(min_x + (x_index * tile_span_x), 6),
+                round(min_y + (y_index * tile_span_y), 6),
+                round(min_x + ((x_index + 1) * tile_span_x), 6),
+                round(min_y + ((y_index + 1) * tile_span_y), 6),
+            ],
         )
         for y_index in range(height)
         for x_index in range(width)

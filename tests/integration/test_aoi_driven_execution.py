@@ -53,6 +53,10 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert len(summary["scene_summary"]["scene_ids"]) == 3
     assert summary["scene_summary"]["start_date"] == "2024-01-01"
     assert summary["scene_summary"]["end_date"] == "2024-03-31"
+    assert summary["aoi_execution_geometry"]["aoi_bbox"] == [0.0, 0.0, 1.0, 1.0]
+    assert summary["aoi_execution_geometry"]["tile_count"] == summary["tile_count"]
+    assert summary["aoi_execution_geometry"]["selected_tile_count"] == summary["selected_tile_count"]
+    assert len(summary["aoi_execution_geometry"]["derived_tile_bbox"]) == 4
     
     # 3. verify review-queue
     args = ["review-queue", "--run-id", "test-run-001"]

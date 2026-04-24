@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import sqlite3
 
+from lawful_anomaly_screening.aoi.validation import derive_execution_geometry_summary
 from lawful_anomaly_screening.db.repositories.cache_repository import CacheRepository
 from lawful_anomaly_screening.db.sqlite import (
     connect,
@@ -46,6 +48,9 @@ def fetch_run_seed_context(db_path: Path | str, run_id: str) -> dict:
                 r.source_endpoint_id,
                 r.status,
                 r.cache_status,
+                r.aoi_geometry_type,
+                r.aoi_bbox,
+                r.aoi_hash,
                 s.source_name,
                 s.manifest_path
             FROM runs r
@@ -57,7 +62,10 @@ def fetch_run_seed_context(db_path: Path | str, run_id: str) -> dict:
         ).fetchone()
     if row is None:
         raise ValueError(f"run not found: {run_id}")
-    return dict(row)
+    data = dict(row)
+    if data.get("aoi_bbox"):
+        data["aoi_bbox"] = json.loads(data["aoi_bbox"])
+    return data
 
 
 def scaffold_run_for_run_id(
@@ -82,11 +90,18 @@ def scaffold_run_for_run_id(
         composite_season_window_name="leaf_on",
     )
     composite_record = cache_repository.persist_composite_metadata(composite_manifest)
+    execution_geometry = derive_execution_geometry_summary(
+        {"type": run_context["aoi_geometry_type"]} if run_context.get("aoi_geometry_type") else None,
+        run_context.get("aoi_bbox"),
+    )
 
     tile_grid = generate_fixed_tile_grid(
         composite_manifest,
         composite_record["cache_key"],
         run_id=run_id,
+        width=execution_geometry["grid_width"],
+        height=execution_geometry["grid_height"],
+        grid_bounds=execution_geometry["derived_tile_bbox"],
     )
     scored_tiles = []
     for tile in tile_grid:
@@ -239,6 +254,7 @@ def scaffold_run_for_run_id(
         "run_id": run_id,
         "source_scene_manifest_hash": run_context["source_scene_manifest_hash"],
         "source_endpoint_id": run_context["source_endpoint_id"],
+        "execution_geometry": execution_geometry,
         "preprocessing_manifest_cache_key": preprocessing_record["cache_key"],
         "composite_metadata_cache_key": composite_record["cache_key"],
         "full_aoi_anomaly_raster_cache_key": full_aoi_record["cache_key"],
