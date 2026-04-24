@@ -334,6 +334,7 @@ def create_candidate_id(
     polygon_record: dict,
 ) -> str:
     payload = {
+        "run_id": polygon_record.get("run_id"),
         "polygonization_manifest_cache_key": polygonization_manifest_cache_key,
         "parent_tile_id": polygon_record["parent_tile_id"],
         "bounds": [round(value, 6) for value in polygon_record["bounds"]],
@@ -345,6 +346,8 @@ def create_candidate_id(
 def build_candidate_polygon_records(
     polygonization_manifest: dict,
     polygonization_manifest_cache_key: str,
+    *,
+    run_id: str | None = None,
 ) -> list[dict]:
     full_aoi_bounds = tuple(polygonization_manifest["full_aoi_bounds"])
     candidate_records = []
@@ -357,6 +360,7 @@ def build_candidate_polygon_records(
         perimeter_m = _perimeter(polygon_bounds)
         candidate_record = {
             "candidate_id": "",
+            "run_id": run_id,
             "polygonization_manifest_cache_key": polygonization_manifest_cache_key,
             "source_scene_manifest_hash": polygonization_manifest["source_scene_manifest_hash"],
             "source_endpoint_id": polygonization_manifest["source_endpoint_id"],
@@ -415,6 +419,7 @@ def build_candidate_feature_records(candidate_polygon_records: list[dict]) -> li
         feature_records.append(
             {
                 "candidate_id": candidate["candidate_id"],
+                "run_id": candidate.get("run_id"),
                 "polygonization_manifest_cache_key": candidate["polygonization_manifest_cache_key"],
                 "source_scene_manifest_hash": candidate["source_scene_manifest_hash"],
                 "source_endpoint_id": candidate["source_endpoint_id"],

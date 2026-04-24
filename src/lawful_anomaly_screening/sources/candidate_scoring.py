@@ -129,6 +129,7 @@ def build_candidate_score_records(
         score_records.append(
             {
                 "candidate_id": candidate_record["candidate_id"],
+                "run_id": candidate_record.get("run_id"),
                 "polygonization_manifest_cache_key": candidate_record["polygonization_manifest_cache_key"],
                 "source_scene_manifest_hash": candidate_record["source_scene_manifest_hash"],
                 "source_endpoint_id": candidate_record["source_endpoint_id"],

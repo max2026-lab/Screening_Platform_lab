@@ -72,6 +72,7 @@ def _seed_reviewable_candidates(db_path, cache_root):
             insert_tile(
                 conn,
                 tile_id=tile["tile_id"],
+                run_id="run-001",
                 source_scene_manifest_hash=tile["source_scene_manifest_hash"],
                 source_endpoint_id=tile["source_endpoint_id"],
                 composite_metadata_cache_key=tile["composite_metadata_cache_key"],
@@ -130,6 +131,7 @@ def _seed_reviewable_candidates(db_path, cache_root):
             insert_candidate_polygon(
                 conn,
                 candidate_id=candidate_record["candidate_id"],
+                run_id="run-001",
                 polygonization_manifest_cache_key=candidate_record["polygonization_manifest_cache_key"],
                 source_scene_manifest_hash=candidate_record["source_scene_manifest_hash"],
                 source_endpoint_id=candidate_record["source_endpoint_id"],
@@ -147,6 +149,7 @@ def _seed_reviewable_candidates(db_path, cache_root):
             insert_candidate_feature(
                 conn,
                 candidate_id=feature_record["candidate_id"],
+                run_id="run-001",
                 polygonization_manifest_cache_key=feature_record["polygonization_manifest_cache_key"],
                 source_scene_manifest_hash=feature_record["source_scene_manifest_hash"],
                 source_endpoint_id=feature_record["source_endpoint_id"],
@@ -161,6 +164,7 @@ def _seed_reviewable_candidates(db_path, cache_root):
             insert_candidate_score(
                 conn,
                 candidate_id=score_record["candidate_id"],
+                run_id="run-001",
                 polygonization_manifest_cache_key=score_record["polygonization_manifest_cache_key"],
                 source_scene_manifest_hash=score_record["source_scene_manifest_hash"],
                 source_endpoint_id=score_record["source_endpoint_id"],

@@ -138,6 +138,7 @@ class ExportRepository:
                 """
                 SELECT
                     cp.candidate_id,
+                    cp.run_id,
                     cp.current_state,
                     cp.parent_tile_id,
                     cp.bounds_json,
@@ -151,12 +152,10 @@ class ExportRepository:
                     cs.parent_tile_score,
                     cs.candidate_score
                 FROM candidate_polygons cp
-                JOIN runs r
-                    ON r.source_scene_manifest_hash = cp.source_scene_manifest_hash
-                    AND r.source_endpoint_id = cp.source_endpoint_id
                 LEFT JOIN candidate_scores cs
                     ON cs.candidate_id = cp.candidate_id
-                WHERE r.run_id = ?
+                    AND cs.run_id = cp.run_id
+                WHERE cp.run_id = ?
                 ORDER BY
                     COALESCE(cs.candidate_score, -1.0) DESC,
                     COALESCE(cs.parent_tile_score, -1.0) DESC,

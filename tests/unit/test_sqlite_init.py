@@ -145,6 +145,7 @@ def test_tiles_schema_supports_retained_scoring_records(tmp_path):
 
     assert {
         "tile_id",
+        "run_id",
         "source_scene_manifest_hash",
         "source_endpoint_id",
         "composite_metadata_cache_key",
@@ -155,6 +156,7 @@ def test_tiles_schema_supports_retained_scoring_records(tmp_path):
     } <= tile_columns
     assert {
         "tile_feature_input_cache_key",
+        "run_id",
         "tile_id",
         "source_scene_manifest_hash",
         "source_endpoint_id",
@@ -171,6 +173,7 @@ def test_tiles_schema_supports_retained_scoring_records(tmp_path):
     } <= tile_feature_columns
     assert {
         "tile_id",
+        "run_id",
         "tile_feature_input_cache_key",
         "source_scene_manifest_hash",
         "source_endpoint_id",
@@ -199,6 +202,7 @@ def test_candidate_schema_supports_polygon_and_feature_records(tmp_path):
 
     assert {
         "candidate_id",
+        "run_id",
         "polygonization_manifest_cache_key",
         "source_scene_manifest_hash",
         "source_endpoint_id",
@@ -215,6 +219,7 @@ def test_candidate_schema_supports_polygon_and_feature_records(tmp_path):
     } <= candidate_polygon_columns
     assert {
         "candidate_id",
+        "run_id",
         "polygonization_manifest_cache_key",
         "source_scene_manifest_hash",
         "source_endpoint_id",
@@ -239,6 +244,7 @@ def test_candidate_score_schema_supports_retained_score_records(tmp_path):
 
     assert {
         "candidate_id",
+        "run_id",
         "polygonization_manifest_cache_key",
         "source_scene_manifest_hash",
         "source_endpoint_id",

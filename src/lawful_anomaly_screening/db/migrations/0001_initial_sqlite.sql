@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS export_records (
 
 CREATE TABLE IF NOT EXISTS tiles (
     tile_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
     source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
     source_endpoint_id TEXT NOT NULL,
     composite_metadata_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
@@ -78,6 +79,7 @@ CREATE TABLE IF NOT EXISTS tiles (
 
 CREATE TABLE IF NOT EXISTS tile_features (
     tile_feature_input_cache_key TEXT PRIMARY KEY REFERENCES cached_assets(cache_key),
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
     tile_id TEXT NOT NULL REFERENCES tiles(tile_id),
     source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
     source_endpoint_id TEXT NOT NULL,
@@ -96,6 +98,7 @@ CREATE TABLE IF NOT EXISTS tile_features (
 
 CREATE TABLE IF NOT EXISTS tile_scores (
     tile_id TEXT PRIMARY KEY REFERENCES tiles(tile_id),
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
     tile_feature_input_cache_key TEXT NOT NULL REFERENCES tile_features(tile_feature_input_cache_key),
     source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
     source_endpoint_id TEXT NOT NULL,
@@ -110,6 +113,7 @@ CREATE TABLE IF NOT EXISTS tile_scores (
 
 CREATE TABLE IF NOT EXISTS candidate_polygons (
     candidate_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
     polygonization_manifest_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
     source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
     source_endpoint_id TEXT NOT NULL,
@@ -128,6 +132,7 @@ CREATE TABLE IF NOT EXISTS candidate_polygons (
 
 CREATE TABLE IF NOT EXISTS candidate_features (
     candidate_id TEXT PRIMARY KEY REFERENCES candidate_polygons(candidate_id),
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
     polygonization_manifest_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
     source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
     source_endpoint_id TEXT NOT NULL,
@@ -142,6 +147,7 @@ CREATE TABLE IF NOT EXISTS candidate_features (
 
 CREATE TABLE IF NOT EXISTS candidate_scores (
     candidate_id TEXT PRIMARY KEY REFERENCES candidate_polygons(candidate_id),
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
     polygonization_manifest_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
     source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
     source_endpoint_id TEXT NOT NULL,

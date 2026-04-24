@@ -2,11 +2,11 @@ import json
 
 from lawful_anomaly_screening.db.repositories.cache_repository import CacheRepository
 from lawful_anomaly_screening.db.sqlite import (
+    bootstrap_minimal_run,
     connect,
     init_db,
     insert_candidate_feature,
     insert_candidate_polygon,
-    insert_source_scene_manifest,
     insert_tile,
 )
 from lawful_anomaly_screening.sources.manifest_builder import (
@@ -29,16 +29,15 @@ def test_candidate_polygon_and_feature_persistence(tmp_path):
     db_path = tmp_path / "candidate.sqlite3"
     cache_root = tmp_path / "cache"
     init_db(db_path)
-
-    with connect(db_path) as conn:
-        insert_source_scene_manifest(
-            conn,
-            source_scene_manifest_hash="manifest-hash-001",
-            source_endpoint_id="earth_search",
-            source_name="earth-search",
-            manifest_path="data/manifests/manifest-hash-001.json",
-        )
-        conn.commit()
+    bootstrap_minimal_run(
+        db_path,
+        processing_baseline_id="baseline_v1_5_default",
+        score_formula_version="v1.5.1-phase0",
+        source_scene_manifest_hash="manifest-hash-001",
+        source_endpoint_id="earth_search",
+        run_id="run-001",
+        manifest_path="data/manifests/manifest-hash-001.json",
+    )
 
     repository = CacheRepository(db_path, cache_root=cache_root)
     preprocessing_manifest = build_preprocessing_manifest(
@@ -67,6 +66,7 @@ def test_candidate_polygon_and_feature_persistence(tmp_path):
             insert_tile(
                 conn,
                 tile_id=tile["tile_id"],
+                run_id="run-001",
                 source_scene_manifest_hash=tile["source_scene_manifest_hash"],
                 source_endpoint_id=tile["source_endpoint_id"],
                 composite_metadata_cache_key=tile["composite_metadata_cache_key"],
@@ -122,6 +122,7 @@ def test_candidate_polygon_and_feature_persistence(tmp_path):
             insert_candidate_polygon(
                 conn,
                 candidate_id=candidate_record["candidate_id"],
+                run_id="run-001",
                 polygonization_manifest_cache_key=candidate_record["polygonization_manifest_cache_key"],
                 source_scene_manifest_hash=candidate_record["source_scene_manifest_hash"],
                 source_endpoint_id=candidate_record["source_endpoint_id"],
@@ -139,6 +140,7 @@ def test_candidate_polygon_and_feature_persistence(tmp_path):
             insert_candidate_feature(
                 conn,
                 candidate_id=feature_record["candidate_id"],
+                run_id="run-001",
                 polygonization_manifest_cache_key=feature_record["polygonization_manifest_cache_key"],
                 source_scene_manifest_hash=feature_record["source_scene_manifest_hash"],
                 source_endpoint_id=feature_record["source_endpoint_id"],

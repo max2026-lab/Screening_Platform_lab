@@ -82,7 +82,11 @@ def scaffold_run_for_run_id(
     )
     composite_record = cache_repository.persist_composite_metadata(composite_manifest)
 
-    tile_grid = generate_fixed_tile_grid(composite_manifest, composite_record["cache_key"])
+    tile_grid = generate_fixed_tile_grid(
+        composite_manifest,
+        composite_record["cache_key"],
+        run_id=run_id,
+    )
     scored_tiles = []
     for tile in tile_grid:
         tile_feature_record = cache_repository.persist_tile_feature_input(tile)
@@ -99,6 +103,7 @@ def scaffold_run_for_run_id(
             insert_tile(
                 conn,
                 tile_id=tile["tile_id"],
+                run_id=run_id,
                 source_scene_manifest_hash=tile["source_scene_manifest_hash"],
                 source_endpoint_id=tile["source_endpoint_id"],
                 composite_metadata_cache_key=tile["composite_metadata_cache_key"],
@@ -110,6 +115,7 @@ def scaffold_run_for_run_id(
             insert_tile_feature(
                 conn,
                 tile_feature_input_cache_key=tile["tile_feature_input_cache_key"],
+                run_id=run_id,
                 tile_id=tile["tile_id"],
                 source_scene_manifest_hash=tile["source_scene_manifest_hash"],
                 source_endpoint_id=tile["source_endpoint_id"],
@@ -127,6 +133,7 @@ def scaffold_run_for_run_id(
             insert_tile_score(
                 conn,
                 tile_id=tile["tile_id"],
+                run_id=run_id,
                 tile_feature_input_cache_key=tile["tile_feature_input_cache_key"],
                 source_scene_manifest_hash=tile["source_scene_manifest_hash"],
                 source_endpoint_id=tile["source_endpoint_id"],
@@ -163,6 +170,7 @@ def scaffold_run_for_run_id(
     candidate_records = build_candidate_polygon_records(
         polygonization_manifest,
         polygonization_record["cache_key"],
+        run_id=run_id,
     )
     feature_records = build_candidate_feature_records(candidate_records)
     score_records = rank_candidate_scores(
@@ -174,6 +182,7 @@ def scaffold_run_for_run_id(
             insert_candidate_polygon(
                 conn,
                 candidate_id=candidate_record["candidate_id"],
+                run_id=run_id,
                 polygonization_manifest_cache_key=candidate_record["polygonization_manifest_cache_key"],
                 source_scene_manifest_hash=candidate_record["source_scene_manifest_hash"],
                 source_endpoint_id=candidate_record["source_endpoint_id"],
@@ -191,6 +200,7 @@ def scaffold_run_for_run_id(
             insert_candidate_feature(
                 conn,
                 candidate_id=feature_record["candidate_id"],
+                run_id=run_id,
                 polygonization_manifest_cache_key=feature_record["polygonization_manifest_cache_key"],
                 source_scene_manifest_hash=feature_record["source_scene_manifest_hash"],
                 source_endpoint_id=feature_record["source_endpoint_id"],
@@ -205,6 +215,7 @@ def scaffold_run_for_run_id(
             insert_candidate_score(
                 conn,
                 candidate_id=score_record["candidate_id"],
+                run_id=run_id,
                 polygonization_manifest_cache_key=score_record["polygonization_manifest_cache_key"],
                 source_scene_manifest_hash=score_record["source_scene_manifest_hash"],
                 source_endpoint_id=score_record["source_endpoint_id"],

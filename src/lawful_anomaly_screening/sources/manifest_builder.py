@@ -139,6 +139,7 @@ def cache_asset_reference(
 
 def create_tile_id(tile_payload: dict) -> str:
     digest_input = {
+        "run_id": tile_payload.get("run_id"),
         "source_scene_manifest_hash": tile_payload["source_scene_manifest_hash"],
         "source_endpoint_id": tile_payload["source_endpoint_id"],
         "composite_metadata_cache_key": tile_payload["composite_metadata_cache_key"],
@@ -153,6 +154,7 @@ def build_tile_feature_input(
     composite_metadata_manifest: dict,
     composite_metadata_cache_key: str,
     *,
+    run_id: str | None = None,
     x_index: int,
     y_index: int,
     tile_size_m: int = 320,
@@ -160,6 +162,7 @@ def build_tile_feature_input(
     tile_payload = {
         "manifest_version": "phase1-tile-feature-input-v1",
         "execution_mode": "synchronous",
+        "run_id": run_id,
         "source_scene_manifest_hash": composite_metadata_manifest["source_scene_manifest_hash"],
         "source_endpoint_id": composite_metadata_manifest["source_endpoint_id"],
         "preprocessing_manifest_cache_key": composite_metadata_manifest["preprocessing_manifest_cache_key"],
@@ -210,6 +213,7 @@ def generate_fixed_tile_grid(
     composite_metadata_manifest: dict,
     composite_metadata_cache_key: str,
     *,
+    run_id: str | None = None,
     tile_size_m: int = 320,
     width: int = 4,
     height: int = 5,
@@ -218,6 +222,7 @@ def generate_fixed_tile_grid(
         build_tile_feature_input(
             composite_metadata_manifest,
             composite_metadata_cache_key,
+            run_id=run_id,
             x_index=x_index,
             y_index=y_index,
             tile_size_m=tile_size_m,

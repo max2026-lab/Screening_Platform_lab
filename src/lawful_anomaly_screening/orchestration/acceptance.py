@@ -79,8 +79,16 @@ def rank_candidates(candidate_rows: list[dict]) -> list[dict]:
     )
 
 
+def candidate_identity(row: dict) -> str:
+    return str(row.get("stable_candidate_key") or row["candidate_id"])
+
+
 def top_candidate_ids(candidate_rows: list[dict], top_n: int = 10) -> list[str]:
     return [row["candidate_id"] for row in rank_candidates(candidate_rows)[:top_n]]
+
+
+def top_candidate_match_keys(candidate_rows: list[dict], top_n: int = 10) -> list[str]:
+    return [candidate_identity(row) for row in rank_candidates(candidate_rows)[:top_n]]
 
 
 def scores_within_tolerance(
@@ -89,13 +97,13 @@ def scores_within_tolerance(
     tolerance: float = REPRODUCIBILITY_SCORE_TOLERANCE,
     top_n: int = 10,
 ) -> bool:
-    baseline_by_id = {row["candidate_id"]: row for row in baseline_candidates}
-    comparison_by_id = {row["candidate_id"]: row for row in comparison_candidates}
-    for candidate_id in top_candidate_ids(baseline_candidates, top_n):
-        if candidate_id not in comparison_by_id:
+    baseline_by_id = {candidate_identity(row): row for row in baseline_candidates}
+    comparison_by_id = {candidate_identity(row): row for row in comparison_candidates}
+    for candidate_key in top_candidate_match_keys(baseline_candidates, top_n):
+        if candidate_key not in comparison_by_id:
             return False
-        baseline_score = float(baseline_by_id[candidate_id].get("candidate_score") or 0.0)
-        comparison_score = float(comparison_by_id[candidate_id].get("candidate_score") or 0.0)
+        baseline_score = float(baseline_by_id[candidate_key].get("candidate_score") or 0.0)
+        comparison_score = float(comparison_by_id[candidate_key].get("candidate_score") or 0.0)
         if abs(baseline_score - comparison_score) > tolerance:
             return False
     return True
@@ -110,8 +118,8 @@ def reproducibility_check(
     top_n: int = 10,
 ) -> dict:
     same_manifest = baseline_manifest_hash == comparison_manifest_hash
-    baseline_top_ids = top_candidate_ids(baseline_candidates, top_n)
-    comparison_top_ids = top_candidate_ids(comparison_candidates, top_n)
+    baseline_top_ids = top_candidate_match_keys(baseline_candidates, top_n)
+    comparison_top_ids = top_candidate_match_keys(comparison_candidates, top_n)
     same_top_rank_order = baseline_top_ids == comparison_top_ids
     scores_match = scores_within_tolerance(
         baseline_candidates,
@@ -132,10 +140,10 @@ def reproducibility_check(
 
 
 def top10_stability_rate(baseline_candidates: list[dict], retuned_candidates: list[dict]) -> float:
-    baseline_top = set(top_candidate_ids(baseline_candidates, 10))
+    baseline_top = set(top_candidate_match_keys(baseline_candidates, 10))
     if not baseline_top:
         return 0.0
-    retuned_top = set(top_candidate_ids(retuned_candidates, 10))
+    retuned_top = set(top_candidate_match_keys(retuned_candidates, 10))
     return round(len(baseline_top & retuned_top) / len(baseline_top), 6)
 
 

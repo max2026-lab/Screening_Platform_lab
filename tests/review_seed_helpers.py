@@ -41,11 +41,10 @@ def seed_reviewable_candidates(db_path, cache_root):
                     possible_duplicate,
                     duplicate_resolution_action
                 FROM candidate_polygons
-                WHERE source_scene_manifest_hash = ?
-                  AND source_endpoint_id = ?
+                WHERE run_id = ?
                 ORDER BY candidate_id ASC
                 """,
-                (summary["source_scene_manifest_hash"], summary["source_endpoint_id"]),
+                (summary["run_id"],),
             ).fetchall()
         ]
         score_records = [
@@ -68,11 +67,10 @@ def seed_reviewable_candidates(db_path, cache_root):
                     integrity_delta,
                     integrity_within_tolerance
                 FROM candidate_scores
-                WHERE source_scene_manifest_hash = ?
-                  AND source_endpoint_id = ?
+                WHERE run_id = ?
                 ORDER BY candidate_score DESC, parent_tile_score DESC, candidate_id ASC
                 """,
-                (summary["source_scene_manifest_hash"], summary["source_endpoint_id"]),
+                (summary["run_id"],),
             ).fetchall()
         ]
     return candidate_records, score_records

@@ -175,6 +175,7 @@ def insert_tile(
     conn: sqlite3.Connection,
     *,
     tile_id: str,
+    run_id: str,
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
     composite_metadata_cache_key: str,
@@ -187,6 +188,7 @@ def insert_tile(
         """
         INSERT OR REPLACE INTO tiles (
             tile_id,
+            run_id,
             source_scene_manifest_hash,
             source_endpoint_id,
             composite_metadata_cache_key,
@@ -194,10 +196,11 @@ def insert_tile(
             x_index,
             y_index,
             is_valid
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             tile_id,
+            run_id,
             source_scene_manifest_hash,
             source_endpoint_id,
             composite_metadata_cache_key,
@@ -213,6 +216,7 @@ def insert_tile_feature(
     conn: sqlite3.Connection,
     *,
     tile_feature_input_cache_key: str,
+    run_id: str,
     tile_id: str,
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
@@ -231,6 +235,7 @@ def insert_tile_feature(
         """
         INSERT OR REPLACE INTO tile_features (
             tile_feature_input_cache_key,
+            run_id,
             tile_id,
             source_scene_manifest_hash,
             source_endpoint_id,
@@ -244,10 +249,11 @@ def insert_tile_feature(
             cloud_seam_overlap_ratio,
             compactness_ratio_value,
             elongation
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             tile_feature_input_cache_key,
+            run_id,
             tile_id,
             source_scene_manifest_hash,
             source_endpoint_id,
@@ -269,6 +275,7 @@ def insert_tile_score(
     conn: sqlite3.Connection,
     *,
     tile_id: str,
+    run_id: str,
     tile_feature_input_cache_key: str,
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
@@ -283,6 +290,7 @@ def insert_tile_score(
         """
         INSERT OR REPLACE INTO tile_scores (
             tile_id,
+            run_id,
             tile_feature_input_cache_key,
             source_scene_manifest_hash,
             source_endpoint_id,
@@ -292,10 +300,11 @@ def insert_tile_score(
             noise_penalty,
             tile_score,
             selected_for_polygonization
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             tile_id,
+            run_id,
             tile_feature_input_cache_key,
             source_scene_manifest_hash,
             source_endpoint_id,
@@ -313,6 +322,7 @@ def insert_candidate_polygon(
     conn: sqlite3.Connection,
     *,
     candidate_id: str,
+    run_id: str,
     polygonization_manifest_cache_key: str,
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
@@ -331,6 +341,7 @@ def insert_candidate_polygon(
         """
         INSERT OR REPLACE INTO candidate_polygons (
             candidate_id,
+            run_id,
             polygonization_manifest_cache_key,
             source_scene_manifest_hash,
             source_endpoint_id,
@@ -344,10 +355,11 @@ def insert_candidate_polygon(
             boundary_touching,
             possible_duplicate,
             duplicate_resolution_action
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             candidate_id,
+            run_id,
             polygonization_manifest_cache_key,
             source_scene_manifest_hash,
             source_endpoint_id,
@@ -369,6 +381,7 @@ def insert_candidate_feature(
     conn: sqlite3.Connection,
     *,
     candidate_id: str,
+    run_id: str,
     polygonization_manifest_cache_key: str,
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
@@ -383,6 +396,7 @@ def insert_candidate_feature(
         """
         INSERT OR REPLACE INTO candidate_features (
             candidate_id,
+            run_id,
             polygonization_manifest_cache_key,
             source_scene_manifest_hash,
             source_endpoint_id,
@@ -392,10 +406,11 @@ def insert_candidate_feature(
             local_contrast_inputs_json,
             water_edge_overlap_ratio,
             cloud_seam_overlap_ratio
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             candidate_id,
+            run_id,
             polygonization_manifest_cache_key,
             source_scene_manifest_hash,
             source_endpoint_id,
@@ -413,6 +428,7 @@ def insert_candidate_score(
     conn: sqlite3.Connection,
     *,
     candidate_id: str,
+    run_id: str,
     polygonization_manifest_cache_key: str,
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
@@ -431,6 +447,7 @@ def insert_candidate_score(
         """
         INSERT OR REPLACE INTO candidate_scores (
             candidate_id,
+            run_id,
             polygonization_manifest_cache_key,
             source_scene_manifest_hash,
             source_endpoint_id,
@@ -444,10 +461,11 @@ def insert_candidate_score(
             contribution_sum,
             integrity_delta,
             integrity_within_tolerance
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             candidate_id,
+            run_id,
             polygonization_manifest_cache_key,
             source_scene_manifest_hash,
             source_endpoint_id,

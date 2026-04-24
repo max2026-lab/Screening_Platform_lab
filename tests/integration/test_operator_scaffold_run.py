@@ -53,13 +53,19 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
 
     assert main(["scaffold-run", "--run-id", "run-002"]) == 0
     scaffold_run_2_payload = json.loads(capsys.readouterr().out)
-    assert scaffold_run_2_payload["candidate_ids"] == scaffold_run_1_payload["candidate_ids"]
+    assert scaffold_run_2_payload["candidate_count"] > 0
+    assert set(scaffold_run_1_payload["candidate_ids"]).isdisjoint(scaffold_run_2_payload["candidate_ids"])
 
     assert main(["review-queue", "--run-id", "run-001", "--limit", "10"]) == 0
-    review_queue_payload = json.loads(capsys.readouterr().out)
-    assert review_queue_payload
+    review_queue_run_1_payload = json.loads(capsys.readouterr().out)
+    assert review_queue_run_1_payload
 
-    approved_candidate_id = review_queue_payload[0]["candidate_id"]
+    assert main(["review-queue", "--run-id", "run-002", "--limit", "10"]) == 0
+    review_queue_run_2_payload = json.loads(capsys.readouterr().out)
+    assert review_queue_run_2_payload
+
+    approved_candidate_id = review_queue_run_1_payload[0]["candidate_id"]
+    run_2_top_candidate_id = review_queue_run_2_payload[0]["candidate_id"]
     assert main(
         [
             "review-decide",
@@ -78,6 +84,10 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     review_decision_payload = json.loads(capsys.readouterr().out)
     assert review_decision_payload["candidate"]["current_state"] == "approved_for_archive_quote"
 
+    assert main(["review-show", "--candidate-id", run_2_top_candidate_id]) == 0
+    run_2_candidate_payload = json.loads(capsys.readouterr().out)
+    assert run_2_candidate_payload["candidate"]["current_state"] == "pending_review"
+
     assert main(
         [
             "export-create",
@@ -95,6 +105,9 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert export_payload["exact_coordinates_included"] is False
     assert export_payload["candidates"]
     assert export_path.exists()
+    assert {candidate["candidate_id"] for candidate in export_payload["candidates"]} == set(
+        scaffold_run_1_payload["candidate_ids"]
+    )
 
     assert main(
         [
@@ -145,8 +158,24 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
             "1.5",
         ]
     ) == 0
-    kpi_summary_payload = json.loads(capsys.readouterr().out)
-    assert kpi_summary_payload["candidate_count"] > 0
+    run_1_kpi_summary_payload = json.loads(capsys.readouterr().out)
+    assert run_1_kpi_summary_payload["candidate_count"] > 0
+    assert run_1_kpi_summary_payload["paid_escalation_count"] == 1
+
+    assert main(
+        [
+            "kpi-summary",
+            "--run-id",
+            "run-002",
+            "--aoi-area-km2",
+            "100",
+            "--time-to-first-review-package-hours",
+            "1.5",
+        ]
+    ) == 0
+    run_2_kpi_summary_payload = json.loads(capsys.readouterr().out)
+    assert run_2_kpi_summary_payload["candidate_count"] > 0
+    assert run_2_kpi_summary_payload["paid_escalation_count"] == 0
 
     assert main(
         [

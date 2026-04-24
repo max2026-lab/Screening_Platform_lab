@@ -3,9 +3,9 @@ import sqlite3
 
 from lawful_anomaly_screening.db.repositories.cache_repository import CacheRepository
 from lawful_anomaly_screening.db.sqlite import (
+    bootstrap_minimal_run,
     connect,
     init_db,
-    insert_source_scene_manifest,
     insert_tile,
     insert_tile_feature,
     insert_tile_score,
@@ -23,16 +23,15 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
     db_path = tmp_path / "tiles.sqlite3"
     cache_root = tmp_path / "cache"
     init_db(db_path)
-
-    with connect(db_path) as conn:
-        insert_source_scene_manifest(
-            conn,
-            source_scene_manifest_hash="manifest-hash-001",
-            source_endpoint_id="earth_search",
-            source_name="earth-search",
-            manifest_path="data/manifests/manifest-hash-001.json",
-        )
-        conn.commit()
+    bootstrap_minimal_run(
+        db_path,
+        processing_baseline_id="baseline_v1_5_default",
+        score_formula_version="v1.5.1-phase0",
+        source_scene_manifest_hash="manifest-hash-001",
+        source_endpoint_id="earth_search",
+        run_id="run-001",
+        manifest_path="data/manifests/manifest-hash-001.json",
+    )
 
     repository = CacheRepository(db_path, cache_root=cache_root)
     preprocessing_manifest = build_preprocessing_manifest(
@@ -63,6 +62,7 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
         insert_tile(
             conn,
             tile_id=tile_feature_input["tile_id"],
+            run_id="run-001",
             source_scene_manifest_hash=tile_feature_input["source_scene_manifest_hash"],
             source_endpoint_id=tile_feature_input["source_endpoint_id"],
             composite_metadata_cache_key=tile_feature_input["composite_metadata_cache_key"],
@@ -74,6 +74,7 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
         insert_tile_feature(
             conn,
             tile_feature_input_cache_key=tile_input_record["cache_key"],
+            run_id="run-001",
             tile_id=tile_feature_input["tile_id"],
             source_scene_manifest_hash=tile_feature_input["source_scene_manifest_hash"],
             source_endpoint_id=tile_feature_input["source_endpoint_id"],
@@ -91,6 +92,7 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
         insert_tile_score(
             conn,
             tile_id=scored_tile["tile_id"],
+            run_id="run-001",
             tile_feature_input_cache_key=scored_tile["tile_feature_input_cache_key"],
             source_scene_manifest_hash=scored_tile["source_scene_manifest_hash"],
             source_endpoint_id=scored_tile["source_endpoint_id"],

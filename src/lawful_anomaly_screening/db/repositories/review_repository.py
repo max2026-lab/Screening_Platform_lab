@@ -72,7 +72,7 @@ class ReviewRepository:
         run_filter_clause = ""
         params_list: list[object] = list(REVIEW_QUEUE_STATES)
         if run_id is not None:
-            run_filter_clause = "AND r.run_id = ?"
+            run_filter_clause = "AND cp.run_id = ?"
             params_list.append(run_id)
         if limit is not None:
             limit_clause = "LIMIT ?"
@@ -88,16 +88,16 @@ class ReviewRepository:
                     cp.current_state,
                     cp.possible_duplicate,
                     cp.duplicate_resolution_action,
-                    r.run_id,
+                    cp.run_id,
                     r.status AS run_status,
                     cs.parent_tile_score,
                     cs.candidate_score
                 FROM candidate_polygons cp
                 JOIN runs r
-                    ON r.source_scene_manifest_hash = cp.source_scene_manifest_hash
-                    AND r.source_endpoint_id = cp.source_endpoint_id
+                    ON r.run_id = cp.run_id
                 LEFT JOIN candidate_scores cs
                     ON cs.candidate_id = cp.candidate_id
+                    AND cs.run_id = cp.run_id
                 WHERE cp.current_state IN (?, ?)
                     {run_filter_clause}
                 ORDER BY
@@ -118,7 +118,7 @@ class ReviewRepository:
         run_filter_clause = ""
         params: tuple[object, ...]
         if run_id is not None:
-            run_filter_clause = "AND r.run_id = ?"
+            run_filter_clause = "AND cp.run_id = ?"
             params = (candidate_id, run_id)
         else:
             params = (candidate_id,)
@@ -130,7 +130,7 @@ class ReviewRepository:
                     cp.candidate_id,
                     cp.parent_tile_id,
                     cp.current_state,
-                    r.run_id,
+                    cp.run_id,
                     r.status AS run_status,
                     cp.bounds_json,
                     cp.centroid_json,
@@ -145,13 +145,13 @@ class ReviewRepository:
                     cs.score_breakdown_json
                 FROM candidate_polygons cp
                 JOIN runs r
-                    ON r.source_scene_manifest_hash = cp.source_scene_manifest_hash
-                    AND r.source_endpoint_id = cp.source_endpoint_id
+                    ON r.run_id = cp.run_id
                 LEFT JOIN candidate_scores cs
                     ON cs.candidate_id = cp.candidate_id
+                    AND cs.run_id = cp.run_id
                 WHERE cp.candidate_id = ?
                     {run_filter_clause}
-                ORDER BY r.run_id ASC
+                ORDER BY cp.run_id ASC
                 LIMIT 1
                 """,
                 params,
@@ -209,8 +209,9 @@ class ReviewRepository:
                 SELECT candidate_id, current_state
                 FROM candidate_polygons
                 WHERE candidate_id = ?
+                  AND run_id = ?
                 """,
-                (candidate_id,),
+                (candidate_id, run_id),
             ).fetchone()
             if candidate_row is None:
                 raise ReviewStateError(f"candidate not found: {candidate_id}")
@@ -227,8 +228,9 @@ class ReviewRepository:
                 UPDATE candidate_polygons
                 SET current_state = ?
                 WHERE candidate_id = ?
+                  AND run_id = ?
                 """,
-                (new_state, candidate_id),
+                (new_state, candidate_id, run_id),
             )
             insert_review_action(
                 conn,
