@@ -49,6 +49,7 @@ def fetch_run_seed_context(db_path: Path | str, run_id: str) -> dict:
                 r.status,
                 r.cache_status,
                 r.aoi_geometry_type,
+                r.aoi_geometry_json,
                 r.aoi_bbox,
                 r.aoi_hash,
                 s.source_name,
@@ -63,6 +64,8 @@ def fetch_run_seed_context(db_path: Path | str, run_id: str) -> dict:
     if row is None:
         raise ValueError(f"run not found: {run_id}")
     data = dict(row)
+    if data.get("aoi_geometry_json"):
+        data["aoi_geometry"] = json.loads(data.pop("aoi_geometry_json"))
     if data.get("aoi_bbox"):
         data["aoi_bbox"] = json.loads(data["aoi_bbox"])
     return data
@@ -91,7 +94,7 @@ def scaffold_run_for_run_id(
     )
     composite_record = cache_repository.persist_composite_metadata(composite_manifest)
     execution_geometry = derive_execution_geometry_summary(
-        {"type": run_context["aoi_geometry_type"]} if run_context.get("aoi_geometry_type") else None,
+        run_context.get("aoi_geometry"),
         run_context.get("aoi_bbox"),
     )
 

@@ -49,6 +49,7 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert summary["run_metadata"]["start_date"] == "2024-01-01"
     assert summary["run_metadata"]["status"] == "review_ready"
     assert summary["run_metadata"]["cache_status"] == "warm"
+    assert summary["run_metadata"]["aoi_geometry"] == aoi_data
     assert summary["scene_summary"]["scene_count"] == 3
     assert len(summary["scene_summary"]["scene_ids"]) == 3
     assert summary["scene_summary"]["start_date"] == "2024-01-01"
@@ -72,6 +73,57 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
         summary["run_metadata"]["source_scene_manifest_hash"]
     )
     assert [scene["scene_id"] for scene in persisted_scenes] == summary["scene_summary"]["scene_ids"]
+
+
+def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monkeypatch):
+    setup_mocks(tmp_path, monkeypatch)
+
+    left_aoi_path = tmp_path / "left_weighted_aoi.geojson"
+    left_aoi_path.write_text(json.dumps({
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [6, 0], [6, 6], [3, 2], [0, 6], [0, 0]]],
+    }))
+    right_aoi_path = tmp_path / "right_weighted_aoi.geojson"
+    right_aoi_path.write_text(json.dumps({
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [6, 0], [6, 6], [3, 4], [0, 6], [0, 0]]],
+    }))
+
+    assert main([
+        "create-run",
+        "--run-id", "run-left",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--aoi-path", str(left_aoi_path),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]) == 0
+    assert main([
+        "create-run",
+        "--run-id", "run-right",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--aoi-path", str(right_aoi_path),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]) == 0
+
+    left_output = io.StringIO()
+    with redirect_stdout(left_output):
+        assert main(["execute-run", "--run-id", "run-left"]) == 0
+    right_output = io.StringIO()
+    with redirect_stdout(right_output):
+        assert main(["execute-run", "--run-id", "run-right"]) == 0
+
+    left_summary = json.loads(left_output.getvalue())
+    right_summary = json.loads(right_output.getvalue())
+    assert left_summary["run_metadata"]["aoi_bbox"] == right_summary["run_metadata"]["aoi_bbox"]
+    assert left_summary["run_metadata"]["aoi_geometry"] != right_summary["run_metadata"]["aoi_geometry"]
+    assert (
+        left_summary["aoi_execution_geometry"]["derived_tile_bbox"]
+        != right_summary["aoi_execution_geometry"]["derived_tile_bbox"]
+        or left_summary["candidate_ids"] != right_summary["candidate_ids"]
+    )
 
 def test_create_run_missing_aoi(tmp_path, monkeypatch):
     setup_mocks(tmp_path, monkeypatch)

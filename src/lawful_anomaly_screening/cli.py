@@ -158,6 +158,7 @@ def cmd_create_run(_: argparse.Namespace) -> int:
         manifest_path=manifest_record["manifest_path"],
         aoi_path=aoi_metadata.get("aoi_path"),
         aoi_geometry_type=aoi_metadata.get("aoi_geometry_type"),
+        aoi_geometry=aoi_metadata.get("aoi_geometry"),
         aoi_bbox=aoi_metadata.get("aoi_bbox"),
         aoi_hash=aoi_metadata.get("aoi_hash"),
         start_date=start_date,

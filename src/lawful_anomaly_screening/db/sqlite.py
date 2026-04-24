@@ -103,6 +103,7 @@ def insert_run(
     cache_status: str = "miss",
     aoi_path: str | None = None,
     aoi_geometry_type: str | None = None,
+    aoi_geometry: dict[str, Any] | None = None,
     aoi_bbox: list[float] | None = None,
     aoi_hash: str | None = None,
     start_date: str | None = None,
@@ -121,11 +122,12 @@ def insert_run(
             cache_status,
             aoi_path,
             aoi_geometry_type,
+            aoi_geometry_json,
             aoi_bbox,
             aoi_hash,
             start_date,
             end_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -138,6 +140,7 @@ def insert_run(
             cache_status,
             aoi_path,
             aoi_geometry_type,
+            json.dumps(aoi_geometry, sort_keys=True, separators=(",", ":")) if aoi_geometry else None,
             json.dumps(aoi_bbox) if aoi_bbox else None,
             aoi_hash,
             start_date,
@@ -737,6 +740,7 @@ def bootstrap_minimal_run(
     run_status: str = "new",
     aoi_path: str | None = None,
     aoi_geometry_type: str | None = None,
+    aoi_geometry: dict[str, Any] | None = None,
     aoi_bbox: list[float] | None = None,
     aoi_hash: str | None = None,
     start_date: str | None = None,
@@ -764,6 +768,7 @@ def bootstrap_minimal_run(
             status=run_status,
             aoi_path=aoi_path,
             aoi_geometry_type=aoi_geometry_type,
+            aoi_geometry=aoi_geometry,
             aoi_bbox=aoi_bbox,
             aoi_hash=aoi_hash,
             start_date=start_date,

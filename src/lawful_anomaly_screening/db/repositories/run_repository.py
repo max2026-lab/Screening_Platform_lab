@@ -27,6 +27,7 @@ class RunRepository:
                     cache_status,
                     aoi_path,
                     aoi_geometry_type,
+                    aoi_geometry_json,
                     aoi_bbox,
                     aoi_hash,
                     start_date,
@@ -41,6 +42,8 @@ class RunRepository:
             return None
         
         data = dict(row)
+        if data.get("aoi_geometry_json"):
+            data["aoi_geometry"] = json.loads(data.pop("aoi_geometry_json"))
         if data.get("aoi_bbox"):
             data["aoi_bbox"] = json.loads(data["aoi_bbox"])
         return data

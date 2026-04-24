@@ -217,26 +217,26 @@ def test_same_aoi_geometry_yields_same_tile_layout():
 
 def test_different_aoi_geometry_yields_different_tile_layout():
     composite_manifest, composite_cache_key = _composite_manifest()
-    small_geometry = derive_execution_geometry_summary(
-        {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]},
-        [0.0, 0.0, 2.0, 2.0],
+    left_weighted_geometry = derive_execution_geometry_summary(
+        {"type": "Polygon", "coordinates": [[[0, 0], [6, 0], [6, 6], [3, 2], [0, 6], [0, 0]]]},
+        [0.0, 0.0, 6.0, 6.0],
     )
-    large_geometry = derive_execution_geometry_summary(
-        {"type": "Polygon", "coordinates": [[[0, 0], [6, 0], [6, 5], [0, 5], [0, 0]]]},
-        [0.0, 0.0, 6.0, 5.0],
+    right_weighted_geometry = derive_execution_geometry_summary(
+        {"type": "Polygon", "coordinates": [[[0, 0], [6, 0], [6, 6], [6, 6], [3, 4], [0, 6], [0, 0]]]},
+        [0.0, 0.0, 6.0, 6.0],
     )
-    small_grid = generate_fixed_tile_grid(
+    left_weighted_grid = generate_fixed_tile_grid(
         composite_manifest,
         composite_cache_key,
-        width=small_geometry["grid_width"],
-        height=small_geometry["grid_height"],
-        grid_bounds=small_geometry["derived_tile_bbox"],
+        width=left_weighted_geometry["grid_width"],
+        height=left_weighted_geometry["grid_height"],
+        grid_bounds=left_weighted_geometry["derived_tile_bbox"],
     )
-    large_grid = generate_fixed_tile_grid(
+    right_weighted_grid = generate_fixed_tile_grid(
         composite_manifest,
         composite_cache_key,
-        width=large_geometry["grid_width"],
-        height=large_geometry["grid_height"],
-        grid_bounds=large_geometry["derived_tile_bbox"],
+        width=right_weighted_geometry["grid_width"],
+        height=right_weighted_geometry["grid_height"],
+        grid_bounds=right_weighted_geometry["derived_tile_bbox"],
     )
-    assert [tile["tile_id"] for tile in small_grid] != [tile["tile_id"] for tile in large_grid]
+    assert [tile["tile_id"] for tile in left_weighted_grid] != [tile["tile_id"] for tile in right_weighted_grid]

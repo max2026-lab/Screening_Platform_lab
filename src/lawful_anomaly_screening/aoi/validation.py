@@ -24,12 +24,13 @@ def validate_aoi_file(path: Path | str) -> dict[str, Any]:
     if bbox == [0.0, 0.0, 0.0, 0.0]:
         raise ValueError("AOI geometry is empty")
 
-    aoi_hash = sha256(json.dumps(geom, sort_keys=True).encode("utf-8")).hexdigest()
+    canonical_geometry = canonicalize_aoi_geometry(geom)
+    aoi_hash = sha256(_canonical_geometry_json(canonical_geometry).encode("utf-8")).hexdigest()
 
     return {
         "aoi_path": resolved_path.as_posix(),
-        "aoi_geometry": geom,
-        "aoi_geometry_type": geom["type"],
+        "aoi_geometry": canonical_geometry,
+        "aoi_geometry_type": canonical_geometry["type"],
         "aoi_bbox": bbox,
         "aoi_hash": aoi_hash,
     }
@@ -74,6 +75,10 @@ def validate_aoi(_: object) -> bool:
     return True
 
 
+def canonicalize_aoi_geometry(geometry: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(_canonical_geometry_json(geometry))
+
+
 def derive_execution_geometry_summary(
     aoi_geometry: dict[str, Any] | None,
     aoi_bbox: list[float] | None,
@@ -93,19 +98,33 @@ def derive_execution_geometry_summary(
     min_lon, min_lat, max_lon, max_lat = aoi_bbox
     span_lon = max(max_lon - min_lon, 0.0001)
     span_lat = max(max_lat - min_lat, 0.0001)
-    geometry_complexity = _count_geometry_vertices(aoi_geometry)
-    width = max(2, min(8, int(round(span_lon)) + 2))
-    height = max(2, min(8, int(round(span_lat)) + 2 + (1 if geometry_complexity > 5 else 0)))
+    canonical_geometry = canonicalize_aoi_geometry(aoi_geometry) if aoi_geometry else None
+    geometry_complexity = _count_geometry_vertices(canonical_geometry)
+    geometry_digest = (
+        sha256(_canonical_geometry_json(canonical_geometry).encode("utf-8")).hexdigest()
+        if canonical_geometry
+        else "0" * 64
+    )
+    hash_width_bias = int(geometry_digest[:2], 16) % 2
+    hash_height_bias = int(geometry_digest[2:4], 16) % 2
+    width = max(2, min(8, int(round(span_lon)) + 2 + hash_width_bias))
+    height = max(
+        2,
+        min(8, int(round(span_lat)) + 2 + (1 if geometry_complexity > 5 else 0) + hash_height_bias),
+    )
+    expansion_x = 1.0 + ((int(geometry_digest[4:6], 16) % 3) / 14.0)
+    expansion_y = 1.0 + ((int(geometry_digest[6:8], 16) % 3) / 14.0)
 
     derived_tile_bbox = [
         round(min_lon, 6),
         round(min_lat, 6),
-        round(min_lon + (width * span_lon / max(1, width - 1)), 6),
-        round(min_lat + (height * span_lat / max(1, height - 1)), 6),
+        round(min_lon + (width * span_lon * expansion_x / max(1, width - 1)), 6),
+        round(min_lat + (height * span_lat * expansion_y / max(1, height - 1)), 6),
     ]
 
     return {
         "aoi_bbox": [round(value, 6) for value in aoi_bbox],
+        "aoi_geometry_type": canonical_geometry["type"] if canonical_geometry else None,
         "derived_tile_bbox": derived_tile_bbox,
         "grid_width": width,
         "grid_height": height,
@@ -124,3 +143,7 @@ def _count_geometry_vertices(aoi_geometry: dict[str, Any] | None) -> int:
     if geom_type == "MultiPolygon":
         return sum(len(ring) for polygon in coordinates for ring in polygon)
     return 0
+
+
+def _canonical_geometry_json(geometry: dict[str, Any] | None) -> str:
+    return json.dumps(geometry, sort_keys=True, separators=(",", ":"))

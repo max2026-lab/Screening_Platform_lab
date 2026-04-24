@@ -70,7 +70,7 @@ def test_bootstrap_minimal_run_path(tmp_path):
         ).fetchone()
         run_row = conn.execute(
             """
-            SELECT status, source_endpoint_id, execution_mode, rerun_mode, cache_status
+            SELECT status, source_endpoint_id, execution_mode, rerun_mode, cache_status, aoi_geometry_json
             FROM runs
             WHERE run_id = ?
             """,
@@ -80,7 +80,7 @@ def test_bootstrap_minimal_run_path(tmp_path):
     assert baseline_count == 1
     assert manifest_count == 1
     assert manifest_row == ("earth_search", "earth_search", "data/manifests/manifest-hash-001.json")
-    assert run_row == ("new", "earth_search", "synchronous", "review_only", "miss")
+    assert run_row == ("new", "earth_search", "synchronous", "review_only", "miss", None)
 
 
 def test_discovered_scene_schema_supports_manifest_linkage(tmp_path):

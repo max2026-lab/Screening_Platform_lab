@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS runs (
     cache_status TEXT NOT NULL,
     aoi_path TEXT,
     aoi_geometry_type TEXT,
+    aoi_geometry_json TEXT,
     aoi_bbox TEXT,
     aoi_hash TEXT,
     start_date TEXT,

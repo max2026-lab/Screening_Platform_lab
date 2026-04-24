@@ -15,6 +15,7 @@ def test_validate_aoi_file(tmp_path):
     metadata = validate_aoi_file(aoi_path)
     assert metadata["aoi_geometry_type"] == "Polygon"
     assert metadata["aoi_bbox"] == [0.0, 0.0, 1.0, 1.0]
+    assert metadata["aoi_geometry"] == aoi_data
     assert "aoi_hash" in metadata
 
 def test_validate_aoi_invalid_type(tmp_path):
