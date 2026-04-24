@@ -169,3 +169,47 @@ CREATE TABLE IF NOT EXISTS review_actions (
     note TEXT,
     acted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS paid_quotes (
+    provider_quote_id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES candidate_polygons(candidate_id),
+    run_id TEXT REFERENCES runs(run_id),
+    project_id TEXT,
+    provider TEXT NOT NULL,
+    amount REAL NOT NULL,
+    credits REAL NOT NULL,
+    currency TEXT NOT NULL,
+    eula_reference TEXT NOT NULL,
+    paid_status TEXT NOT NULL,
+    archive_mode TEXT NOT NULL DEFAULT 'archive_first',
+    tasking_requested INTEGER NOT NULL DEFAULT 0,
+    autonomous_purchase_enabled INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_paid_quotes_candidate_id
+    ON paid_quotes(candidate_id);
+
+CREATE TABLE IF NOT EXISTS paid_orders (
+    provider_order_id TEXT PRIMARY KEY,
+    provider_quote_id TEXT NOT NULL REFERENCES paid_quotes(provider_quote_id),
+    candidate_id TEXT NOT NULL REFERENCES candidate_polygons(candidate_id),
+    run_id TEXT REFERENCES runs(run_id),
+    project_id TEXT,
+    provider TEXT NOT NULL,
+    amount REAL NOT NULL,
+    credits REAL NOT NULL,
+    currency TEXT NOT NULL,
+    eula_reference TEXT NOT NULL,
+    paid_status TEXT NOT NULL,
+    archive_mode TEXT NOT NULL DEFAULT 'archive_first',
+    tasking_requested INTEGER NOT NULL DEFAULT 0,
+    autonomous_purchase_enabled INTEGER NOT NULL DEFAULT 0,
+    human_triggered_by TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_paid_orders_candidate_id
+    ON paid_orders(candidate_id);

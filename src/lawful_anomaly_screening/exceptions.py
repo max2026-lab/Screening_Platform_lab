@@ -16,3 +16,19 @@ class ReviewStateError(LawfulAnomalyScreeningError):
 
 class ExportPolicyError(LawfulAnomalyScreeningError):
     """Raised when export precision rules are violated."""
+
+
+class PaidFlowError(LawfulAnomalyScreeningError):
+    """Base error for paid archive scaffolding."""
+
+
+class PaidQuoteEligibilityError(PaidFlowError):
+    """Raised when a candidate cannot enter the paid quote flow."""
+
+
+class PaidQuoteStateError(PaidFlowError):
+    """Raised when a paid quote state transition is invalid."""
+
+
+class PaidOrderStateError(PaidFlowError):
+    """Raised when a paid order state transition is invalid."""

@@ -7,10 +7,24 @@ import sys
 
 from . import __version__
 from .db.repositories.manifest_repository import ManifestRepository
+from .db.repositories.paid_repository import PaidRepository
 from .db.repositories.review_repository import ReviewRepository
 from .db.sqlite import bootstrap_minimal_run, init_db
-from .exceptions import LegalGateError, ReviewDecisionError, ReviewStateError
+from .exceptions import (
+    LegalGateError,
+    PaidFlowError,
+    ReviewDecisionError,
+    ReviewStateError,
+)
 from .legal import LEGAL_OUTCOME_ALLOWED, evaluate_legal_gate
+from .paid.order_service import (
+    ORDER_STATUS_CANCELLED,
+    ORDER_STATUS_CONFIRMED,
+    ORDER_STATUS_DELIVERED,
+    OrderService,
+)
+from .paid.quote_service import QuoteService
+from .paid.up42_archive import Up42ArchiveClient
 from .settings import load_settings
 from .sources.earth_search import load_endpoint_registry
 from .sources.manifest_builder import build_manifest
@@ -141,6 +155,88 @@ def cmd_review_decide(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_quote_service() -> QuoteService:
+    db_path = load_settings().db_path
+    return QuoteService(
+        paid_repository=PaidRepository(db_path),
+        review_repository=ReviewRepository(db_path),
+        archive_client=Up42ArchiveClient(),
+    )
+
+
+def _build_order_service() -> OrderService:
+    db_path = load_settings().db_path
+    return OrderService(
+        paid_repository=PaidRepository(db_path),
+        review_repository=ReviewRepository(db_path),
+        archive_client=Up42ArchiveClient(),
+    )
+
+
+def cmd_paid_quote_create(args: argparse.Namespace) -> int:
+    quote = _build_quote_service().create_quote(
+        candidate_id=args.candidate_id,
+        provider_quote_id=args.provider_quote_id,
+        amount=args.amount,
+        credits=args.credits,
+        currency=args.currency,
+        eula_reference=args.eula_reference,
+        project_id=args.project_id,
+    )
+    print(json.dumps(quote, indent=2))
+    return 0
+
+
+def cmd_paid_quote_show(args: argparse.Namespace) -> int:
+    if args.candidate_id is None and args.provider_quote_id is None:
+        print("paid quote lookup requires --candidate-id or --provider-quote-id", file=sys.stderr)
+        return 1
+    quote = _build_quote_service().fetch_quote(
+        candidate_id=args.candidate_id,
+        provider_quote_id=args.provider_quote_id,
+    )
+    if quote is None:
+        print("paid quote not found", file=sys.stderr)
+        return 1
+    print(json.dumps(quote, indent=2))
+    return 0
+
+
+def cmd_paid_order_create(args: argparse.Namespace) -> int:
+    order = _build_order_service().create_order(
+        candidate_id=args.candidate_id,
+        provider_quote_id=args.provider_quote_id,
+        provider_order_id=args.provider_order_id,
+        requested_by=args.requested_by,
+    )
+    print(json.dumps(order, indent=2))
+    return 0
+
+
+def cmd_paid_order_show(args: argparse.Namespace) -> int:
+    if args.candidate_id is None and args.provider_order_id is None:
+        print("paid order lookup requires --candidate-id or --provider-order-id", file=sys.stderr)
+        return 1
+    order = _build_order_service().fetch_order(
+        candidate_id=args.candidate_id,
+        provider_order_id=args.provider_order_id,
+    )
+    if order is None:
+        print("paid order not found", file=sys.stderr)
+        return 1
+    print(json.dumps(order, indent=2))
+    return 0
+
+
+def cmd_paid_order_status(args: argparse.Namespace) -> int:
+    order = _build_order_service().update_order_status(
+        provider_order_id=args.provider_order_id,
+        paid_status=args.paid_status,
+    )
+    print(json.dumps(order, indent=2))
+    return 0
+
+
 def _add_legal_gate_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--attestation",
@@ -179,6 +275,42 @@ def _add_review_decide_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--note", default=None)
 
 
+def _add_paid_quote_create_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--candidate-id", required=True)
+    parser.add_argument("--provider-quote-id", required=True)
+    parser.add_argument("--amount", required=True, type=float)
+    parser.add_argument("--credits", required=True, type=float)
+    parser.add_argument("--currency", required=True)
+    parser.add_argument("--eula-reference", required=True)
+    parser.add_argument("--project-id", default=None)
+
+
+def _add_paid_quote_show_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--candidate-id", default=None)
+    parser.add_argument("--provider-quote-id", default=None)
+
+
+def _add_paid_order_create_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--candidate-id", required=True)
+    parser.add_argument("--provider-quote-id", required=True)
+    parser.add_argument("--provider-order-id", required=True)
+    parser.add_argument("--requested-by", required=True)
+
+
+def _add_paid_order_show_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--candidate-id", default=None)
+    parser.add_argument("--provider-order-id", default=None)
+
+
+def _add_paid_order_status_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--provider-order-id", required=True)
+    parser.add_argument(
+        "--paid-status",
+        required=True,
+        choices=[ORDER_STATUS_CONFIRMED, ORDER_STATUS_DELIVERED, ORDER_STATUS_CANCELLED],
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -193,6 +325,11 @@ def build_parser() -> argparse.ArgumentParser:
         "review-queue": cmd_review_queue,
         "review-show": cmd_review_show,
         "review-decide": cmd_review_decide,
+        "paid-quote-create": cmd_paid_quote_create,
+        "paid-quote-show": cmd_paid_quote_show,
+        "paid-order-create": cmd_paid_order_create,
+        "paid-order-show": cmd_paid_order_show,
+        "paid-order-status": cmd_paid_order_status,
     }
     for name, func in commands.items():
         p = sub.add_parser(name)
@@ -206,6 +343,16 @@ def build_parser() -> argparse.ArgumentParser:
             _add_review_show_arguments(p)
         if name == "review-decide":
             _add_review_decide_arguments(p)
+        if name == "paid-quote-create":
+            _add_paid_quote_create_arguments(p)
+        if name == "paid-quote-show":
+            _add_paid_quote_show_arguments(p)
+        if name == "paid-order-create":
+            _add_paid_order_create_arguments(p)
+        if name == "paid-order-show":
+            _add_paid_order_show_arguments(p)
+        if name == "paid-order-status":
+            _add_paid_order_status_arguments(p)
         p.set_defaults(func=func)
     return parser
 
@@ -215,7 +362,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except (LegalGateError, ReviewDecisionError, ReviewStateError) as exc:
+    except (LegalGateError, PaidFlowError, ReviewDecisionError, ReviewStateError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

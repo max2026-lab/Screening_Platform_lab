@@ -500,6 +500,148 @@ def insert_review_action(
     )
 
 
+def upsert_paid_quote(
+    conn: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    run_id: str | None,
+    project_id: str | None,
+    provider: str,
+    provider_quote_id: str,
+    amount: float,
+    credits: float,
+    currency: str,
+    eula_reference: str,
+    paid_status: str,
+    archive_mode: str,
+    tasking_requested: bool,
+    autonomous_purchase_enabled: bool,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO paid_quotes (
+            provider_quote_id,
+            candidate_id,
+            run_id,
+            project_id,
+            provider,
+            amount,
+            credits,
+            currency,
+            eula_reference,
+            paid_status,
+            archive_mode,
+            tasking_requested,
+            autonomous_purchase_enabled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(provider_quote_id) DO UPDATE SET
+            candidate_id = excluded.candidate_id,
+            run_id = excluded.run_id,
+            project_id = excluded.project_id,
+            provider = excluded.provider,
+            amount = excluded.amount,
+            credits = excluded.credits,
+            currency = excluded.currency,
+            eula_reference = excluded.eula_reference,
+            paid_status = excluded.paid_status,
+            archive_mode = excluded.archive_mode,
+            tasking_requested = excluded.tasking_requested,
+            autonomous_purchase_enabled = excluded.autonomous_purchase_enabled,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            provider_quote_id,
+            candidate_id,
+            run_id,
+            project_id,
+            provider,
+            amount,
+            credits,
+            currency,
+            eula_reference,
+            paid_status,
+            archive_mode,
+            int(tasking_requested),
+            int(autonomous_purchase_enabled),
+        ),
+    )
+
+
+def upsert_paid_order(
+    conn: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    run_id: str | None,
+    project_id: str | None,
+    provider: str,
+    provider_quote_id: str,
+    provider_order_id: str,
+    amount: float,
+    credits: float,
+    currency: str,
+    eula_reference: str,
+    paid_status: str,
+    archive_mode: str,
+    tasking_requested: bool,
+    autonomous_purchase_enabled: bool,
+    human_triggered_by: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO paid_orders (
+            provider_order_id,
+            provider_quote_id,
+            candidate_id,
+            run_id,
+            project_id,
+            provider,
+            amount,
+            credits,
+            currency,
+            eula_reference,
+            paid_status,
+            archive_mode,
+            tasking_requested,
+            autonomous_purchase_enabled,
+            human_triggered_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(provider_order_id) DO UPDATE SET
+            provider_quote_id = excluded.provider_quote_id,
+            candidate_id = excluded.candidate_id,
+            run_id = excluded.run_id,
+            project_id = excluded.project_id,
+            provider = excluded.provider,
+            amount = excluded.amount,
+            credits = excluded.credits,
+            currency = excluded.currency,
+            eula_reference = excluded.eula_reference,
+            paid_status = excluded.paid_status,
+            archive_mode = excluded.archive_mode,
+            tasking_requested = excluded.tasking_requested,
+            autonomous_purchase_enabled = excluded.autonomous_purchase_enabled,
+            human_triggered_by = excluded.human_triggered_by,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            provider_order_id,
+            provider_quote_id,
+            candidate_id,
+            run_id,
+            project_id,
+            provider,
+            amount,
+            credits,
+            currency,
+            eula_reference,
+            paid_status,
+            archive_mode,
+            int(tasking_requested),
+            int(autonomous_purchase_enabled),
+            human_triggered_by,
+        ),
+    )
+
+
 def bootstrap_minimal_run(
     db_path: Path | str,
     *,

@@ -29,6 +29,8 @@ def test_sqlite_init(tmp_path):
         "candidate_features",
         "candidate_scores",
         "review_actions",
+        "paid_quotes",
+        "paid_orders",
     } <= tables
 
 
@@ -274,3 +276,63 @@ def test_review_action_schema_supports_audit_records(tmp_path):
         "note",
         "acted_at",
     } <= review_action_columns
+
+
+def test_paid_quote_schema_supports_archive_quote_metadata(tmp_path):
+    db = tmp_path / "paid-quotes.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        quote_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(paid_quotes)")
+        }
+
+    assert {
+        "provider_quote_id",
+        "candidate_id",
+        "run_id",
+        "project_id",
+        "provider",
+        "amount",
+        "credits",
+        "currency",
+        "eula_reference",
+        "paid_status",
+        "archive_mode",
+        "tasking_requested",
+        "autonomous_purchase_enabled",
+        "created_at",
+        "updated_at",
+    } <= quote_columns
+
+
+def test_paid_order_schema_supports_archive_order_metadata(tmp_path):
+    db = tmp_path / "paid-orders.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        order_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(paid_orders)")
+        }
+
+    assert {
+        "provider_order_id",
+        "provider_quote_id",
+        "candidate_id",
+        "run_id",
+        "project_id",
+        "provider",
+        "amount",
+        "credits",
+        "currency",
+        "eula_reference",
+        "paid_status",
+        "archive_mode",
+        "tasking_requested",
+        "autonomous_purchase_enabled",
+        "human_triggered_by",
+        "created_at",
+        "updated_at",
+    } <= order_columns
