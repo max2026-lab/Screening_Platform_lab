@@ -1,3 +1,4 @@
+from lawful_anomaly_screening.orchestration.scaffold_run import build_tile_scene_attribution
 from lawful_anomaly_screening.sources.manifest_builder import (
     RETAINED_TILE_SCORE_FIELDS,
     build_composite_metadata_manifest,
@@ -240,3 +241,44 @@ def test_different_aoi_geometry_yields_different_tile_layout():
         grid_bounds=right_weighted_geometry["derived_tile_bbox"],
     )
     assert [tile["tile_id"] for tile in left_weighted_grid] != [tile["tile_id"] for tile in right_weighted_grid]
+
+
+def test_tile_scene_attribution_is_deterministic_and_granular():
+    composite_manifest, composite_cache_key = _composite_manifest()
+    tile_grid = generate_fixed_tile_grid(composite_manifest, composite_cache_key)
+    tile_ids = [tile["tile_id"] for tile in tile_grid[:5]]
+    discovered_scene_ids = ["scene-001", "scene-002", "scene-003"]
+
+    attribution_one = build_tile_scene_attribution(
+        source_scene_manifest_hash="manifest-hash-001",
+        tile_ids=tile_ids,
+        discovered_scene_ids=discovered_scene_ids,
+    )
+    attribution_two = build_tile_scene_attribution(
+        source_scene_manifest_hash="manifest-hash-001",
+        tile_ids=tile_ids,
+        discovered_scene_ids=discovered_scene_ids,
+    )
+
+    assert attribution_one == attribution_two
+    assert all(attribution_one[tile_id] for tile_id in tile_ids)
+    assert all(set(attribution_one[tile_id]) < set(discovered_scene_ids) for tile_id in tile_ids)
+    assert len({tuple(attribution_one[tile_id]) for tile_id in tile_ids}) > 1
+
+
+def test_tile_scene_attribution_changes_when_manifest_changes():
+    tile_ids = ["tile-a", "tile-b", "tile-c"]
+    discovered_scene_ids = ["scene-001", "scene-002", "scene-003"]
+
+    baseline = build_tile_scene_attribution(
+        source_scene_manifest_hash="manifest-hash-001",
+        tile_ids=tile_ids,
+        discovered_scene_ids=discovered_scene_ids,
+    )
+    changed = build_tile_scene_attribution(
+        source_scene_manifest_hash="manifest-hash-002",
+        tile_ids=tile_ids,
+        discovered_scene_ids=discovered_scene_ids,
+    )
+
+    assert baseline != changed

@@ -97,6 +97,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     ) == 0
     review_decision_payload = json.loads(capsys.readouterr().out)
     assert review_decision_payload["candidate"]["current_state"] == "approved_for_archive_quote"
+    assert review_decision_payload["candidate"]["source_scene_ids"]
 
     assert main(["review-show", "--candidate-id", run_2_top_candidate_id]) == 0
     run_2_candidate_payload = json.loads(capsys.readouterr().out)
@@ -127,7 +128,8 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2
     assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"
-    assert export_payload["candidates"][0]["source_scene_ids"] == expected_source_scene_ids
+    assert export_payload["candidates"][0]["source_scene_ids"]
+    assert len({tuple(candidate["source_scene_ids"]) for candidate in export_payload["candidates"]}) > 1
     assert isinstance(export_payload["candidates"][0]["boundary_touching"], bool)
     assert export_path.exists()
     assert {candidate["candidate_id"] for candidate in export_payload["candidates"]} == set(
@@ -275,7 +277,8 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert execute_run_payload["scene_summary"]["scene_count"] > 0
     assert execute_run_payload["scene_summary"]["start_date"] == "2024-01-01"
     assert execute_run_payload["scene_summary"]["end_date"] == "2024-03-31"
-    assert review_show_payload["candidate"]["source_scene_ids"] == execute_run_payload["scene_summary"]["scene_ids"]
+    assert review_show_payload["candidate"]["source_scene_ids"]
+    assert set(review_show_payload["candidate"]["source_scene_ids"]) < set(execute_run_payload["scene_summary"]["scene_ids"])
     assert execute_run_payload["aoi_execution_geometry"]["tile_count"] == execute_run_payload["tile_count"]
     assert execute_run_payload["aoi_execution_geometry"]["selected_tile_count"] == execute_run_payload["selected_tile_count"]
     assert len(execute_run_payload["aoi_execution_geometry"]["derived_tile_bbox"]) == 4
@@ -288,12 +291,13 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2
     assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"
-    assert export_payload["candidates"][0]["source_scene_ids"] == execute_run_payload["scene_summary"]["scene_ids"]
     top_export_candidate = next(
         candidate
         for candidate in export_payload["candidates"]
         if candidate["candidate_id"] == execute_run_payload["top_candidate_id"]
     )
+    assert top_export_candidate["source_scene_ids"] == review_show_payload["candidate"]["source_scene_ids"]
+    assert set(top_export_candidate["source_scene_ids"]) < set(execute_run_payload["scene_summary"]["scene_ids"])
     top_points = [
         point
         for polygon in top_export_candidate["clipped_geometry"]["coordinates"]
@@ -306,6 +310,7 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert top_export_candidate["bounds"] == [min(top_xs), min(top_ys), max(top_xs), max(top_ys)]
     assert top_export_candidate["bounds"][0] <= top_export_candidate["centroid"][0] <= top_export_candidate["bounds"][2]
     assert top_export_candidate["bounds"][1] <= top_export_candidate["centroid"][1] <= top_export_candidate["bounds"][3]
+    assert len({tuple(candidate["source_scene_ids"]) for candidate in export_payload["candidates"]}) > 1
     assert isinstance(export_payload["candidates"][0]["boundary_touching"], bool)
     assert (outside_cwd / export_payload["artifact_path"]).is_file()
     assert not (outside_cwd / "config").exists()

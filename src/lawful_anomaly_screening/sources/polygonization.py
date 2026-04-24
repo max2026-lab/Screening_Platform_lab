@@ -771,6 +771,7 @@ def build_candidate_polygon_records(
     *,
     run_id: str | None = None,
     source_scene_ids: list[str] | None = None,
+    tile_source_scene_ids_by_tile_id: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     full_aoi_bounds = tuple(polygonization_manifest["full_aoi_bounds"])
     candidate_source_scene_ids = list(sorted(source_scene_ids or []))
@@ -783,14 +784,20 @@ def build_candidate_polygon_records(
         clipped_geometry = polygon.get("clipped_geometry")
         area_m2 = _geometry_area(clipped_geometry) if clipped_geometry is not None else _bounds_area(polygon_bounds)
         perimeter_m = _geometry_perimeter(clipped_geometry) if clipped_geometry is not None else _perimeter(polygon_bounds)
+        parent_tile_id = polygon["parent_tile_id"]
+        parent_tile_source_scene_ids = candidate_source_scene_ids
+        if tile_source_scene_ids_by_tile_id is not None and parent_tile_id is not None:
+            parent_tile_source_scene_ids = list(
+                sorted(tile_source_scene_ids_by_tile_id.get(parent_tile_id, []))
+            )
         candidate_record = {
             "candidate_id": "",
             "run_id": run_id,
             "polygonization_manifest_cache_key": polygonization_manifest_cache_key,
             "source_scene_manifest_hash": polygonization_manifest["source_scene_manifest_hash"],
             "source_endpoint_id": polygonization_manifest["source_endpoint_id"],
-            "parent_tile_id": polygon["parent_tile_id"],
-            "source_scene_ids": candidate_source_scene_ids,
+            "parent_tile_id": parent_tile_id,
+            "source_scene_ids": parent_tile_source_scene_ids,
             "bounds": [round(value, 6) for value in polygon_bounds],
             "centroid": [round(value, 6) for value in polygon["centroid"]],
             "clipped_geometry": clipped_geometry,
