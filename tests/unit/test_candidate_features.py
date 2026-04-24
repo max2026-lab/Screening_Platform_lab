@@ -124,12 +124,9 @@ def test_candidate_polygon_and_feature_records_include_required_fields():
         "compactness_ratio",
         "convex_hull_area_m2",
         "elongation",
-        "local_contrast_inputs",
+        "local_contrast_values",
         "water_edge_overlap_ratio",
         "cloud_seam_overlap_ratio",
     } <= set(first_feature)
-    assert {
-        "ring_mean_delta",
-        "local_variance_proxy",
-        "neighbor_contrast_proxy",
-    } <= set(first_feature["local_contrast_inputs"])
+    assert isinstance(first_feature["local_contrast_values"], list)
+    assert len(first_feature["local_contrast_values"]) == 3

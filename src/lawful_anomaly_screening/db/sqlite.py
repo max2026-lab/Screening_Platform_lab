@@ -331,7 +331,7 @@ def insert_candidate_feature(
     compactness_ratio: float,
     convex_hull_area_m2: float,
     elongation: float,
-    local_contrast_inputs: dict[str, float],
+    local_contrast_values: list[float],
     water_edge_overlap_ratio: float,
     cloud_seam_overlap_ratio: float,
 ) -> None:
@@ -358,7 +358,7 @@ def insert_candidate_feature(
             compactness_ratio,
             convex_hull_area_m2,
             elongation,
-            json.dumps(local_contrast_inputs, sort_keys=True),
+            json.dumps(local_contrast_values),
             water_edge_overlap_ratio,
             cloud_seam_overlap_ratio,
         ),

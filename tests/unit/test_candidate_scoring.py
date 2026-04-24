@@ -2,6 +2,7 @@ from lawful_anomaly_screening.sources.candidate_scoring import (
     AUTOMATED_CANDIDATE_SCORE_FIELDS,
     build_candidate_score_breakdown,
     build_candidate_score_records,
+    check_candidate_score_integrity,
     compute_candidate_score,
     compute_compactness_support,
     compute_polygon_object_score,
@@ -85,14 +86,8 @@ def _candidate_pipeline() -> tuple[list[dict], list[dict], list[dict]]:
 
 
 def test_retained_candidate_formula_helpers_and_ranges():
-    texture_support = compute_texture_support(
-        {
-            "ring_mean_delta": 0.5,
-            "local_variance_proxy": 0.75,
-            "neighbor_contrast_proxy": 0.25,
-        }
-    )
-    compactness_support = compute_compactness_support(0.6, 2.0)
+    texture_support = compute_texture_support([0.1, 0.4, 0.5])
+    compactness_support = compute_compactness_support(60.0, 100.0)
     polygon_object_score = compute_polygon_object_score(texture_support, compactness_support)
     candidate_score = compute_candidate_score(82.0, polygon_object_score)
 
@@ -102,42 +97,46 @@ def test_retained_candidate_formula_helpers_and_ranges():
         "polygon_object_score",
         "candidate_score",
     )
-    assert texture_support == 7.75
-    assert compactness_support == 6.6
-    assert polygon_object_score == 14.35
-    assert candidate_score == 96.35
+    assert texture_support == 6.666667
+    assert compactness_support == 18.0
+    assert polygon_object_score == 35.238096
+    assert candidate_score == 67.971429
 
-    assert 0.0 <= texture_support <= 15.0
-    assert 0.0 <= compactness_support <= 10.0
-    assert 0.0 <= polygon_object_score <= 25.0
+    assert 0.0 <= texture_support <= 40.0
+    assert 0.0 <= compactness_support <= 30.0
+    assert 0.0 <= polygon_object_score <= 100.0
     assert 0.0 <= candidate_score <= 100.0
 
 
 def test_candidate_score_clamps_and_breakdown_integrity():
-    texture_support = compute_texture_support(
-        {
-            "ring_mean_delta": 5.0,
-            "local_variance_proxy": 5.0,
-            "neighbor_contrast_proxy": 5.0,
-        }
-    )
-    compactness_support = compute_compactness_support(5.0, 0.5)
-    polygon_object_score = compute_polygon_object_score(texture_support, compactness_support)
-    candidate_score = compute_candidate_score(95.0, polygon_object_score)
+    empty_texture_support = compute_texture_support([])
+    empty_compactness_support = compute_compactness_support(50.0, 0.0)
+    saturated_polygon_object_score = compute_polygon_object_score(40.0, 30.0)
+    candidate_score = compute_candidate_score(100.0, saturated_polygon_object_score)
     breakdown = build_candidate_score_breakdown(
-        95.0,
-        texture_support,
-        compactness_support,
-        polygon_object_score,
+        100.0,
+        40.0,
+        30.0,
+        saturated_polygon_object_score,
+        candidate_score,
+    )
+    integrity = check_candidate_score_integrity(
+        breakdown["contribution_sum"],
         candidate_score,
     )
 
-    assert texture_support == 15.0
-    assert compactness_support == 10.0
-    assert polygon_object_score == 25.0
+    assert empty_texture_support == 0.0
+    assert empty_compactness_support == 0.0
+    assert compute_texture_support([5.0]) == 40.0
+    assert compute_compactness_support(120.0, 100.0) == 30.0
+    assert compute_polygon_object_score(empty_texture_support, empty_compactness_support) == 0.0
+    assert compute_polygon_object_score(40.0, 30.0) == 100.0
     assert candidate_score == 100.0
-    assert breakdown["contribution_sum"] == 120.0
-    assert breakdown["integrity_delta"] == 20.0
+    assert breakdown["contribution_sum"] == 100.0
+    assert breakdown["contribution_sum"] == breakdown["candidate_score"]
+    assert breakdown["integrity_delta"] == 0.0
+    assert breakdown["integrity_within_tolerance"] is True
+    assert integrity["integrity_within_tolerance"] is True
     assert "edge_contrast_support" not in breakdown
     assert "context_fit_adjustment" not in breakdown
     assert "radar_support" not in breakdown
@@ -171,7 +170,7 @@ def test_candidate_score_records_only_use_parent_tile_and_retained_polygon_objec
         "integrity_within_tolerance",
     } <= set(first_record)
     assert first_record["candidate_score"] == round(
-        first_record["parent_tile_score"] + first_record["polygon_object_score"],
+        (0.7 * first_record["parent_tile_score"]) + (0.3 * first_record["polygon_object_score"]),
         6,
     )
     assert first_record["contribution_sum"] == first_record["score_breakdown"]["contribution_sum"]
@@ -181,6 +180,10 @@ def test_candidate_score_records_only_use_parent_tile_and_retained_polygon_objec
     assert "context_fit_adjustment" not in first_record
     assert "radar_support" not in first_record
     assert "topographic_support" not in first_record
+    assert "edge_contrast_support" not in first_record["score_breakdown"]
+    assert "context_fit_adjustment" not in first_record["score_breakdown"]
+    assert "radar_support" not in first_record["score_breakdown"]
+    assert "topographic_support" not in first_record["score_breakdown"]
 
 
 def test_candidate_ranking_is_deterministic():

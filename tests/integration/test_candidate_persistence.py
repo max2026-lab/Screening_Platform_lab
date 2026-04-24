@@ -145,7 +145,7 @@ def test_candidate_polygon_and_feature_persistence(tmp_path):
                 compactness_ratio=feature_record["compactness_ratio"],
                 convex_hull_area_m2=feature_record["convex_hull_area_m2"],
                 elongation=feature_record["elongation"],
-                local_contrast_inputs=feature_record["local_contrast_inputs"],
+                local_contrast_values=feature_record["local_contrast_values"],
                 water_edge_overlap_ratio=feature_record["water_edge_overlap_ratio"],
                 cloud_seam_overlap_ratio=feature_record["cloud_seam_overlap_ratio"],
             )
@@ -206,7 +206,7 @@ def test_candidate_polygon_and_feature_persistence(tmp_path):
         feature_records[0]["compactness_ratio"],
         feature_records[0]["convex_hull_area_m2"],
         feature_records[0]["elongation"],
-        json.dumps(feature_records[0]["local_contrast_inputs"], sort_keys=True),
+        json.dumps(feature_records[0]["local_contrast_values"]),
         feature_records[0]["water_edge_overlap_ratio"],
         feature_records[0]["cloud_seam_overlap_ratio"],
     )

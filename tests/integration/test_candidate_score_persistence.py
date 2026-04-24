@@ -150,7 +150,7 @@ def test_candidate_score_persistence_and_ranking(tmp_path):
                 compactness_ratio=feature_record["compactness_ratio"],
                 convex_hull_area_m2=feature_record["convex_hull_area_m2"],
                 elongation=feature_record["elongation"],
-                local_contrast_inputs=feature_record["local_contrast_inputs"],
+                local_contrast_values=feature_record["local_contrast_values"],
                 water_edge_overlap_ratio=feature_record["water_edge_overlap_ratio"],
                 cloud_seam_overlap_ratio=feature_record["cloud_seam_overlap_ratio"],
             )

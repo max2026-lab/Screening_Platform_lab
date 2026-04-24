@@ -421,11 +421,11 @@ def build_candidate_feature_records(candidate_polygon_records: list[dict]) -> li
                 "compactness_ratio": round(compactness_ratio, 6),
                 "convex_hull_area_m2": round(convex_hull_area_m2, 6),
                 "elongation": round(elongation, 6),
-                "local_contrast_inputs": {
-                    "ring_mean_delta": round((candidate["area_m2"] / candidate["pixel_count"]) / 100.0, 6),
-                    "local_variance_proxy": round((candidate["perimeter_m"] / candidate["pixel_count"]) / 10.0, 6),
-                    "neighbor_contrast_proxy": round(aspect_delta, 6),
-                },
+                "local_contrast_values": [
+                    round((candidate["area_m2"] / candidate["pixel_count"]) / 100.0, 6),
+                    round((candidate["perimeter_m"] / candidate["pixel_count"]) / 10.0, 6),
+                    round(aspect_delta, 6),
+                ],
                 "water_edge_overlap_ratio": round(water_edge_overlap_ratio, 6),
                 "cloud_seam_overlap_ratio": round(cloud_seam_overlap_ratio, 6),
             }
