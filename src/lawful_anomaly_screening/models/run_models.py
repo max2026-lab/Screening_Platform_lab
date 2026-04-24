@@ -78,3 +78,34 @@ class TileScoreRecord:
     noise_penalty: float
     tile_score: float
     selected_for_polygonization: bool
+
+
+@dataclass(frozen=True)
+class CandidatePolygonRecord:
+    candidate_id: str
+    polygonization_manifest_cache_key: str
+    source_scene_manifest_hash: str
+    source_endpoint_id: str
+    parent_tile_id: str
+    bounds_json: str
+    centroid_json: str
+    area_m2: float
+    perimeter_m: float
+    pixel_count: int
+    boundary_touching: bool
+    possible_duplicate: bool
+    duplicate_resolution_action: str
+
+
+@dataclass(frozen=True)
+class CandidateFeatureRecord:
+    candidate_id: str
+    polygonization_manifest_cache_key: str
+    source_scene_manifest_hash: str
+    source_endpoint_id: str
+    compactness_ratio: float
+    convex_hull_area_m2: float
+    elongation: float
+    local_contrast_inputs_json: str
+    water_edge_overlap_ratio: float
+    cloud_seam_overlap_ratio: float

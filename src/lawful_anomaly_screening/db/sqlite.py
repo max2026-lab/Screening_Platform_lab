@@ -268,6 +268,103 @@ def insert_tile_score(
     )
 
 
+def insert_candidate_polygon(
+    conn: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    polygonization_manifest_cache_key: str,
+    source_scene_manifest_hash: str,
+    source_endpoint_id: str,
+    parent_tile_id: str,
+    bounds: list[float],
+    centroid: list[float],
+    area_m2: float,
+    perimeter_m: float,
+    pixel_count: int,
+    boundary_touching: bool,
+    possible_duplicate: bool,
+    duplicate_resolution_action: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO candidate_polygons (
+            candidate_id,
+            polygonization_manifest_cache_key,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            parent_tile_id,
+            bounds_json,
+            centroid_json,
+            area_m2,
+            perimeter_m,
+            pixel_count,
+            boundary_touching,
+            possible_duplicate,
+            duplicate_resolution_action
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            candidate_id,
+            polygonization_manifest_cache_key,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            parent_tile_id,
+            json.dumps(bounds),
+            json.dumps(centroid),
+            area_m2,
+            perimeter_m,
+            pixel_count,
+            int(boundary_touching),
+            int(possible_duplicate),
+            duplicate_resolution_action,
+        ),
+    )
+
+
+def insert_candidate_feature(
+    conn: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    polygonization_manifest_cache_key: str,
+    source_scene_manifest_hash: str,
+    source_endpoint_id: str,
+    compactness_ratio: float,
+    convex_hull_area_m2: float,
+    elongation: float,
+    local_contrast_inputs: dict[str, float],
+    water_edge_overlap_ratio: float,
+    cloud_seam_overlap_ratio: float,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO candidate_features (
+            candidate_id,
+            polygonization_manifest_cache_key,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            compactness_ratio,
+            convex_hull_area_m2,
+            elongation,
+            local_contrast_inputs_json,
+            water_edge_overlap_ratio,
+            cloud_seam_overlap_ratio
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            candidate_id,
+            polygonization_manifest_cache_key,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            compactness_ratio,
+            convex_hull_area_m2,
+            elongation,
+            json.dumps(local_contrast_inputs, sort_keys=True),
+            water_edge_overlap_ratio,
+            cloud_seam_overlap_ratio,
+        ),
+    )
+
+
 def bootstrap_minimal_run(
     db_path: Path | str,
     *,

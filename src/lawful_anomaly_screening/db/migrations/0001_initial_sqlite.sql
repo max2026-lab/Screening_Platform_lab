@@ -102,3 +102,34 @@ CREATE TABLE IF NOT EXISTS tile_scores (
     selected_for_polygonization INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS candidate_polygons (
+    candidate_id TEXT PRIMARY KEY,
+    polygonization_manifest_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
+    source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+    source_endpoint_id TEXT NOT NULL,
+    parent_tile_id TEXT NOT NULL REFERENCES tiles(tile_id),
+    bounds_json TEXT NOT NULL,
+    centroid_json TEXT NOT NULL,
+    area_m2 REAL NOT NULL,
+    perimeter_m REAL NOT NULL,
+    pixel_count INTEGER NOT NULL,
+    boundary_touching INTEGER NOT NULL DEFAULT 0,
+    possible_duplicate INTEGER NOT NULL DEFAULT 0,
+    duplicate_resolution_action TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS candidate_features (
+    candidate_id TEXT PRIMARY KEY REFERENCES candidate_polygons(candidate_id),
+    polygonization_manifest_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
+    source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+    source_endpoint_id TEXT NOT NULL,
+    compactness_ratio REAL NOT NULL,
+    convex_hull_area_m2 REAL NOT NULL,
+    elongation REAL NOT NULL,
+    local_contrast_inputs_json TEXT NOT NULL,
+    water_edge_overlap_ratio REAL NOT NULL,
+    cloud_seam_overlap_ratio REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

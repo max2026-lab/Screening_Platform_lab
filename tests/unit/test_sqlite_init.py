@@ -25,6 +25,8 @@ def test_sqlite_init(tmp_path):
         "tiles",
         "tile_features",
         "tile_scores",
+        "candidate_polygons",
+        "candidate_features",
     } <= tables
 
 
@@ -152,3 +154,46 @@ def test_tiles_schema_supports_retained_scoring_records(tmp_path):
         "tile_score",
         "selected_for_polygonization",
     } <= tile_score_columns
+
+
+def test_candidate_schema_supports_polygon_and_feature_records(tmp_path):
+    db = tmp_path / "candidates.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        candidate_polygon_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(candidate_polygons)")
+        }
+        candidate_feature_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(candidate_features)")
+        }
+
+    assert {
+        "candidate_id",
+        "polygonization_manifest_cache_key",
+        "source_scene_manifest_hash",
+        "source_endpoint_id",
+        "parent_tile_id",
+        "bounds_json",
+        "centroid_json",
+        "area_m2",
+        "perimeter_m",
+        "pixel_count",
+        "boundary_touching",
+        "possible_duplicate",
+        "duplicate_resolution_action",
+    } <= candidate_polygon_columns
+    assert {
+        "candidate_id",
+        "polygonization_manifest_cache_key",
+        "source_scene_manifest_hash",
+        "source_endpoint_id",
+        "compactness_ratio",
+        "convex_hull_area_m2",
+        "elongation",
+        "local_contrast_inputs_json",
+        "water_edge_overlap_ratio",
+        "cloud_seam_overlap_ratio",
+    } <= candidate_feature_columns

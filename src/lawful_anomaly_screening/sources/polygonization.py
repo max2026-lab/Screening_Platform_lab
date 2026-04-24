@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from hashlib import sha256
 
 
@@ -304,6 +305,129 @@ def build_polygonization_manifest(
         "source_endpoint_id": full_aoi_anomaly_raster_manifest["source_endpoint_id"],
         "composite_metadata_cache_key": full_aoi_anomaly_raster_manifest["composite_metadata_cache_key"],
         "full_aoi_anomaly_raster_cache_key": full_aoi_anomaly_raster_cache_key,
+        "full_aoi_bounds": list(full_aoi_anomaly_raster_manifest["full_aoi_bounds"]),
         "polygon_count": len(polygons),
         "polygons": polygons,
     }
+
+
+def _perimeter(bounds: tuple[float, float, float, float]) -> float:
+    width = max(0.0, bounds[2] - bounds[0])
+    height = max(0.0, bounds[3] - bounds[1])
+    return (2.0 * width) + (2.0 * height)
+
+
+def _touches_bounds_edge(
+    bounds: tuple[float, float, float, float],
+    container_bounds: tuple[float, float, float, float],
+) -> bool:
+    return (
+        bounds[0] <= container_bounds[0]
+        or bounds[1] <= container_bounds[1]
+        or bounds[2] >= container_bounds[2]
+        or bounds[3] >= container_bounds[3]
+    )
+
+
+def create_candidate_id(
+    polygonization_manifest_cache_key: str,
+    polygon_record: dict,
+) -> str:
+    payload = {
+        "polygonization_manifest_cache_key": polygonization_manifest_cache_key,
+        "parent_tile_id": polygon_record["parent_tile_id"],
+        "bounds": [round(value, 6) for value in polygon_record["bounds"]],
+        "source_region_ids": sorted(polygon_record["source_region_ids"]),
+    }
+    return sha256(_stable_json(payload).encode("utf-8")).hexdigest()
+
+
+def build_candidate_polygon_records(
+    polygonization_manifest: dict,
+    polygonization_manifest_cache_key: str,
+) -> list[dict]:
+    full_aoi_bounds = tuple(polygonization_manifest["full_aoi_bounds"])
+    candidate_records = []
+    for polygon in sorted(
+        polygonization_manifest["polygons"],
+        key=lambda item: (item["parent_tile_id"] or "", item["polygon_id"]),
+    ):
+        polygon_bounds = tuple(polygon["bounds"])
+        area_m2 = _bounds_area(polygon_bounds)
+        perimeter_m = _perimeter(polygon_bounds)
+        candidate_record = {
+            "candidate_id": "",
+            "polygonization_manifest_cache_key": polygonization_manifest_cache_key,
+            "source_scene_manifest_hash": polygonization_manifest["source_scene_manifest_hash"],
+            "source_endpoint_id": polygonization_manifest["source_endpoint_id"],
+            "parent_tile_id": polygon["parent_tile_id"],
+            "bounds": [round(value, 6) for value in polygon_bounds],
+            "centroid": [round(value, 6) for value in polygon["centroid"]],
+            "area_m2": round(area_m2, 6),
+            "perimeter_m": round(perimeter_m, 6),
+            "pixel_count": max(1, int(round(area_m2 / 100.0))),
+            "boundary_touching": _touches_bounds_edge(polygon_bounds, full_aoi_bounds),
+            "possible_duplicate": polygon["possible_duplicate"],
+            "duplicate_resolution_action": (
+                "review_possible_duplicate"
+                if polygon["possible_duplicate"]
+                else "keep"
+            ),
+            "source_region_ids": list(sorted(polygon["source_region_ids"])),
+        }
+        candidate_record["candidate_id"] = create_candidate_id(
+            polygonization_manifest_cache_key,
+            candidate_record,
+        )
+        candidate_records.append(candidate_record)
+    return candidate_records
+
+
+def build_candidate_feature_records(candidate_polygon_records: list[dict]) -> list[dict]:
+    feature_records = []
+    for candidate in sorted(candidate_polygon_records, key=lambda item: item["candidate_id"]):
+        bounds = tuple(candidate["bounds"])
+        width = max(0.0, bounds[2] - bounds[0])
+        height = max(0.0, bounds[3] - bounds[1])
+        area_m2 = candidate["area_m2"]
+        perimeter_m = candidate["perimeter_m"]
+        compactness_ratio = 0.0
+        if perimeter_m > 0.0:
+            compactness_ratio = max(
+                0.0,
+                min(1.0, (4.0 * math.pi * area_m2) / (perimeter_m * perimeter_m)),
+            )
+        convex_hull_area_m2 = area_m2
+        shorter_side = min(width, height)
+        elongation = 0.0 if shorter_side <= 0.0 else max(width, height) / shorter_side
+        aspect_delta = 0.0 if (width + height) <= 0.0 else abs(width - height) / (width + height)
+        water_edge_overlap_ratio = max(
+            0.0,
+            min(1.0, ((1.0 - compactness_ratio) * 0.6) + (0.2 if candidate["boundary_touching"] else 0.0)),
+        )
+        cloud_seam_overlap_ratio = max(
+            0.0,
+            min(
+                1.0,
+                (0.1 if candidate["possible_duplicate"] else 0.02) + (aspect_delta * 0.5),
+            ),
+        )
+        feature_records.append(
+            {
+                "candidate_id": candidate["candidate_id"],
+                "polygonization_manifest_cache_key": candidate["polygonization_manifest_cache_key"],
+                "source_scene_manifest_hash": candidate["source_scene_manifest_hash"],
+                "source_endpoint_id": candidate["source_endpoint_id"],
+                "compactness_ratio": round(compactness_ratio, 6),
+                "convex_hull_area_m2": round(convex_hull_area_m2, 6),
+                "elongation": round(elongation, 6),
+                "local_contrast_inputs": {
+                    "ring_mean_delta": round((candidate["area_m2"] / candidate["pixel_count"]) / 100.0, 6),
+                    "local_variance_proxy": round((candidate["perimeter_m"] / candidate["pixel_count"]) / 10.0, 6),
+                    "neighbor_contrast_proxy": round(aspect_delta, 6),
+                },
+                "water_edge_overlap_ratio": round(water_edge_overlap_ratio, 6),
+                "cloud_seam_overlap_ratio": round(cloud_seam_overlap_ratio, 6),
+            }
+        )
+    return feature_records
