@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS candidate_polygons (
     current_state TEXT NOT NULL DEFAULT 'pending_review',
     bounds_json TEXT NOT NULL,
     centroid_json TEXT NOT NULL,
+    clipped_geometry_json TEXT,
     area_m2 REAL NOT NULL,
     perimeter_m REAL NOT NULL,
     pixel_count INTEGER NOT NULL,

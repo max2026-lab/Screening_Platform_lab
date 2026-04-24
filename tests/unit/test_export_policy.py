@@ -1,6 +1,7 @@
 from lawful_anomaly_screening.exports.precision_policy import (
     allow_exact_coordinates,
     apply_precision_to_centroid,
+    apply_precision_to_geometry,
     build_artifact_name,
     build_bundle_name,
     resolve_export_policy,
@@ -76,10 +77,15 @@ def test_unconfirmed_candidate_coordinates_are_sanitized_for_non_reviewer_export
         "candidate_id": "candidate-001",
         "centroid": [1234.0, 2789.0],
         "bounds": [1201.0, 2705.0, 1281.0, 2879.0],
+        "clipped_geometry": {
+            "type": "MultiPolygon",
+            "coordinates": [[[[1201.0, 2705.0], [1281.0, 2705.0], [1281.0, 2879.0], [1201.0, 2879.0], [1201.0, 2705.0]]]],
+        },
     }
 
     public_candidate = sanitize_candidate_for_export(candidate, "public")
     reviewer_candidate = sanitize_candidate_for_export(candidate, "reviewer")
 
     assert public_candidate["centroid"] == [1000.0, 3000.0]
+    assert public_candidate["clipped_geometry"] == apply_precision_to_geometry(candidate["clipped_geometry"], "public")
     assert reviewer_candidate["centroid"] == [1234.0, 2789.0]

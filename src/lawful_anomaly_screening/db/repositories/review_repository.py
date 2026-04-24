@@ -134,6 +134,7 @@ class ReviewRepository:
                     r.status AS run_status,
                     cp.bounds_json,
                     cp.centroid_json,
+                    cp.clipped_geometry_json,
                     cp.area_m2,
                     cp.perimeter_m,
                     cp.pixel_count,
@@ -161,6 +162,10 @@ class ReviewRepository:
         candidate = dict(row)
         candidate["bounds"] = json.loads(candidate.pop("bounds_json"))
         candidate["centroid"] = json.loads(candidate.pop("centroid_json"))
+        clipped_geometry_json = candidate.pop("clipped_geometry_json")
+        candidate["clipped_geometry"] = (
+            json.loads(clipped_geometry_json) if clipped_geometry_json is not None else None
+        )
         score_breakdown_json = candidate.pop("score_breakdown_json")
         candidate["score_breakdown"] = (
             json.loads(score_breakdown_json) if score_breakdown_json is not None else None

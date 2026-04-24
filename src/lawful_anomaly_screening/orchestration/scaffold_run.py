@@ -210,6 +210,7 @@ def scaffold_run_for_run_id(
                 parent_tile_id=candidate_record["parent_tile_id"],
                 bounds=candidate_record["bounds"],
                 centroid=candidate_record["centroid"],
+                clipped_geometry=candidate_record["clipped_geometry"],
                 area_m2=candidate_record["area_m2"],
                 perimeter_m=candidate_record["perimeter_m"],
                 pixel_count=candidate_record["pixel_count"],

@@ -230,6 +230,7 @@ def test_candidate_schema_supports_polygon_and_feature_records(tmp_path):
         "current_state",
         "bounds_json",
         "centroid_json",
+        "clipped_geometry_json",
         "area_m2",
         "perimeter_m",
         "pixel_count",

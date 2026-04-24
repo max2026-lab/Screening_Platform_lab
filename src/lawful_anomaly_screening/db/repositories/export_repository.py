@@ -143,6 +143,7 @@ class ExportRepository:
                     cp.parent_tile_id,
                     cp.bounds_json,
                     cp.centroid_json,
+                    cp.clipped_geometry_json,
                     cp.area_m2,
                     cp.perimeter_m,
                     cp.pixel_count,
@@ -169,6 +170,10 @@ class ExportRepository:
             candidate = dict(row)
             candidate["bounds"] = json.loads(candidate.pop("bounds_json"))
             candidate["centroid"] = json.loads(candidate.pop("centroid_json"))
+            clipped_geometry_json = candidate.pop("clipped_geometry_json")
+            candidate["clipped_geometry"] = (
+                json.loads(clipped_geometry_json) if clipped_geometry_json is not None else None
+            )
             candidate["boundary_touching"] = bool(candidate["boundary_touching"])
             candidate["possible_duplicate"] = bool(candidate["possible_duplicate"])
             candidates.append(candidate)

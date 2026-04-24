@@ -102,6 +102,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert run_2_candidate_payload["candidate"]["current_state"] == "pending_review"
     assert len(run_2_candidate_payload["candidate"]["bounds"]) == 4
     assert len(run_2_candidate_payload["candidate"]["centroid"]) == 2
+    assert run_2_candidate_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
     assert isinstance(run_2_candidate_payload["candidate"]["boundary_touching"], int)
 
     assert main(
@@ -122,6 +123,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert export_payload["candidates"]
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2
+    assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"
     assert isinstance(export_payload["candidates"][0]["boundary_touching"], bool)
     assert export_path.exists()
     assert {candidate["candidate_id"] for candidate in export_payload["candidates"]} == set(
@@ -274,11 +276,13 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert len(execute_run_payload["aoi_execution_geometry"]["derived_tile_bbox"]) == 4
     assert len(review_show_payload["candidate"]["bounds"]) == 4
     assert len(review_show_payload["candidate"]["centroid"]) == 2
+    assert review_show_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
     assert isinstance(review_show_payload["candidate"]["boundary_touching"], int)
     assert export_payload["run_id"] == "run-001"
     assert export_payload["precision_tier"] == "restricted"
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2
+    assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"
     assert isinstance(export_payload["candidates"][0]["boundary_touching"], bool)
     assert (outside_cwd / export_payload["artifact_path"]).is_file()
     assert not (outside_cwd / "config").exists()

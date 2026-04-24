@@ -244,6 +244,222 @@ def _clipped_bounds_from_geometry(
     return clipped_bounds, boundary_touching
 
 
+def _subdivision_count(bounds: tuple[float, float, float, float]) -> int:
+    width = max(0.0, bounds[2] - bounds[0])
+    height = max(0.0, bounds[3] - bounds[1])
+    return max(8, min(24, int(math.ceil(max(width, height) / 25.0))))
+
+
+def _cell_inside_geometry(
+    bounds: tuple[float, float, float, float],
+    aoi_geometry: dict,
+) -> bool:
+    corners = _rect_corners(bounds)
+    center = _centroid(bounds)
+    points = corners + [center]
+    return all(_point_in_geometry(point, aoi_geometry) for point in points)
+
+
+def _row_spans(occupied_cells: list[list[bool]]) -> list[list[tuple[int, int]]]:
+    spans_by_row: list[list[tuple[int, int]]] = []
+    for row in occupied_cells:
+        row_spans: list[tuple[int, int]] = []
+        start_column: int | None = None
+        for column, occupied in enumerate(row):
+            if occupied and start_column is None:
+                start_column = column
+            if not occupied and start_column is not None:
+                row_spans.append((start_column, column))
+                start_column = None
+        if start_column is not None:
+            row_spans.append((start_column, len(row)))
+        spans_by_row.append(row_spans)
+    return spans_by_row
+
+
+def _merge_rectangles(
+    occupied_cells: list[list[bool]],
+    bounds: tuple[float, float, float, float],
+) -> list[tuple[float, float, float, float]]:
+    if not occupied_cells:
+        return []
+
+    row_count = len(occupied_cells)
+    column_count = len(occupied_cells[0])
+    cell_width = (bounds[2] - bounds[0]) / column_count
+    cell_height = (bounds[3] - bounds[1]) / row_count
+    spans_by_row = _row_spans(occupied_cells)
+
+    rectangles: list[tuple[float, float, float, float]] = []
+    active_spans: dict[tuple[int, int], int] = {}
+    for row_index, row_spans in enumerate(spans_by_row):
+        next_active_spans: dict[tuple[int, int], int] = {}
+        for span in row_spans:
+            next_active_spans[span] = active_spans.get(span, row_index)
+        for span, start_row in active_spans.items():
+            if span in next_active_spans:
+                continue
+            rectangles.append(
+                (
+                    round(bounds[0] + (span[0] * cell_width), 6),
+                    round(bounds[1] + (start_row * cell_height), 6),
+                    round(bounds[0] + (span[1] * cell_width), 6),
+                    round(bounds[1] + (row_index * cell_height), 6),
+                )
+            )
+        active_spans = next_active_spans
+
+    for span, start_row in active_spans.items():
+        rectangles.append(
+            (
+                round(bounds[0] + (span[0] * cell_width), 6),
+                round(bounds[1] + (start_row * cell_height), 6),
+                round(bounds[0] + (span[1] * cell_width), 6),
+                round(bounds[1] + (row_count * cell_height), 6),
+            )
+        )
+    return rectangles
+
+
+def _rectangles_to_geometry(rectangles: list[tuple[float, float, float, float]]) -> dict | None:
+    if not rectangles:
+        return None
+    return {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [[
+                [min_x, min_y],
+                [max_x, min_y],
+                [max_x, max_y],
+                [min_x, max_y],
+                [min_x, min_y],
+            ]]
+            for min_x, min_y, max_x, max_y in rectangles
+        ],
+    }
+
+
+def _geometry_rectangles(geometry: dict | None) -> list[tuple[float, float, float, float]]:
+    if not geometry:
+        return []
+    if geometry.get("type") == "MultiPolygon":
+        rectangles = []
+        for polygon in geometry.get("coordinates", []):
+            ring = polygon[0]
+            xs = [float(point[0]) for point in ring]
+            ys = [float(point[1]) for point in ring]
+            rectangles.append((min(xs), min(ys), max(xs), max(ys)))
+        return rectangles
+    return []
+
+
+def _geometry_bounds(geometry: dict) -> tuple[float, float, float, float]:
+    rectangles = _geometry_rectangles(geometry)
+    return (
+        min(rectangle[0] for rectangle in rectangles),
+        min(rectangle[1] for rectangle in rectangles),
+        max(rectangle[2] for rectangle in rectangles),
+        max(rectangle[3] for rectangle in rectangles),
+    )
+
+
+def _geometry_area(geometry: dict) -> float:
+    return sum(_bounds_area(rectangle) for rectangle in _geometry_rectangles(geometry))
+
+
+def _geometry_centroid(geometry: dict) -> tuple[float, float]:
+    rectangles = _geometry_rectangles(geometry)
+    total_area = _geometry_area(geometry)
+    if total_area <= 0.0:
+        return _centroid(_geometry_bounds(geometry))
+
+    centroid_x = 0.0
+    centroid_y = 0.0
+    for rectangle in rectangles:
+        area = _bounds_area(rectangle)
+        rectangle_centroid = _centroid(rectangle)
+        centroid_x += rectangle_centroid[0] * area
+        centroid_y += rectangle_centroid[1] * area
+    return (centroid_x / total_area, centroid_y / total_area)
+
+
+def _geometry_perimeter(geometry: dict) -> float:
+    rectangles = _geometry_rectangles(geometry)
+    if not rectangles:
+        return 0.0
+    unique_x = sorted({rectangle[0] for rectangle in rectangles} | {rectangle[2] for rectangle in rectangles})
+    unique_y = sorted({rectangle[1] for rectangle in rectangles} | {rectangle[3] for rectangle in rectangles})
+    if len(unique_x) < 2 or len(unique_y) < 2:
+        return 0.0
+
+    occupied_cells = {
+        (x_index, y_index)
+        for x_index in range(len(unique_x) - 1)
+        for y_index in range(len(unique_y) - 1)
+        if any(
+            rectangle[0] <= unique_x[x_index]
+            and rectangle[2] >= unique_x[x_index + 1]
+            and rectangle[1] <= unique_y[y_index]
+            and rectangle[3] >= unique_y[y_index + 1]
+            for rectangle in rectangles
+        )
+    }
+
+    perimeter = 0.0
+    for x_index, y_index in occupied_cells:
+        cell_width = unique_x[x_index + 1] - unique_x[x_index]
+        cell_height = unique_y[y_index + 1] - unique_y[y_index]
+        if (x_index - 1, y_index) not in occupied_cells:
+            perimeter += cell_height
+        if (x_index + 1, y_index) not in occupied_cells:
+            perimeter += cell_height
+        if (x_index, y_index - 1) not in occupied_cells:
+            perimeter += cell_width
+        if (x_index, y_index + 1) not in occupied_cells:
+            perimeter += cell_width
+    return perimeter
+
+
+def _build_clipped_geometry(
+    bounds: tuple[float, float, float, float],
+    aoi_geometry: dict | None,
+) -> tuple[dict | None, bool]:
+    if not aoi_geometry:
+        return _rectangles_to_geometry([bounds]), False
+
+    subdivision_count = _subdivision_count(bounds)
+    cell_width = (bounds[2] - bounds[0]) / subdivision_count
+    cell_height = (bounds[3] - bounds[1]) / subdivision_count
+    occupied_cells: list[list[bool]] = []
+    boundary_touching = False
+
+    for row_index in range(subdivision_count):
+        row: list[bool] = []
+        for column_index in range(subdivision_count):
+            cell_bounds = (
+                bounds[0] + (column_index * cell_width),
+                bounds[1] + (row_index * cell_height),
+                bounds[0] + ((column_index + 1) * cell_width),
+                bounds[1] + ((row_index + 1) * cell_height),
+            )
+            inside = _cell_inside_geometry(cell_bounds, aoi_geometry)
+            row.append(inside)
+            if inside and any(_point_on_geometry_boundary(corner, aoi_geometry) for corner in _rect_corners(cell_bounds)):
+                boundary_touching = True
+            if not inside and _point_in_geometry(_centroid(cell_bounds), aoi_geometry):
+                boundary_touching = True
+        occupied_cells.append(row)
+
+    if not any(any(row) for row in occupied_cells):
+        return None, False
+
+    if not all(all(row) for row in occupied_cells):
+        boundary_touching = True
+
+    merged_rectangles = _merge_rectangles(occupied_cells, bounds)
+    return _rectangles_to_geometry(merged_rectangles), boundary_touching
+
+
 def build_full_aoi_anomaly_raster_manifest(
     composite_metadata_manifest: dict,
     composite_metadata_cache_key: str,
@@ -381,9 +597,10 @@ def assign_parent_tile(
     return ranked_overlap_tiles[0]["tile_id"]
 
 
-def _polygon_id(bounds: tuple[float, float, float, float], source_region_ids: list[str]) -> str:
+def _polygon_id(bounds: tuple[float, float, float, float], source_region_ids: list[str], clipped_geometry: dict | None) -> str:
     payload = {
         "bounds": [round(value, 6) for value in bounds],
+        "clipped_geometry": clipped_geometry,
         "source_region_ids": sorted(source_region_ids),
     }
     return sha256(_stable_json(payload).encode("utf-8")).hexdigest()
@@ -397,19 +614,24 @@ def _build_polygon_candidate(
     aoi_geometry: dict | None = None,
     possible_duplicate: bool = False,
 ) -> dict | None:
-    clipped_bounds, aoi_boundary_touching = _clipped_bounds_from_geometry(polygon_bounds, aoi_geometry)
-    if clipped_bounds is None or not is_tile_edge_eligible(clipped_bounds, selected_tiles):
+    clipped_geometry, aoi_boundary_touching = _build_clipped_geometry(polygon_bounds, aoi_geometry)
+    if clipped_geometry is None:
         return None
 
-    polygon_centroid = _centroid(clipped_bounds)
+    clipped_bounds = _geometry_bounds(clipped_geometry)
+    if not is_tile_edge_eligible(clipped_bounds, selected_tiles):
+        return None
+
+    polygon_centroid = _geometry_centroid(clipped_geometry)
     centroid_in_selected_tile = any(
         _contains_point(tuple(selected_tile["bounds"]), polygon_centroid)
         for selected_tile in selected_tiles
     )
     return {
-        "polygon_id": _polygon_id(clipped_bounds, source_region_ids),
+        "polygon_id": _polygon_id(clipped_bounds, source_region_ids, clipped_geometry),
         "bounds": [round(value, 6) for value in clipped_bounds],
         "centroid": [round(value, 6) for value in polygon_centroid],
+        "clipped_geometry": clipped_geometry,
         "selected_overlap_ratio": _selected_overlap_ratio(clipped_bounds, selected_tiles),
         "centroid_in_selected_tile": centroid_in_selected_tile,
         "parent_tile_id": assign_parent_tile(clipped_bounds, selected_tiles),
@@ -537,6 +759,7 @@ def create_candidate_id(
         "polygonization_manifest_cache_key": polygonization_manifest_cache_key,
         "parent_tile_id": polygon_record["parent_tile_id"],
         "bounds": [round(value, 6) for value in polygon_record["bounds"]],
+        "clipped_geometry": polygon_record.get("clipped_geometry"),
         "source_region_ids": sorted(polygon_record["source_region_ids"]),
     }
     return sha256(_stable_json(payload).encode("utf-8")).hexdigest()
@@ -555,8 +778,9 @@ def build_candidate_polygon_records(
         key=lambda item: (item["parent_tile_id"] or "", item["polygon_id"]),
     ):
         polygon_bounds = tuple(polygon["bounds"])
-        area_m2 = _bounds_area(polygon_bounds)
-        perimeter_m = _perimeter(polygon_bounds)
+        clipped_geometry = polygon.get("clipped_geometry")
+        area_m2 = _geometry_area(clipped_geometry) if clipped_geometry is not None else _bounds_area(polygon_bounds)
+        perimeter_m = _geometry_perimeter(clipped_geometry) if clipped_geometry is not None else _perimeter(polygon_bounds)
         candidate_record = {
             "candidate_id": "",
             "run_id": run_id,
@@ -566,6 +790,7 @@ def build_candidate_polygon_records(
             "parent_tile_id": polygon["parent_tile_id"],
             "bounds": [round(value, 6) for value in polygon_bounds],
             "centroid": [round(value, 6) for value in polygon["centroid"]],
+            "clipped_geometry": clipped_geometry,
             "area_m2": round(area_m2, 6),
             "perimeter_m": round(perimeter_m, 6),
             "pixel_count": max(1, int(round(area_m2 / 100.0))),

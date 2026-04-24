@@ -125,6 +125,25 @@ def apply_precision_to_bounds(
     return [_snap_value(value, policy.coordinate_resolution_m) for value in bounds]
 
 
+def apply_precision_to_geometry(
+    geometry: dict,
+    audience: str,
+    requested_precision: str | None = None,
+) -> dict:
+    policy = resolve_export_policy(audience, requested_precision)
+
+    def snap_coordinates(value):
+        if isinstance(value, list):
+            if value and all(isinstance(item, (int, float)) for item in value):
+                return [_snap_value(float(item), policy.coordinate_resolution_m) for item in value]
+            return [snap_coordinates(item) for item in value]
+        return value
+
+    sanitized = dict(geometry)
+    sanitized["coordinates"] = snap_coordinates(geometry.get("coordinates", []))
+    return sanitized
+
+
 def sanitize_candidate_for_export(
     candidate: dict,
     audience: str,
@@ -140,6 +159,12 @@ def sanitize_candidate_for_export(
     if "bounds" in sanitized:
         sanitized["bounds"] = apply_precision_to_bounds(
             list(sanitized["bounds"]),
+            audience,
+            requested_precision,
+        )
+    if sanitized.get("clipped_geometry") is not None:
+        sanitized["clipped_geometry"] = apply_precision_to_geometry(
+            dict(sanitized["clipped_geometry"]),
             audience,
             requested_precision,
         )

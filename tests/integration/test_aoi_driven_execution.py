@@ -69,6 +69,12 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert len(queue) > 0
     assert queue[0]["run_id"] == "test-run-001"
 
+    review_output = io.StringIO()
+    with redirect_stdout(review_output):
+        assert main(["review-show", "--candidate-id", summary["top_candidate_id"]]) == 0
+    review_payload = json.loads(review_output.getvalue())
+    assert review_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
+
     persisted_scenes = ManifestRepository(db_path).list_scenes(
         summary["run_metadata"]["source_scene_manifest_hash"]
     )
@@ -152,7 +158,9 @@ def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monke
         or left_summary["candidate_ids"] != right_summary["candidate_ids"]
     )
     assert left_review["candidate"]["bounds"] != right_review["candidate"]["bounds"]
+    assert left_review["candidate"]["clipped_geometry"] != right_review["candidate"]["clipped_geometry"]
     assert left_export["candidates"] != right_export["candidates"]
+    assert left_export["candidates"][0]["clipped_geometry"] != right_export["candidates"][0]["clipped_geometry"]
 
 def test_create_run_missing_aoi(tmp_path, monkeypatch):
     setup_mocks(tmp_path, monkeypatch)

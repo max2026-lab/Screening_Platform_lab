@@ -106,6 +106,7 @@ def test_candidate_polygon_and_feature_records_include_required_fields():
         "parent_tile_id",
         "bounds",
         "centroid",
+        "clipped_geometry",
         "area_m2",
         "perimeter_m",
         "pixel_count",
@@ -114,6 +115,7 @@ def test_candidate_polygon_and_feature_records_include_required_fields():
         "duplicate_resolution_action",
         "source_region_ids",
     } <= set(first_candidate)
+    assert first_candidate["clipped_geometry"]["type"] == "MultiPolygon"
 
     first_feature = feature_records[0]
     assert {

@@ -375,10 +375,10 @@ def test_different_same_bbox_aois_yield_different_clipped_candidate_geometry():
     assert rectangle_manifest["aoi_bbox"] == notch_manifest["aoi_bbox"]
     assert rectangle_manifest["aoi_geometry"] != notch_manifest["aoi_geometry"]
     assert [
-        (candidate["candidate_id"], candidate["bounds"], candidate["centroid"])
+        (candidate["candidate_id"], candidate["bounds"], candidate["centroid"], candidate["clipped_geometry"])
         for candidate in rectangle_candidates
     ] != [
-        (candidate["candidate_id"], candidate["bounds"], candidate["centroid"])
+        (candidate["candidate_id"], candidate["bounds"], candidate["centroid"], candidate["clipped_geometry"])
         for candidate in notch_candidates
     ]
 
@@ -397,6 +397,11 @@ def test_candidate_geometry_stays_inside_aoi_bbox_and_reflects_clipping():
         min_x, min_y, max_x, max_y = candidate["bounds"]
         assert bbox[0] <= min_x <= max_x <= bbox[2]
         assert bbox[1] <= min_y <= max_y <= bbox[3]
+        assert candidate["clipped_geometry"]["type"] == "MultiPolygon"
+        for polygon in candidate["clipped_geometry"]["coordinates"]:
+            for point in polygon[0]:
+                assert bbox[0] <= point[0] <= bbox[2]
+                assert bbox[1] <= point[1] <= bbox[3]
 
 
 def test_notch_shaped_aoi_changes_edge_touching_behavior_vs_rectangle():
@@ -416,4 +421,17 @@ def test_notch_shaped_aoi_changes_edge_touching_behavior_vs_rectangle():
     assert [candidate["boundary_touching"] for candidate in rectangle_candidates] != [
         candidate["boundary_touching"] for candidate in notch_candidates
     ]
+
+
+def test_concave_aoi_clipped_geometry_is_not_just_envelope():
+    notch_geometry = {
+        "type": "Polygon",
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3500, 1400], [3000, 2000], [3000, 1000]]],
+    }
+    bbox = [3000.0, 1000.0, 4000.0, 2000.0]
+
+    _, candidates = _candidate_polygon_records_for_aoi(notch_geometry, bbox)
+
+    assert candidates
+    assert any(len(candidate["clipped_geometry"]["coordinates"]) > 1 for candidate in candidates)
 

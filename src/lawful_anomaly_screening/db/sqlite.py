@@ -397,6 +397,7 @@ def insert_candidate_polygon(
     current_state: str = "pending_review",
     bounds: list[float],
     centroid: list[float],
+    clipped_geometry: dict[str, Any] | None = None,
     area_m2: float,
     perimeter_m: float,
     pixel_count: int,
@@ -416,13 +417,14 @@ def insert_candidate_polygon(
             current_state,
             bounds_json,
             centroid_json,
+            clipped_geometry_json,
             area_m2,
             perimeter_m,
             pixel_count,
             boundary_touching,
             possible_duplicate,
             duplicate_resolution_action
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             candidate_id,
@@ -434,6 +436,7 @@ def insert_candidate_polygon(
             current_state,
             json.dumps(bounds),
             json.dumps(centroid),
+            json.dumps(clipped_geometry, sort_keys=True, separators=(",", ":")) if clipped_geometry else None,
             area_m2,
             perimeter_m,
             pixel_count,
