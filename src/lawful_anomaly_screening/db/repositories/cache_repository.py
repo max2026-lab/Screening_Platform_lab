@@ -96,3 +96,48 @@ class CacheRepository:
                 """,
                 (cache_key,),
             ).fetchone()
+
+    def fetch_cached_assets_for_rerun(
+        self,
+        *,
+        source_scene_manifest_hash: str,
+        source_endpoint_id: str,
+        asset_kinds: list[str] | None = None,
+    ) -> list[sqlite3.Row]:
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            if asset_kinds:
+                placeholders = ", ".join("?" for _ in asset_kinds)
+                return conn.execute(
+                    f"""
+                    SELECT
+                        cache_key,
+                        asset_kind,
+                        source_scene_manifest_hash,
+                        source_endpoint_id,
+                        asset_path,
+                        content_hash
+                    FROM cached_assets
+                    WHERE source_scene_manifest_hash = ?
+                      AND source_endpoint_id = ?
+                      AND asset_kind IN ({placeholders})
+                    ORDER BY asset_kind, cache_key
+                    """,
+                    (source_scene_manifest_hash, source_endpoint_id, *asset_kinds),
+                ).fetchall()
+            return conn.execute(
+                """
+                SELECT
+                    cache_key,
+                    asset_kind,
+                    source_scene_manifest_hash,
+                    source_endpoint_id,
+                    asset_path,
+                    content_hash
+                FROM cached_assets
+                WHERE source_scene_manifest_hash = ?
+                  AND source_endpoint_id = ?
+                ORDER BY asset_kind, cache_key
+                """,
+                (source_scene_manifest_hash, source_endpoint_id),
+            ).fetchall()

@@ -70,8 +70,8 @@ def insert_run(
     source_endpoint_id: str,
     status: str = "new",
     execution_mode: str = "synchronous",
-    rerun_mode: str = "full",
-    cache_status: str = "cold",
+    rerun_mode: str = "review_only",
+    cache_status: str = "miss",
 ) -> None:
     conn.execute(
         """

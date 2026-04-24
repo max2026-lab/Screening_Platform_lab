@@ -76,7 +76,7 @@ def test_bootstrap_minimal_run_path(tmp_path):
     assert baseline_count == 1
     assert manifest_count == 1
     assert manifest_row == ("earth_search", "earth_search", "data/manifests/manifest-hash-001.json")
-    assert run_row == ("new", "earth_search", "synchronous", "full", "cold")
+    assert run_row == ("new", "earth_search", "synchronous", "review_only", "miss")
 
 
 def test_cached_assets_schema_supports_preprocessing_records(tmp_path):

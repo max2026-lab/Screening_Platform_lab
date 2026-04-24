@@ -8,6 +8,8 @@ class RunRecord:
     processing_baseline_id: str
     source_scene_manifest_hash: str
     source_endpoint_id: str
+    rerun_mode: str
+    cache_status: str
 
 
 @dataclass(frozen=True)
