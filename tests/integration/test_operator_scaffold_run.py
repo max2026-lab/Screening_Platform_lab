@@ -289,6 +289,23 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert len(export_payload["candidates"][0]["centroid"]) == 2
     assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"
     assert export_payload["candidates"][0]["source_scene_ids"] == execute_run_payload["scene_summary"]["scene_ids"]
+    top_export_candidate = next(
+        candidate
+        for candidate in export_payload["candidates"]
+        if candidate["candidate_id"] == execute_run_payload["top_candidate_id"]
+    )
+    top_points = [
+        point
+        for polygon in top_export_candidate["clipped_geometry"]["coordinates"]
+        for ring in polygon
+        for point in ring
+    ]
+    top_xs = [point[0] for point in top_points]
+    top_ys = [point[1] for point in top_points]
+    assert any(value != 0.0 for value in top_export_candidate["bounds"])
+    assert top_export_candidate["bounds"] == [min(top_xs), min(top_ys), max(top_xs), max(top_ys)]
+    assert top_export_candidate["bounds"][0] <= top_export_candidate["centroid"][0] <= top_export_candidate["bounds"][2]
+    assert top_export_candidate["bounds"][1] <= top_export_candidate["centroid"][1] <= top_export_candidate["bounds"][3]
     assert isinstance(export_payload["candidates"][0]["boundary_touching"], bool)
     assert (outside_cwd / export_payload["artifact_path"]).is_file()
     assert not (outside_cwd / "config").exists()

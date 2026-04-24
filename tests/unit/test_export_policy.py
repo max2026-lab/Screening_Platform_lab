@@ -1,7 +1,6 @@
 from lawful_anomaly_screening.exports.precision_policy import (
     allow_exact_coordinates,
     apply_precision_to_centroid,
-    apply_precision_to_geometry,
     build_artifact_name,
     build_bundle_name,
     resolve_export_policy,
@@ -85,7 +84,19 @@ def test_unconfirmed_candidate_coordinates_are_sanitized_for_non_reviewer_export
 
     public_candidate = sanitize_candidate_for_export(candidate, "public")
     reviewer_candidate = sanitize_candidate_for_export(candidate, "reviewer")
+    geometry_points = [
+        point
+        for polygon in public_candidate["clipped_geometry"]["coordinates"]
+        for ring in polygon
+        for point in ring
+    ]
+    xs = [point[0] for point in geometry_points]
+    ys = [point[1] for point in geometry_points]
 
     assert public_candidate["centroid"] == [1000.0, 3000.0]
-    assert public_candidate["clipped_geometry"] == apply_precision_to_geometry(candidate["clipped_geometry"], "public")
+    assert public_candidate["bounds"] == [min(xs), min(ys), max(xs), max(ys)]
+    assert public_candidate["bounds"][0] <= public_candidate["centroid"][0] <= public_candidate["bounds"][2]
+    assert public_candidate["bounds"][1] <= public_candidate["centroid"][1] <= public_candidate["bounds"][3]
+    assert public_candidate["bounds"][2] - public_candidate["bounds"][0] > 0.0
+    assert public_candidate["bounds"][3] - public_candidate["bounds"][1] > 0.0
     assert reviewer_candidate["centroid"] == [1234.0, 2789.0]

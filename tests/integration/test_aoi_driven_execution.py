@@ -6,6 +6,27 @@ from lawful_anomaly_screening.cli import main
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
 from lawful_anomaly_screening.settings import Settings
 
+
+def _candidate_by_id(export_payload: dict, candidate_id: str) -> dict:
+    return next(
+        candidate
+        for candidate in export_payload["candidates"]
+        if candidate["candidate_id"] == candidate_id
+    )
+
+
+def _geometry_bounds(geometry: dict) -> list[float]:
+    points = [
+        point
+        for polygon in geometry["coordinates"]
+        for ring in polygon
+        for point in ring
+    ]
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
 def setup_mocks(tmp_path, monkeypatch):
     db_path = tmp_path / "test.db"
     mock_settings = Settings(db_path=db_path)
@@ -75,6 +96,22 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     review_payload = json.loads(review_output.getvalue())
     assert review_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
     assert review_payload["candidate"]["source_scene_ids"] == summary["scene_summary"]["scene_ids"]
+
+    export_output = io.StringIO()
+    with redirect_stdout(export_output):
+        assert main([
+            "export-create",
+            "--run-id", "test-run-001",
+            "--audience", "report_pdf",
+            "--requested-precision", "restricted",
+        ]) == 0
+    export_payload = json.loads(export_output.getvalue())
+    top_export_candidate = _candidate_by_id(export_payload, summary["top_candidate_id"])
+    assert top_export_candidate["source_scene_ids"] == summary["scene_summary"]["scene_ids"]
+    assert any(value != 0.0 for value in top_export_candidate["bounds"])
+    assert top_export_candidate["bounds"][0] <= top_export_candidate["centroid"][0] <= top_export_candidate["bounds"][2]
+    assert top_export_candidate["bounds"][1] <= top_export_candidate["centroid"][1] <= top_export_candidate["bounds"][3]
+    assert _geometry_bounds(top_export_candidate["clipped_geometry"]) == top_export_candidate["bounds"]
 
     persisted_scenes = ManifestRepository(db_path).list_scenes(
         summary["run_metadata"]["source_scene_manifest_hash"]
@@ -151,10 +188,18 @@ def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monke
     right_review = json.loads(right_review_output.getvalue())
     left_export = json.loads(left_export_output.getvalue())
     right_export = json.loads(right_export_output.getvalue())
+    left_top_export = _candidate_by_id(left_export, left_summary["top_candidate_id"])
+    right_top_export = _candidate_by_id(right_export, right_summary["top_candidate_id"])
     assert left_review["candidate"]["source_scene_ids"] == left_summary["scene_summary"]["scene_ids"]
     assert right_review["candidate"]["source_scene_ids"] == right_summary["scene_summary"]["scene_ids"]
     assert left_export["candidates"][0]["source_scene_ids"] == left_summary["scene_summary"]["scene_ids"]
     assert right_export["candidates"][0]["source_scene_ids"] == right_summary["scene_summary"]["scene_ids"]
+    assert _geometry_bounds(left_top_export["clipped_geometry"]) == left_top_export["bounds"]
+    assert _geometry_bounds(right_top_export["clipped_geometry"]) == right_top_export["bounds"]
+    assert left_top_export["bounds"][0] <= left_top_export["centroid"][0] <= left_top_export["bounds"][2]
+    assert left_top_export["bounds"][1] <= left_top_export["centroid"][1] <= left_top_export["bounds"][3]
+    assert right_top_export["bounds"][0] <= right_top_export["centroid"][0] <= right_top_export["bounds"][2]
+    assert right_top_export["bounds"][1] <= right_top_export["centroid"][1] <= right_top_export["bounds"][3]
     assert left_summary["run_metadata"]["aoi_bbox"] == right_summary["run_metadata"]["aoi_bbox"]
     assert left_summary["run_metadata"]["aoi_geometry"] != right_summary["run_metadata"]["aoi_geometry"]
     assert left_summary["scene_summary"]["scene_ids"] != right_summary["scene_summary"]["scene_ids"]

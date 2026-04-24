@@ -107,6 +107,59 @@ def _snap_value(value: float, resolution_m: int | None) -> float:
     return float(round(value / resolution_m) * resolution_m)
 
 
+def _is_coordinate_pair(value: list) -> bool:
+    return (
+        len(value) >= 2
+        and isinstance(value[0], (int, float))
+        and isinstance(value[1], (int, float))
+    )
+
+
+def _translate_coordinates(
+    value,
+    *,
+    delta_x: float,
+    delta_y: float,
+):
+    if isinstance(value, list):
+        if _is_coordinate_pair(value):
+            translated = [
+                round(float(value[0]) + delta_x, 6),
+                round(float(value[1]) + delta_y, 6),
+            ]
+            if len(value) > 2:
+                translated.extend(value[2:])
+            return translated
+        return [
+            _translate_coordinates(item, delta_x=delta_x, delta_y=delta_y)
+            for item in value
+        ]
+    return value
+
+
+def _iter_coordinate_pairs(value):
+    if isinstance(value, list):
+        if _is_coordinate_pair(value):
+            yield (float(value[0]), float(value[1]))
+            return
+        for item in value:
+            yield from _iter_coordinate_pairs(item)
+
+
+def _bounds_from_geometry(geometry: dict) -> list[float] | None:
+    points = list(_iter_coordinate_pairs(geometry.get("coordinates", [])))
+    if not points:
+        return None
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    return [
+        round(min(xs), 6),
+        round(min(ys), 6),
+        round(max(xs), 6),
+        round(max(ys), 6),
+    ]
+
+
 def apply_precision_to_centroid(
     centroid: list[float],
     audience: str,
@@ -149,7 +202,37 @@ def sanitize_candidate_for_export(
     audience: str,
     requested_precision: str | None = None,
 ) -> dict:
+    policy = resolve_export_policy(audience, requested_precision)
     sanitized = dict(candidate)
+    if (
+        "centroid" in sanitized
+        and sanitized.get("clipped_geometry") is not None
+        and policy.coordinate_resolution_m is not None
+    ):
+        original_centroid = [float(value) for value in sanitized["centroid"]]
+        snapped_centroid = [
+            _snap_value(original_centroid[0], policy.coordinate_resolution_m),
+            _snap_value(original_centroid[1], policy.coordinate_resolution_m),
+        ]
+        translated_geometry = dict(sanitized["clipped_geometry"])
+        translated_geometry["coordinates"] = _translate_coordinates(
+            sanitized["clipped_geometry"].get("coordinates", []),
+            delta_x=snapped_centroid[0] - original_centroid[0],
+            delta_y=snapped_centroid[1] - original_centroid[1],
+        )
+        sanitized["clipped_geometry"] = translated_geometry
+        sanitized["centroid"] = [round(snapped_centroid[0], 6), round(snapped_centroid[1], 6)]
+        derived_bounds = _bounds_from_geometry(translated_geometry)
+        if derived_bounds is not None:
+            sanitized["bounds"] = derived_bounds
+        elif "bounds" in sanitized:
+            sanitized["bounds"] = apply_precision_to_bounds(
+                list(sanitized["bounds"]),
+                audience,
+                requested_precision,
+            )
+        return sanitized
+
     if "centroid" in sanitized:
         sanitized["centroid"] = apply_precision_to_centroid(
             list(sanitized["centroid"]),
