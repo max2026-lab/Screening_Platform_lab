@@ -44,14 +44,39 @@ class ReviewRepository:
     def __init__(self, db_path: Path | str) -> None:
         self.db_path = Path(db_path)
 
-    def list_review_queue(self, limit: int | None = None) -> list[dict]:
+    def list_runs(self) -> list[dict]:
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    run_id,
+                    status,
+                    processing_baseline_id,
+                    source_scene_manifest_hash,
+                    source_endpoint_id,
+                    created_at
+                FROM runs
+                ORDER BY run_id ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_review_queue(
+        self,
+        *,
+        run_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
         limit_clause = ""
-        params: tuple[object, ...]
+        run_filter_clause = ""
+        params_list: list[object] = list(REVIEW_QUEUE_STATES)
+        if run_id is not None:
+            run_filter_clause = "AND r.run_id = ?"
+            params_list.append(run_id)
         if limit is not None:
             limit_clause = "LIMIT ?"
-            params = (*REVIEW_QUEUE_STATES, limit)
-        else:
-            params = REVIEW_QUEUE_STATES
+            params_list.append(limit)
 
         with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -63,11 +88,18 @@ class ReviewRepository:
                     cp.current_state,
                     cp.possible_duplicate,
                     cp.duplicate_resolution_action,
+                    r.run_id,
+                    r.status AS run_status,
+                    cs.parent_tile_score,
                     cs.candidate_score
                 FROM candidate_polygons cp
+                JOIN runs r
+                    ON r.source_scene_manifest_hash = cp.source_scene_manifest_hash
+                    AND r.source_endpoint_id = cp.source_endpoint_id
                 LEFT JOIN candidate_scores cs
                     ON cs.candidate_id = cp.candidate_id
                 WHERE cp.current_state IN (?, ?)
+                    {run_filter_clause}
                 ORDER BY
                     CASE cp.current_state
                         WHEN 'pending_review' THEN 0
@@ -78,19 +110,28 @@ class ReviewRepository:
                     cp.candidate_id ASC
                 {limit_clause}
                 """,
-                params,
+                tuple(params_list),
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def fetch_candidate(self, candidate_id: str) -> dict | None:
+    def fetch_candidate(self, candidate_id: str, run_id: str | None = None) -> dict | None:
+        run_filter_clause = ""
+        params: tuple[object, ...]
+        if run_id is not None:
+            run_filter_clause = "AND r.run_id = ?"
+            params = (candidate_id, run_id)
+        else:
+            params = (candidate_id,)
         with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
-                """
+                f"""
                 SELECT
                     cp.candidate_id,
                     cp.parent_tile_id,
                     cp.current_state,
+                    r.run_id,
+                    r.status AS run_status,
                     cp.bounds_json,
                     cp.centroid_json,
                     cp.area_m2,
@@ -99,14 +140,21 @@ class ReviewRepository:
                     cp.boundary_touching,
                     cp.possible_duplicate,
                     cp.duplicate_resolution_action,
+                    cs.parent_tile_score,
                     cs.candidate_score,
                     cs.score_breakdown_json
                 FROM candidate_polygons cp
+                JOIN runs r
+                    ON r.source_scene_manifest_hash = cp.source_scene_manifest_hash
+                    AND r.source_endpoint_id = cp.source_endpoint_id
                 LEFT JOIN candidate_scores cs
                     ON cs.candidate_id = cp.candidate_id
                 WHERE cp.candidate_id = ?
+                    {run_filter_clause}
+                ORDER BY r.run_id ASC
+                LIMIT 1
                 """,
-                (candidate_id,),
+                params,
             ).fetchone()
         if row is None:
             return None
