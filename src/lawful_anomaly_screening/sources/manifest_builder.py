@@ -171,19 +171,22 @@ def build_tile_feature_input(
         "is_valid": (x_index + y_index) % 5 != 0,
         "score_inputs": {
             "target_bands": {
-                "b02": round(0.62 + (x_index * 0.04), 6),
-                "b03": round(0.71 + (y_index * 0.03), 6),
-                "b04": round(0.84 + ((x_index + y_index) * 0.025), 6),
+                "B4": round(0.62 + (x_index * 0.04), 6),
+                "B8": round(0.71 + (y_index * 0.03), 6),
+                "B11": round(0.84 + ((x_index + y_index) * 0.025), 6),
+                "B12": round(0.91 + ((x_index * 0.02) + (y_index * 0.015)), 6),
             },
             "baseline_median_bands": {
-                "b02": 0.42,
-                "b03": 0.5,
-                "b04": 0.58,
+                "B4": 0.42,
+                "B8": 0.5,
+                "B11": 0.58,
+                "B12": 0.63,
             },
             "baseline_std_bands": {
-                "b02": 0.08,
-                "b03": 0.1,
-                "b04": 0.12,
+                "B4": 0.08,
+                "B8": 0.1,
+                "B11": 0.12,
+                "B12": 0.14,
             },
             "valid_season_optical_values": [
                 round(1.2 + (x_index * 0.35), 6),
@@ -283,15 +286,17 @@ def compute_noise_penalty(
 ) -> float:
     normalized_water_edge = _clamp(water_edge_overlap_ratio, 0.0, 1.0)
     normalized_cloud_seam = _clamp(cloud_seam_overlap_ratio, 0.0, 1.0)
-    compactness_deficit = _clamp(1.0 - compactness_ratio_value, 0.0, 1.0)
-    elongation_excess = _clamp((max(elongation, 1.0) - 1.0) / 3.0, 0.0, 1.0)
-    penalty_ratio = (
-        (normalized_water_edge * 0.35)
-        + (normalized_cloud_seam * 0.35)
-        + (compactness_deficit * 0.15)
-        + (elongation_excess * 0.15)
+    linear_artifact_flag = (
+        1.0
+        if compactness_ratio_value < 0.10 and elongation > 6.0
+        else 0.0
     )
-    return round(_clamp(-30.0 * penalty_ratio, -30.0, 0.0), 6)
+    raw_penalty = (
+        15.0 * normalized_water_edge
+        + 10.0 * normalized_cloud_seam
+        + 5.0 * linear_artifact_flag
+    )
+    return round(_clamp(-raw_penalty, -30.0, 0.0), 6)
 
 
 def compute_tile_score(

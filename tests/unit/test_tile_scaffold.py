@@ -89,21 +89,21 @@ def test_retained_tile_score_integrity():
 
 def test_retained_formula_helpers():
     assert compute_optical_anomaly(
-        {"b02": 1.0, "b03": 1.2, "b04": 1.4},
-        {"b02": 0.6, "b03": 0.8, "b04": 1.0},
-        {"b02": 0.1, "b03": 0.2, "b04": 0.1},
-    ) == 33.333333
+        {"B4": 1.0, "B8": 1.2, "B11": 1.4, "B12": 1.5},
+        {"B4": 0.6, "B8": 0.8, "B11": 1.0, "B12": 1.1},
+        {"B4": 0.1, "B8": 0.2, "B11": 0.1, "B12": 0.1},
+    ) == 35.0
     assert compute_persistence([1.0, 2.0, 2.5, 1.5]) == 12.5
     assert compute_cloud_penalty(24, 80) == -9.0
-    assert compute_noise_penalty(0.4, 0.2, 0.8, 3.0) == -10.2
-    assert compute_tile_score(30.0, 12.5, -9.0, -10.2) == 23.3
+    assert compute_noise_penalty(0.4, 0.2, 0.8, 3.0) == -8.0
+    assert compute_tile_score(30.0, 12.5, -9.0, -8.0) == 25.5
 
 
 def test_component_ranges_and_signed_penalties():
     optical_anomaly = compute_optical_anomaly(
-        {"b02": 2.0},
-        {"b02": 0.0},
-        {"b02": 0.01},
+        {"B4": 2.0},
+        {"B4": 0.0},
+        {"B4": 0.01},
     )
     persistence = compute_persistence([0.0, 2.0, 3.0, 4.0])
     cloud_penalty = compute_cloud_penalty(120, 80)
@@ -138,6 +138,20 @@ def test_tile_feature_inputs_match_retained_helper_signatures():
         "compactness_ratio_value",
         "elongation",
     }
+    assert set(tile_feature_input["score_inputs"]["target_bands"]) == {"B4", "B8", "B11", "B12"}
+    assert set(tile_feature_input["score_inputs"]["baseline_median_bands"]) == {"B4", "B8", "B11", "B12"}
+    assert set(tile_feature_input["score_inputs"]["baseline_std_bands"]) == {"B4", "B8", "B11", "B12"}
+
+
+def test_noise_penalty_linear_artifact_trigger_behavior():
+    assert compute_noise_penalty(0.0, 0.0, 0.09, 6.1) == -5.0
+    assert compute_noise_penalty(0.0, 0.0, 0.10, 6.1) == 0.0
+    assert compute_noise_penalty(0.0, 0.0, 0.09, 6.0) == 0.0
+
+
+def test_noise_penalty_formula_matches_pinned_rule():
+    assert compute_noise_penalty(0.4, 0.2, 0.09, 6.1) == -13.0
+    assert compute_noise_penalty(3.0, 2.0, 0.09, 7.0) == -30.0
 
 
 def test_tile_score_uses_signed_penalty_formula():
