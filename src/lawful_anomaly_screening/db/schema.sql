@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS runs (
     execution_mode TEXT NOT NULL,
     rerun_mode TEXT NOT NULL,
     cache_status TEXT NOT NULL,
+    aoi_path TEXT,
+    aoi_geometry_type TEXT,
+    aoi_bbox TEXT,
+    aoi_hash TEXT,
+    start_date TEXT,
+    end_date TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

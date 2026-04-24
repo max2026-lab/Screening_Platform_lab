@@ -54,6 +54,9 @@ def discover_scenes(
     source_endpoint_id: str | None = None,
     *,
     registry: EndpointRegistry | None = None,
+    aoi_hash: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> list[dict]:
     active_registry = registry or load_endpoint_registry()
     endpoint_id = source_endpoint_id or active_registry.primary_endpoint_id

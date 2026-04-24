@@ -24,10 +24,19 @@ def build_manifest(
     source_endpoint_id: str | None = None,
     *,
     scenes: list[dict] | None = None,
+    aoi_hash: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict:
     registry = load_endpoint_registry()
     endpoint = registry.endpoints[source_endpoint_id or registry.primary_endpoint_id]
-    manifest_scenes = scenes if scenes is not None else discover_scenes(endpoint.endpoint_id, registry=registry)
+    manifest_scenes = scenes if scenes is not None else discover_scenes(
+        endpoint.endpoint_id,
+        registry=registry,
+        aoi_hash=aoi_hash,
+        start_date=start_date,
+        end_date=end_date,
+    )
     normalized_scenes = sorted(
         [
             {
@@ -40,10 +49,13 @@ def build_manifest(
         key=lambda scene: scene["scene_id"],
     )
     return {
-        "manifest_version": "phase1-scene-manifest-v1",
+        "manifest_version": "phase4-aoi-manifest-v1",
         "execution_mode": "synchronous",
         "source_endpoint_id": endpoint.endpoint_id,
         "source_name": endpoint.provider,
+        "aoi_hash": aoi_hash,
+        "start_date": start_date,
+        "end_date": end_date,
         "scene_count": len(normalized_scenes),
         "scenes": normalized_scenes,
     }

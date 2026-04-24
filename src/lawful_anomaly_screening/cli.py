@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from . import __version__
+from .aoi.validation import validate_aoi_file
 from .db.repositories.acceptance_repository import AcceptanceRepository
 from .db.repositories.export_repository import ExportRepository
 from .db.repositories.manifest_repository import ManifestRepository
@@ -20,6 +21,7 @@ from .exceptions import (
     ReviewStateError,
 )
 from .orchestration.scaffold_run import scaffold_run_for_run_id
+from .orchestration.run_pipeline import execute_run
 from .legal import LEGAL_OUTCOME_ALLOWED, evaluate_legal_gate
 from .paid.order_service import (
     ORDER_STATUS_CANCELLED,
@@ -109,9 +111,21 @@ def cmd_create_run(_: argparse.Namespace) -> int:
     baseline = _load_baseline()
     init_db(settings.db_path)
 
+    aoi_metadata = {}
+    if getattr(_, "aoi_path", None):
+        aoi_metadata = validate_aoi_file(_.aoi_path)
+
+    start_date = getattr(_, "start_date", None)
+    end_date = getattr(_, "end_date", None)
+
     registry = load_endpoint_registry()
     source_endpoint_id = _.source_endpoint_id or registry.primary_endpoint_id
-    manifest = build_manifest(source_endpoint_id=source_endpoint_id)
+    manifest = build_manifest(
+        source_endpoint_id=source_endpoint_id,
+        aoi_hash=aoi_metadata.get("aoi_hash"),
+        start_date=start_date,
+        end_date=end_date,
+    )
     manifest_repository = ManifestRepository(settings.db_path)
     manifest_record = manifest_repository.persist_manifest(manifest)
 
@@ -125,6 +139,12 @@ def cmd_create_run(_: argparse.Namespace) -> int:
         run_id=run_id,
         source_name=manifest_record["source_name"],
         manifest_path=manifest_record["manifest_path"],
+        aoi_path=aoi_metadata.get("aoi_path"),
+        aoi_geometry_type=aoi_metadata.get("aoi_geometry_type"),
+        aoi_bbox=aoi_metadata.get("aoi_bbox"),
+        aoi_hash=aoi_metadata.get("aoi_hash"),
+        start_date=start_date,
+        end_date=end_date,
     )
     print(json.dumps(run_record, indent=2))
     return 0
@@ -137,6 +157,19 @@ def cmd_scaffold_run(args: argparse.Namespace) -> int:
             run_id=args.run_id,
         )
     except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
+def cmd_execute_run(args: argparse.Namespace) -> int:
+    try:
+        summary = execute_run(
+            load_settings().db_path,
+            run_id=args.run_id,
+        )
+    except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
     print(json.dumps(summary, indent=2))
@@ -357,6 +390,9 @@ def _add_legal_gate_arguments(parser: argparse.ArgumentParser) -> None:
 def _add_create_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--source-endpoint-id", default=None)
+    parser.add_argument("--aoi-path", default=None)
+    parser.add_argument("--start-date", default=None)
+    parser.add_argument("--end-date", default=None)
 
 
 def _add_review_queue_arguments(parser: argparse.ArgumentParser) -> None:
@@ -365,6 +401,10 @@ def _add_review_queue_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_scaffold_run_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+
+
+def _add_execute_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
 
 
@@ -455,6 +495,7 @@ def build_parser() -> argparse.ArgumentParser:
         "legal-check": cmd_legal_check,
         "create-run": cmd_create_run,
         "scaffold-run": cmd_scaffold_run,
+        "execute-run": cmd_execute_run,
         "review-queue": cmd_review_queue,
         "review-show": cmd_review_show,
         "review-decide": cmd_review_decide,
@@ -478,6 +519,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_review_queue_arguments(p)
         if name == "scaffold-run":
             _add_scaffold_run_arguments(p)
+        if name == "execute-run":
+            _add_execute_run_arguments(p)
         if name == "review-show":
             _add_review_show_arguments(p)
         if name == "review-decide":

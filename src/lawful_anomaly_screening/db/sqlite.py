@@ -72,6 +72,12 @@ def insert_run(
     execution_mode: str = "synchronous",
     rerun_mode: str = "review_only",
     cache_status: str = "miss",
+    aoi_path: str | None = None,
+    aoi_geometry_type: str | None = None,
+    aoi_bbox: list[float] | None = None,
+    aoi_hash: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> None:
     conn.execute(
         """
@@ -83,8 +89,14 @@ def insert_run(
             source_endpoint_id,
             execution_mode,
             rerun_mode,
-            cache_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            cache_status,
+            aoi_path,
+            aoi_geometry_type,
+            aoi_bbox,
+            aoi_hash,
+            start_date,
+            end_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -95,6 +107,12 @@ def insert_run(
             execution_mode,
             rerun_mode,
             cache_status,
+            aoi_path,
+            aoi_geometry_type,
+            json.dumps(aoi_bbox) if aoi_bbox else None,
+            aoi_hash,
+            start_date,
+            end_date,
         ),
     )
 
@@ -671,6 +689,12 @@ def bootstrap_minimal_run(
     source_name: str = "earth_search",
     manifest_path: str = "",
     run_status: str = "new",
+    aoi_path: str | None = None,
+    aoi_geometry_type: str | None = None,
+    aoi_bbox: list[float] | None = None,
+    aoi_hash: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
 ) -> dict[str, Any]:
     with connect(db_path) as conn:
         insert_processing_baseline(
@@ -692,6 +716,12 @@ def bootstrap_minimal_run(
             source_scene_manifest_hash=source_scene_manifest_hash,
             source_endpoint_id=source_endpoint_id,
             status=run_status,
+            aoi_path=aoi_path,
+            aoi_geometry_type=aoi_geometry_type,
+            aoi_bbox=aoi_bbox,
+            aoi_hash=aoi_hash,
+            start_date=start_date,
+            end_date=end_date,
         )
         conn.commit()
     return {
