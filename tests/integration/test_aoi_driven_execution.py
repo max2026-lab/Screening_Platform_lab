@@ -74,6 +74,7 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
         assert main(["review-show", "--candidate-id", summary["top_candidate_id"]]) == 0
     review_payload = json.loads(review_output.getvalue())
     assert review_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
+    assert review_payload["candidate"]["source_scene_ids"] == summary["scene_summary"]["scene_ids"]
 
     persisted_scenes = ManifestRepository(db_path).list_scenes(
         summary["run_metadata"]["source_scene_manifest_hash"]
@@ -150,8 +151,13 @@ def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monke
     right_review = json.loads(right_review_output.getvalue())
     left_export = json.loads(left_export_output.getvalue())
     right_export = json.loads(right_export_output.getvalue())
+    assert left_review["candidate"]["source_scene_ids"] == left_summary["scene_summary"]["scene_ids"]
+    assert right_review["candidate"]["source_scene_ids"] == right_summary["scene_summary"]["scene_ids"]
+    assert left_export["candidates"][0]["source_scene_ids"] == left_summary["scene_summary"]["scene_ids"]
+    assert right_export["candidates"][0]["source_scene_ids"] == right_summary["scene_summary"]["scene_ids"]
     assert left_summary["run_metadata"]["aoi_bbox"] == right_summary["run_metadata"]["aoi_bbox"]
     assert left_summary["run_metadata"]["aoi_geometry"] != right_summary["run_metadata"]["aoi_geometry"]
+    assert left_summary["scene_summary"]["scene_ids"] != right_summary["scene_summary"]["scene_ids"]
     assert (
         left_summary["aoi_execution_geometry"]["derived_tile_bbox"]
         != right_summary["aoi_execution_geometry"]["derived_tile_bbox"]

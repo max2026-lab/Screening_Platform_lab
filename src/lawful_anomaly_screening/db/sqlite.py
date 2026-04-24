@@ -245,6 +245,7 @@ def insert_tile(
     run_id: str,
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
+    source_scene_ids: list[str],
     composite_metadata_cache_key: str,
     tile_size_m: int,
     x_index: int,
@@ -258,18 +259,20 @@ def insert_tile(
             run_id,
             source_scene_manifest_hash,
             source_endpoint_id,
+            source_scene_ids_json,
             composite_metadata_cache_key,
             tile_size_m,
             x_index,
             y_index,
             is_valid
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             tile_id,
             run_id,
             source_scene_manifest_hash,
             source_endpoint_id,
+            json.dumps(sorted(source_scene_ids)),
             composite_metadata_cache_key,
             tile_size_m,
             x_index,
@@ -394,6 +397,7 @@ def insert_candidate_polygon(
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
     parent_tile_id: str,
+    source_scene_ids: list[str],
     current_state: str = "pending_review",
     bounds: list[float],
     centroid: list[float],
@@ -414,6 +418,7 @@ def insert_candidate_polygon(
             source_scene_manifest_hash,
             source_endpoint_id,
             parent_tile_id,
+            source_scene_ids_json,
             current_state,
             bounds_json,
             centroid_json,
@@ -424,7 +429,7 @@ def insert_candidate_polygon(
             boundary_touching,
             possible_duplicate,
             duplicate_resolution_action
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             candidate_id,
@@ -433,6 +438,7 @@ def insert_candidate_polygon(
             source_scene_manifest_hash,
             source_endpoint_id,
             parent_tile_id,
+            json.dumps(sorted(source_scene_ids)),
             current_state,
             json.dumps(bounds),
             json.dumps(centroid),

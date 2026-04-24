@@ -129,6 +129,7 @@ class ReviewRepository:
                 SELECT
                     cp.candidate_id,
                     cp.parent_tile_id,
+                    cp.source_scene_ids_json,
                     cp.current_state,
                     cp.run_id,
                     r.status AS run_status,
@@ -160,6 +161,7 @@ class ReviewRepository:
         if row is None:
             return None
         candidate = dict(row)
+        candidate["source_scene_ids"] = json.loads(candidate.pop("source_scene_ids_json"))
         candidate["bounds"] = json.loads(candidate.pop("bounds_json"))
         candidate["centroid"] = json.loads(candidate.pop("centroid_json"))
         clipped_geometry_json = candidate.pop("clipped_geometry_json")

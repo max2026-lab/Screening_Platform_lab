@@ -6,6 +6,7 @@ import sqlite3
 
 from lawful_anomaly_screening.aoi.validation import derive_execution_geometry_summary
 from lawful_anomaly_screening.db.repositories.cache_repository import CacheRepository
+from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
 from lawful_anomaly_screening.db.sqlite import (
     connect,
     init_db,
@@ -97,6 +98,10 @@ def scaffold_run_for_run_id(
         run_context.get("aoi_geometry"),
         run_context.get("aoi_bbox"),
     )
+    discovered_scenes = ManifestRepository(db_path).list_scenes(
+        run_context["source_scene_manifest_hash"]
+    )
+    source_scene_ids = [scene["scene_id"] for scene in discovered_scenes]
 
     tile_grid = generate_fixed_tile_grid(
         composite_manifest,
@@ -125,6 +130,7 @@ def scaffold_run_for_run_id(
                 run_id=run_id,
                 source_scene_manifest_hash=tile["source_scene_manifest_hash"],
                 source_endpoint_id=tile["source_endpoint_id"],
+                source_scene_ids=source_scene_ids,
                 composite_metadata_cache_key=tile["composite_metadata_cache_key"],
                 tile_size_m=tile["tile_size_m"],
                 x_index=tile["x_index"],
@@ -192,6 +198,7 @@ def scaffold_run_for_run_id(
         polygonization_manifest,
         polygonization_record["cache_key"],
         run_id=run_id,
+        source_scene_ids=source_scene_ids,
     )
     feature_records = build_candidate_feature_records(candidate_records)
     score_records = rank_candidate_scores(
@@ -208,6 +215,7 @@ def scaffold_run_for_run_id(
                 source_scene_manifest_hash=candidate_record["source_scene_manifest_hash"],
                 source_endpoint_id=candidate_record["source_endpoint_id"],
                 parent_tile_id=candidate_record["parent_tile_id"],
+                source_scene_ids=candidate_record["source_scene_ids"],
                 bounds=candidate_record["bounds"],
                 centroid=candidate_record["centroid"],
                 clipped_geometry=candidate_record["clipped_geometry"],

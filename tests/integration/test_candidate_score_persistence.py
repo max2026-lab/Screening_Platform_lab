@@ -65,6 +65,7 @@ def test_candidate_score_persistence_and_ranking(tmp_path):
         scored_tiles.append(score_retained_tile(tile))
     flagged_tiles = flag_top_valid_tiles(scored_tiles)
     scored_by_id = {tile["tile_id"]: tile for tile in flagged_tiles}
+    source_scene_ids = ["scene-001", "scene-002", "scene-003"]
 
     with connect(db_path) as conn:
         for tile in tile_grid:
@@ -74,6 +75,7 @@ def test_candidate_score_persistence_and_ranking(tmp_path):
                 run_id="run-001",
                 source_scene_manifest_hash=tile["source_scene_manifest_hash"],
                 source_endpoint_id=tile["source_endpoint_id"],
+                source_scene_ids=source_scene_ids,
                 composite_metadata_cache_key=tile["composite_metadata_cache_key"],
                 tile_size_m=tile["tile_size_m"],
                 x_index=tile["x_index"],
@@ -119,6 +121,7 @@ def test_candidate_score_persistence_and_ranking(tmp_path):
     candidate_records = build_candidate_polygon_records(
         polygonization_manifest,
         polygonization_record["cache_key"],
+        source_scene_ids=source_scene_ids,
     )
     feature_records = build_candidate_feature_records(candidate_records)
 
@@ -132,6 +135,7 @@ def test_candidate_score_persistence_and_ranking(tmp_path):
                 source_scene_manifest_hash=candidate_record["source_scene_manifest_hash"],
                 source_endpoint_id=candidate_record["source_endpoint_id"],
                 parent_tile_id=candidate_record["parent_tile_id"],
+                source_scene_ids=candidate_record["source_scene_ids"],
                 bounds=candidate_record["bounds"],
                 centroid=candidate_record["centroid"],
                 area_m2=candidate_record["area_m2"],

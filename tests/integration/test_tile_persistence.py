@@ -65,6 +65,7 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
             run_id="run-001",
             source_scene_manifest_hash=tile_feature_input["source_scene_manifest_hash"],
             source_endpoint_id=tile_feature_input["source_endpoint_id"],
+            source_scene_ids=["scene-001", "scene-002", "scene-003"],
             composite_metadata_cache_key=tile_feature_input["composite_metadata_cache_key"],
             tile_size_m=tile_feature_input["tile_size_m"],
             x_index=tile_feature_input["x_index"],
@@ -112,6 +113,7 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
                 tile_id,
                 source_scene_manifest_hash,
                 source_endpoint_id,
+                source_scene_ids_json,
                 composite_metadata_cache_key,
                 tile_size_m
             FROM tiles
@@ -159,6 +161,7 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
         scored_tile["tile_id"],
         "manifest-hash-001",
         "earth_search",
+        json.dumps(["scene-001", "scene-002", "scene-003"]),
         composite_record["cache_key"],
         320,
     )

@@ -8,10 +8,12 @@ from lawful_anomaly_screening.db.sqlite import (
     bootstrap_minimal_run,
     connect,
     init_db,
+    insert_discovered_scene,
     insert_candidate_feature,
     insert_candidate_polygon,
     insert_candidate_score,
     insert_tile,
+    insert_source_scene_manifest,
 )
 from lawful_anomaly_screening.exceptions import ReviewStateError
 from lawful_anomaly_screening.sources.candidate_scoring import (
@@ -45,6 +47,29 @@ def _seed_reviewable_candidates(db_path, cache_root):
         run_id="run-001",
         manifest_path="data/manifests/manifest-hash-001.json",
     )
+    with connect(db_path) as conn:
+        insert_source_scene_manifest(
+            conn,
+            source_scene_manifest_hash="manifest-hash-001",
+            source_endpoint_id="earth_search",
+            source_name="earth_search",
+            manifest_path="data/manifests/manifest-hash-001.json",
+        )
+        for scene_id, acquired_at, cloud_cover in (
+            ("scene-001", "2024-01-05T00:00:00Z", 0.1),
+            ("scene-002", "2024-01-15T00:00:00Z", 0.2),
+            ("scene-003", "2024-01-25T00:00:00Z", 0.3),
+        ):
+            insert_discovered_scene(
+                conn,
+                source_scene_manifest_hash="manifest-hash-001",
+                scene_id=scene_id,
+                source_endpoint_id="earth_search",
+                acquired_at=acquired_at,
+                cloud_cover=cloud_cover,
+            )
+        conn.commit()
+    source_scene_ids = ["scene-001", "scene-002", "scene-003"]
 
     preprocessing_manifest = build_preprocessing_manifest(
         source_scene_manifest_hash="manifest-hash-001",
@@ -75,6 +100,7 @@ def _seed_reviewable_candidates(db_path, cache_root):
                 run_id="run-001",
                 source_scene_manifest_hash=tile["source_scene_manifest_hash"],
                 source_endpoint_id=tile["source_endpoint_id"],
+                source_scene_ids=source_scene_ids,
                 composite_metadata_cache_key=tile["composite_metadata_cache_key"],
                 tile_size_m=tile["tile_size_m"],
                 x_index=tile["x_index"],
@@ -120,6 +146,7 @@ def _seed_reviewable_candidates(db_path, cache_root):
     candidate_records = build_candidate_polygon_records(
         polygonization_manifest,
         polygonization_record["cache_key"],
+        source_scene_ids=source_scene_ids,
     )
     feature_records = build_candidate_feature_records(candidate_records)
     score_records = rank_candidate_scores(
@@ -136,6 +163,7 @@ def _seed_reviewable_candidates(db_path, cache_root):
                 source_scene_manifest_hash=candidate_record["source_scene_manifest_hash"],
                 source_endpoint_id=candidate_record["source_endpoint_id"],
                 parent_tile_id=candidate_record["parent_tile_id"],
+                source_scene_ids=candidate_record["source_scene_ids"],
                 bounds=candidate_record["bounds"],
                 centroid=candidate_record["centroid"],
                 area_m2=candidate_record["area_m2"],
@@ -218,6 +246,7 @@ def test_review_queue_ordering_and_decision_persistence(tmp_path):
     assert action["acted_at"]
     assert candidate is not None
     assert candidate["current_state"] == "watch"
+    assert candidate["source_scene_ids"] == ["scene-001", "scene-002", "scene-003"]
     assert len(review_actions) == 1
     assert review_actions[0]["decision"] == "watch"
 

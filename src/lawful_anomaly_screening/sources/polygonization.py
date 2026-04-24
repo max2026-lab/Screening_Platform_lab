@@ -770,8 +770,10 @@ def build_candidate_polygon_records(
     polygonization_manifest_cache_key: str,
     *,
     run_id: str | None = None,
+    source_scene_ids: list[str] | None = None,
 ) -> list[dict]:
     full_aoi_bounds = tuple(polygonization_manifest["full_aoi_bounds"])
+    candidate_source_scene_ids = list(sorted(source_scene_ids or []))
     candidate_records = []
     for polygon in sorted(
         polygonization_manifest["polygons"],
@@ -788,6 +790,7 @@ def build_candidate_polygon_records(
             "source_scene_manifest_hash": polygonization_manifest["source_scene_manifest_hash"],
             "source_endpoint_id": polygonization_manifest["source_endpoint_id"],
             "parent_tile_id": polygon["parent_tile_id"],
+            "source_scene_ids": candidate_source_scene_ids,
             "bounds": [round(value, 6) for value in polygon_bounds],
             "centroid": [round(value, 6) for value in polygon["centroid"]],
             "clipped_geometry": clipped_geometry,

@@ -104,6 +104,7 @@ def test_candidate_polygon_and_feature_records_include_required_fields():
         "source_scene_manifest_hash",
         "source_endpoint_id",
         "parent_tile_id",
+        "source_scene_ids",
         "bounds",
         "centroid",
         "clipped_geometry",
@@ -116,6 +117,7 @@ def test_candidate_polygon_and_feature_records_include_required_fields():
         "source_region_ids",
     } <= set(first_candidate)
     assert first_candidate["clipped_geometry"]["type"] == "MultiPolygon"
+    assert first_candidate["source_scene_ids"] == []
 
     first_feature = feature_records[0]
     assert {
