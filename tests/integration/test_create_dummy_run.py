@@ -20,6 +20,9 @@ def test_create_dummy_run(monkeypatch, tmp_path):
             "run-integration-001",
             "--source-endpoint-id",
             "earth_search",
+            "--aoi-path", "tests/fixtures/sample_aoi.geojson",
+            "--start-date", "2024-01-01",
+            "--end-date", "2024-03-31",
         ]
     ) == 0
 

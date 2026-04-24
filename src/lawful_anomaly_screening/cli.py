@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+from datetime import datetime
 
 from . import __version__
 from .aoi.validation import validate_aoi_file
@@ -12,6 +13,7 @@ from .db.repositories.export_repository import ExportRepository
 from .db.repositories.manifest_repository import ManifestRepository
 from .db.repositories.paid_repository import PaidRepository
 from .db.repositories.review_repository import ReviewRepository
+from .db.repositories.run_repository import RunRepository
 from .db.sqlite import bootstrap_minimal_run, init_db
 from .exceptions import (
     ExportPolicyError,
@@ -49,6 +51,22 @@ def _load_json(path: Path) -> object:
 
 def _load_baseline() -> dict:
     return _load_json(load_settings().baseline_path)
+
+
+def _validate_date_window(start_str: str | None, end_str: str | None) -> tuple[str, str]:
+    if not start_str or not end_str:
+        raise ValueError("--start-date and --end-date are required")
+    
+    try:
+        start_date = datetime.strptime(start_str, "%Y-%m-%d")
+        end_date = datetime.strptime(end_str, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("dates must be in YYYY-MM-DD format")
+        
+    if end_date < start_date:
+        raise ValueError("end-date cannot be before start-date")
+        
+    return start_str, end_str
 
 
 def _legal_gate_outcome(args: argparse.Namespace) -> str:
@@ -111,12 +129,11 @@ def cmd_create_run(_: argparse.Namespace) -> int:
     baseline = _load_baseline()
     init_db(settings.db_path)
 
-    aoi_metadata = {}
-    if getattr(_, "aoi_path", None):
-        aoi_metadata = validate_aoi_file(_.aoi_path)
+    if not _.aoi_path:
+        raise ValueError("--aoi-path is required")
+    aoi_metadata = validate_aoi_file(_.aoi_path)
 
-    start_date = getattr(_, "start_date", None)
-    end_date = getattr(_, "end_date", None)
+    start_date, end_date = _validate_date_window(_.start_date, _.end_date)
 
     registry = load_endpoint_registry()
     source_endpoint_id = _.source_endpoint_id or registry.primary_endpoint_id
@@ -164,11 +181,25 @@ def cmd_scaffold_run(args: argparse.Namespace) -> int:
 
 
 def cmd_execute_run(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    run_repository = RunRepository(settings.db_path)
+    run_metadata = run_repository.fetch_run(args.run_id)
+    
+    if run_metadata is None:
+        print(f"run not found: {args.run_id}", file=sys.stderr)
+        return 1
+        
+    if not run_metadata.get("aoi_hash") or not run_metadata.get("start_date"):
+        print(f"run {args.run_id} is missing AOI or date window metadata", file=sys.stderr)
+        return 1
+
     try:
         summary = execute_run(
-            load_settings().db_path,
+            settings.db_path,
             run_id=args.run_id,
         )
+        # Include metadata in summary
+        summary["run_metadata"] = run_metadata
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
@@ -341,7 +372,7 @@ def cmd_acceptance_check(args: argparse.Namespace) -> int:
         repository = AcceptanceRepository(load_settings().db_path)
         stability_value = top10_stability_rate(
             repository.fetch_candidate_rows(args.run_id),
-            repository.fetch_candidate_rows(args.retuned_run_id),
+            repository.fetch_candidate_rows(repository.retuned_run_id),
         )
     summary = build_acceptance_summary(
         kpi_summary=kpi_summary,
@@ -390,9 +421,9 @@ def _add_legal_gate_arguments(parser: argparse.ArgumentParser) -> None:
 def _add_create_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--source-endpoint-id", default=None)
-    parser.add_argument("--aoi-path", default=None)
-    parser.add_argument("--start-date", default=None)
-    parser.add_argument("--end-date", default=None)
+    parser.add_argument("--aoi-path", required=True)
+    parser.add_argument("--start-date", required=True)
+    parser.add_argument("--end-date", required=True)
 
 
 def _add_review_queue_arguments(parser: argparse.ArgumentParser) -> None:
@@ -558,6 +589,7 @@ def main(argv: list[str] | None = None) -> int:
         PaidFlowError,
         ReviewDecisionError,
         ReviewStateError,
+        ValueError,
     ) as exc:
         print(str(exc), file=sys.stderr)
         return 1

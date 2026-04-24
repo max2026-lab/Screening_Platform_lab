@@ -18,6 +18,13 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     db_path = tmp_path / "operator.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
 
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    common_args = [
+        "--aoi-path", str(aoi_path),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]
+
     assert main(["init-db"]) == 0
     capsys.readouterr()
 
@@ -30,6 +37,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
             "clear",
             "--run-id",
             "run-001",
+            *common_args,
         ]
     ) == 0
     create_run_1_payload = json.loads(capsys.readouterr().out)
@@ -43,6 +51,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
             "clear",
             "--run-id",
             "run-002",
+            *common_args,
         ]
     ) == 0
     create_run_2_payload = json.loads(capsys.readouterr().out)
@@ -215,6 +224,7 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
 
     assert run_cli("init-db").strip() == "ok"
 
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
     create_run_payload = json.loads(
         run_cli(
             "create-run",
@@ -224,6 +234,9 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
             "clear",
             "--run-id",
             "run-001",
+            "--aoi-path", str(aoi_path),
+            "--start-date", "2024-01-01",
+            "--end-date", "2024-03-31",
         )
     )
     scaffold_run_payload = json.loads(run_cli("scaffold-run", "--run-id", "run-001"))

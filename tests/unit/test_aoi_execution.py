@@ -28,6 +28,31 @@ def test_validate_aoi_invalid_type(tmp_path):
     with pytest.raises(ValueError, match="AOI geometry must be Polygon or MultiPolygon"):
         validate_aoi_file(aoi_path)
 
+def test_validate_aoi_feature_collection_multiple(tmp_path):
+    aoi_path = tmp_path / "test.geojson"
+    aoi_data = {
+        "type": "FeatureCollection",
+        "features": [
+            {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": []}},
+            {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": []}}
+        ]
+    }
+    aoi_path.write_text(json.dumps(aoi_data))
+    
+    with pytest.raises(ValueError, match="FeatureCollection must contain exactly one feature"):
+        validate_aoi_file(aoi_path)
+
+def test_validate_aoi_empty_geometry(tmp_path):
+    aoi_path = tmp_path / "test.geojson"
+    aoi_data = {
+        "type": "Polygon",
+        "coordinates": []
+    }
+    aoi_path.write_text(json.dumps(aoi_data))
+    
+    with pytest.raises(ValueError, match="AOI geometry is empty"):
+        validate_aoi_file(aoi_path)
+
 def test_manifest_hash_depends_on_aoi_and_dates():
     manifest1 = build_manifest(aoi_hash="hash1", start_date="2024-01-01", end_date="2024-03-31")
     manifest2 = build_manifest(aoi_hash="hash2", start_date="2024-01-01", end_date="2024-03-31")

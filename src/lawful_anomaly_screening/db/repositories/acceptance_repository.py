@@ -23,13 +23,24 @@ class AcceptanceRepository:
                     source_scene_manifest_hash,
                     source_endpoint_id,
                     cache_status,
+                    aoi_path,
+                    aoi_geometry_type,
+                    aoi_bbox,
+                    aoi_hash,
+                    start_date,
+                    end_date,
                     created_at
                 FROM runs
                 WHERE run_id = ?
                 """,
                 (run_id,),
             ).fetchone()
-        return dict(row) if row is not None else None
+        if row is None:
+            return None
+        data = dict(row)
+        if data.get("aoi_bbox"):
+            data["aoi_bbox"] = json.loads(data["aoi_bbox"])
+        return data
 
     def fetch_candidate_rows(self, run_id: str) -> list[dict]:
         with connect(self.db_path) as conn:

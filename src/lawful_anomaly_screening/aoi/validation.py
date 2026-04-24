@@ -21,6 +21,9 @@ def validate_aoi_file(path: Path | str) -> dict[str, Any]:
         raise ValueError(f"AOI geometry must be Polygon or MultiPolygon, got {geom['type']}")
 
     bbox = _calculate_bbox(geom)
+    if bbox == [0.0, 0.0, 0.0, 0.0]:
+        raise ValueError("AOI geometry is empty")
+
     aoi_hash = sha256(json.dumps(geom, sort_keys=True).encode("utf-8")).hexdigest()
 
     return {
@@ -37,8 +40,8 @@ def _extract_geometry(data: dict[str, Any]) -> dict[str, Any]:
         features = data.get("features", [])
         if not features:
             raise ValueError("Empty FeatureCollection in AOI file")
-        # Take the first feature's geometry for now, or merge if multiple? 
-        # Prompt says "Polygon or MultiPolygon only", usually implies a single AOI.
+        if len(features) > 1:
+            raise ValueError("FeatureCollection must contain exactly one feature")
         return features[0].get("geometry", {})
     if data_type == "Feature":
         return data.get("geometry", {})
