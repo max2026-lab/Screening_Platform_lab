@@ -282,3 +282,34 @@ def test_tile_scene_attribution_changes_when_manifest_changes():
     )
 
     assert baseline != changed
+
+
+def test_tile_scene_attribution_seed_keys_stabilize_same_input_runs():
+    discovered_scene_ids = ["scene-001", "scene-002", "scene-003"]
+    run_one_tile_ids = ["run-001-tile-a", "run-001-tile-b", "run-001-tile-c"]
+    run_two_tile_ids = ["run-002-tile-a", "run-002-tile-b", "run-002-tile-c"]
+    stable_seed_keys = {
+        run_one_tile_ids[0]: "0:0",
+        run_one_tile_ids[1]: "1:0",
+        run_one_tile_ids[2]: "2:0",
+        run_two_tile_ids[0]: "0:0",
+        run_two_tile_ids[1]: "1:0",
+        run_two_tile_ids[2]: "2:0",
+    }
+
+    run_one = build_tile_scene_attribution(
+        source_scene_manifest_hash="manifest-hash-001",
+        tile_ids=run_one_tile_ids,
+        discovered_scene_ids=discovered_scene_ids,
+        attribution_seed_keys=stable_seed_keys,
+    )
+    run_two = build_tile_scene_attribution(
+        source_scene_manifest_hash="manifest-hash-001",
+        tile_ids=run_two_tile_ids,
+        discovered_scene_ids=discovered_scene_ids,
+        attribution_seed_keys=stable_seed_keys,
+    )
+
+    assert [run_one[tile_id] for tile_id in run_one_tile_ids] == [
+        run_two[tile_id] for tile_id in run_two_tile_ids
+    ]

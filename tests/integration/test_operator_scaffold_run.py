@@ -98,6 +98,13 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     review_decision_payload = json.loads(capsys.readouterr().out)
     assert review_decision_payload["candidate"]["current_state"] == "approved_for_archive_quote"
     assert review_decision_payload["candidate"]["source_scene_ids"]
+    assert review_decision_payload["candidate"]["source_scenes"]
+    assert [
+        scene["scene_id"] for scene in review_decision_payload["candidate"]["source_scenes"]
+    ] == review_decision_payload["candidate"]["source_scene_ids"]
+
+    assert main(["review-show", "--candidate-id", approved_candidate_id]) == 0
+    run_1_candidate_payload = json.loads(capsys.readouterr().out)
 
     assert main(["review-show", "--candidate-id", run_2_top_candidate_id]) == 0
     run_2_candidate_payload = json.loads(capsys.readouterr().out)
@@ -108,6 +115,10 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert run_2_candidate_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
     assert expected_source_scene_ids
     assert isinstance(run_2_candidate_payload["candidate"]["boundary_touching"], int)
+    assert run_2_candidate_payload["candidate"]["source_scenes"]
+    assert [
+        scene["scene_id"] for scene in run_2_candidate_payload["candidate"]["source_scenes"]
+    ] == run_2_candidate_payload["candidate"]["source_scene_ids"]
 
     assert main(
         [
@@ -129,11 +140,55 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert len(export_payload["candidates"][0]["centroid"]) == 2
     assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"
     assert export_payload["candidates"][0]["source_scene_ids"]
+    assert export_payload["candidates"][0]["source_scenes"]
+    assert [
+        scene["scene_id"] for scene in export_payload["candidates"][0]["source_scenes"]
+    ] == export_payload["candidates"][0]["source_scene_ids"]
     assert len({tuple(candidate["source_scene_ids"]) for candidate in export_payload["candidates"]}) > 1
     assert isinstance(export_payload["candidates"][0]["boundary_touching"], bool)
     assert export_path.exists()
     assert {candidate["candidate_id"] for candidate in export_payload["candidates"]} == set(
         scaffold_run_1_payload["candidate_ids"]
+    )
+
+    assert main(
+        [
+            "export-create",
+            "--run-id",
+            "run-002",
+            "--audience",
+            "report_pdf",
+            "--requested-precision",
+            "restricted",
+        ]
+    ) == 0
+    export_run_2_payload = json.loads(capsys.readouterr().out)
+    assert sorted(
+        (
+            tuple(candidate["source_scene_ids"]),
+            tuple(
+                (
+                    scene["scene_id"],
+                    scene["acquired_at"],
+                    scene["cloud_cover"],
+                )
+                for scene in candidate["source_scenes"]
+            ),
+        )
+        for candidate in export_payload["candidates"]
+    ) == sorted(
+        (
+            tuple(candidate["source_scene_ids"]),
+            tuple(
+                (
+                    scene["scene_id"],
+                    scene["acquired_at"],
+                    scene["cloud_cover"],
+                )
+                for scene in candidate["source_scenes"]
+            ),
+        )
+        for candidate in export_run_2_payload["candidates"]
     )
 
     assert main(
@@ -278,6 +333,10 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert execute_run_payload["scene_summary"]["start_date"] == "2024-01-01"
     assert execute_run_payload["scene_summary"]["end_date"] == "2024-03-31"
     assert review_show_payload["candidate"]["source_scene_ids"]
+    assert review_show_payload["candidate"]["source_scenes"]
+    assert [
+        scene["scene_id"] for scene in review_show_payload["candidate"]["source_scenes"]
+    ] == review_show_payload["candidate"]["source_scene_ids"]
     assert set(review_show_payload["candidate"]["source_scene_ids"]) < set(execute_run_payload["scene_summary"]["scene_ids"])
     assert execute_run_payload["aoi_execution_geometry"]["tile_count"] == execute_run_payload["tile_count"]
     assert execute_run_payload["aoi_execution_geometry"]["selected_tile_count"] == execute_run_payload["selected_tile_count"]
@@ -297,7 +356,15 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
         if candidate["candidate_id"] == execute_run_payload["top_candidate_id"]
     )
     assert top_export_candidate["source_scene_ids"] == review_show_payload["candidate"]["source_scene_ids"]
+    assert top_export_candidate["source_scenes"] == review_show_payload["candidate"]["source_scenes"]
+    assert [
+        scene["scene_id"] for scene in top_export_candidate["source_scenes"]
+    ] == top_export_candidate["source_scene_ids"]
     assert set(top_export_candidate["source_scene_ids"]) < set(execute_run_payload["scene_summary"]["scene_ids"])
+    assert all(
+        [scene["scene_id"] for scene in candidate["source_scenes"]] == candidate["source_scene_ids"]
+        for candidate in export_payload["candidates"]
+    )
     top_points = [
         point
         for polygon in top_export_candidate["clipped_geometry"]["coordinates"]

@@ -47,6 +47,7 @@ def build_tile_scene_attribution(
     source_scene_manifest_hash: str,
     tile_ids: list[str],
     discovered_scene_ids: list[str],
+    attribution_seed_keys: dict[str, str] | None = None,
 ) -> dict[str, list[str]]:
     ordered_scene_ids = sorted(set(discovered_scene_ids))
     if not ordered_scene_ids:
@@ -55,9 +56,10 @@ def build_tile_scene_attribution(
     max_subset_size = 1 if len(ordered_scene_ids) == 1 else len(ordered_scene_ids) - 1
     attribution: dict[str, list[str]] = {}
     for tile_id in sorted(tile_ids):
-        size_digest = _stable_scene_digest(source_scene_manifest_hash, tile_id, "scene-count")
+        tile_seed_key = attribution_seed_keys.get(tile_id, tile_id) if attribution_seed_keys else tile_id
+        size_digest = _stable_scene_digest(source_scene_manifest_hash, tile_seed_key, "scene-count")
         subset_size = 1 + (int(size_digest[:8], 16) % max_subset_size)
-        start_digest = _stable_scene_digest(source_scene_manifest_hash, tile_id, "scene-start")
+        start_digest = _stable_scene_digest(source_scene_manifest_hash, tile_seed_key, "scene-start")
         start_index = int(start_digest[:8], 16) % len(ordered_scene_ids)
         rotated_scene_ids = ordered_scene_ids[start_index:] + ordered_scene_ids[:start_index]
         attribution[tile_id] = sorted(rotated_scene_ids[:subset_size])
@@ -146,10 +148,15 @@ def scaffold_run_for_run_id(
 
     flagged_tiles = flag_top_valid_tiles(scored_tiles)
     scored_by_id = {tile["tile_id"]: tile for tile in flagged_tiles}
+    tile_attribution_seed_keys = {
+        tile["tile_id"]: f"{tile['x_index']}:{tile['y_index']}"
+        for tile in tile_grid
+    }
     tile_source_scene_ids_by_tile_id = build_tile_scene_attribution(
         source_scene_manifest_hash=run_context["source_scene_manifest_hash"],
         tile_ids=[tile["tile_id"] for tile in tile_grid],
         discovered_scene_ids=source_scene_ids,
+        attribution_seed_keys=tile_attribution_seed_keys,
     )
 
     with connect(db_path) as conn:

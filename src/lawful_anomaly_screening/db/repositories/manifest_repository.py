@@ -71,6 +71,34 @@ class ManifestRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def build_scene_lookup(self, source_scene_manifest_hash: str) -> dict[str, dict]:
+        return {
+            scene["scene_id"]: {
+                "scene_id": scene["scene_id"],
+                "acquired_at": scene["acquired_at"],
+                "cloud_cover": scene["cloud_cover"],
+            }
+            for scene in self.list_scenes(source_scene_manifest_hash)
+        }
+
+    def resolve_source_scenes(
+        self,
+        source_scene_manifest_hash: str,
+        source_scene_ids: list[str],
+    ) -> list[dict]:
+        scene_lookup = self.build_scene_lookup(source_scene_manifest_hash)
+        return [
+            scene_lookup.get(
+                scene_id,
+                {
+                    "scene_id": scene_id,
+                    "acquired_at": None,
+                    "cloud_cover": None,
+                },
+            )
+            for scene_id in source_scene_ids
+        ]
+
     def fetch_manifest_row(self, source_scene_manifest_hash: str) -> sqlite3.Row | None:
         with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row

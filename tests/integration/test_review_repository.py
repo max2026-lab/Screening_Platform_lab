@@ -247,6 +247,23 @@ def test_review_queue_ordering_and_decision_persistence(tmp_path):
     assert candidate is not None
     assert candidate["current_state"] == "watch"
     assert candidate["source_scene_ids"] == ["scene-001", "scene-002", "scene-003"]
+    assert candidate["source_scenes"] == [
+        {
+            "scene_id": "scene-001",
+            "acquired_at": "2024-01-05T00:00:00Z",
+            "cloud_cover": 0.1,
+        },
+        {
+            "scene_id": "scene-002",
+            "acquired_at": "2024-01-15T00:00:00Z",
+            "cloud_cover": 0.2,
+        },
+        {
+            "scene_id": "scene-003",
+            "acquired_at": "2024-01-25T00:00:00Z",
+            "cloud_cover": 0.3,
+        },
+    ]
     assert len(review_actions) == 1
     assert review_actions[0]["decision"] == "watch"
 

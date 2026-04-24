@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 
 from lawful_anomaly_screening.db.sqlite import connect, insert_export_record
+from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
 from lawful_anomaly_screening.exports.precision_policy import (
     build_artifact_name,
     build_bundle_name,
@@ -141,6 +142,7 @@ class ExportRepository:
                     cp.run_id,
                     cp.current_state,
                     cp.parent_tile_id,
+                    cp.source_scene_manifest_hash,
                     cp.source_scene_ids_json,
                     cp.bounds_json,
                     cp.centroid_json,
@@ -167,9 +169,15 @@ class ExportRepository:
             ).fetchall()
 
         candidates = []
+        manifest_repository = ManifestRepository(self.db_path)
         for row in rows:
             candidate = dict(row)
+            source_scene_manifest_hash = candidate.pop("source_scene_manifest_hash")
             candidate["source_scene_ids"] = json.loads(candidate.pop("source_scene_ids_json"))
+            candidate["source_scenes"] = manifest_repository.resolve_source_scenes(
+                source_scene_manifest_hash,
+                candidate["source_scene_ids"],
+            )
             candidate["bounds"] = json.loads(candidate.pop("bounds_json"))
             candidate["centroid"] = json.loads(candidate.pop("centroid_json"))
             clipped_geometry_json = candidate.pop("clipped_geometry_json")

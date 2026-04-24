@@ -96,6 +96,8 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     review_payload = json.loads(review_output.getvalue())
     assert review_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
     assert review_payload["candidate"]["source_scene_ids"]
+    assert review_payload["candidate"]["source_scenes"]
+    assert [scene["scene_id"] for scene in review_payload["candidate"]["source_scenes"]] == review_payload["candidate"]["source_scene_ids"]
     assert set(review_payload["candidate"]["source_scene_ids"]) < set(summary["scene_summary"]["scene_ids"])
 
     export_output = io.StringIO()
@@ -110,8 +112,14 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     top_export_candidate = _candidate_by_id(export_payload, summary["top_candidate_id"])
     run_scene_ids = set(summary["scene_summary"]["scene_ids"])
     assert top_export_candidate["source_scene_ids"] == review_payload["candidate"]["source_scene_ids"]
+    assert top_export_candidate["source_scenes"] == review_payload["candidate"]["source_scenes"]
+    assert [scene["scene_id"] for scene in top_export_candidate["source_scenes"]] == top_export_candidate["source_scene_ids"]
     assert set(top_export_candidate["source_scene_ids"]) < run_scene_ids
     assert all(set(candidate["source_scene_ids"]).issubset(run_scene_ids) for candidate in export_payload["candidates"])
+    assert all(
+        [scene["scene_id"] for scene in candidate["source_scenes"]] == candidate["source_scene_ids"]
+        for candidate in export_payload["candidates"]
+    )
     assert any(value != 0.0 for value in top_export_candidate["bounds"])
     assert top_export_candidate["bounds"][0] <= top_export_candidate["centroid"][0] <= top_export_candidate["bounds"][2]
     assert top_export_candidate["bounds"][1] <= top_export_candidate["centroid"][1] <= top_export_candidate["bounds"][3]
@@ -199,10 +207,22 @@ def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monke
     right_run_scene_ids = set(right_summary["scene_summary"]["scene_ids"])
     assert left_review["candidate"]["source_scene_ids"]
     assert right_review["candidate"]["source_scene_ids"]
+    assert left_review["candidate"]["source_scenes"]
+    assert right_review["candidate"]["source_scenes"]
+    assert [scene["scene_id"] for scene in left_review["candidate"]["source_scenes"]] == left_review["candidate"]["source_scene_ids"]
+    assert [scene["scene_id"] for scene in right_review["candidate"]["source_scenes"]] == right_review["candidate"]["source_scene_ids"]
     assert set(left_review["candidate"]["source_scene_ids"]) < left_run_scene_ids
     assert set(right_review["candidate"]["source_scene_ids"]) < right_run_scene_ids
     assert all(set(candidate["source_scene_ids"]).issubset(left_run_scene_ids) for candidate in left_export["candidates"])
     assert all(set(candidate["source_scene_ids"]).issubset(right_run_scene_ids) for candidate in right_export["candidates"])
+    assert all(
+        [scene["scene_id"] for scene in candidate["source_scenes"]] == candidate["source_scene_ids"]
+        for candidate in left_export["candidates"]
+    )
+    assert all(
+        [scene["scene_id"] for scene in candidate["source_scenes"]] == candidate["source_scene_ids"]
+        for candidate in right_export["candidates"]
+    )
     assert _geometry_bounds(left_top_export["clipped_geometry"]) == left_top_export["bounds"]
     assert _geometry_bounds(right_top_export["clipped_geometry"]) == right_top_export["bounds"]
     assert left_top_export["bounds"][0] <= left_top_export["centroid"][0] <= left_top_export["bounds"][2]
@@ -213,6 +233,7 @@ def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monke
     assert left_summary["run_metadata"]["aoi_geometry"] != right_summary["run_metadata"]["aoi_geometry"]
     assert left_summary["scene_summary"]["scene_ids"] != right_summary["scene_summary"]["scene_ids"]
     assert left_review["candidate"]["source_scene_ids"] != right_review["candidate"]["source_scene_ids"]
+    assert left_review["candidate"]["source_scenes"] != right_review["candidate"]["source_scenes"]
     assert (
         left_summary["aoi_execution_geometry"]["derived_tile_bbox"]
         != right_summary["aoi_execution_geometry"]["derived_tile_bbox"]
