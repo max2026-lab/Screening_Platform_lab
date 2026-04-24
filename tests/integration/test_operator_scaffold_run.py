@@ -100,6 +100,8 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert main(["review-show", "--candidate-id", run_2_top_candidate_id]) == 0
     run_2_candidate_payload = json.loads(capsys.readouterr().out)
     assert run_2_candidate_payload["candidate"]["current_state"] == "pending_review"
+    assert len(run_2_candidate_payload["candidate"]["bounds"]) == 4
+    assert len(run_2_candidate_payload["candidate"]["centroid"]) == 2
 
     assert main(
         [
@@ -117,6 +119,8 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert export_payload["precision_tier"] == "restricted"
     assert export_payload["exact_coordinates_included"] is False
     assert export_payload["candidates"]
+    assert len(export_payload["candidates"][0]["bounds"]) == 4
+    assert len(export_payload["candidates"][0]["centroid"]) == 2
     assert export_path.exists()
     assert {candidate["candidate_id"] for candidate in export_payload["candidates"]} == set(
         scaffold_run_1_payload["candidate_ids"]
@@ -241,6 +245,9 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     )
     scaffold_run_payload = json.loads(run_cli("scaffold-run", "--run-id", "run-001"))
     execute_run_payload = json.loads(run_cli("execute-run", "--run-id", "run-001"))
+    review_show_payload = json.loads(
+        run_cli("review-show", "--candidate-id", execute_run_payload["top_candidate_id"])
+    )
     export_payload = json.loads(
         run_cli(
             "export-create",
@@ -263,8 +270,12 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert execute_run_payload["aoi_execution_geometry"]["tile_count"] == execute_run_payload["tile_count"]
     assert execute_run_payload["aoi_execution_geometry"]["selected_tile_count"] == execute_run_payload["selected_tile_count"]
     assert len(execute_run_payload["aoi_execution_geometry"]["derived_tile_bbox"]) == 4
+    assert len(review_show_payload["candidate"]["bounds"]) == 4
+    assert len(review_show_payload["candidate"]["centroid"]) == 2
     assert export_payload["run_id"] == "run-001"
     assert export_payload["precision_tier"] == "restricted"
+    assert len(export_payload["candidates"][0]["bounds"]) == 4
+    assert len(export_payload["candidates"][0]["centroid"]) == 2
     assert (outside_cwd / export_payload["artifact_path"]).is_file()
     assert not (outside_cwd / "config").exists()
     assert (REPO_ROOT / "config" / "sources" / "endpoints.json").is_file()

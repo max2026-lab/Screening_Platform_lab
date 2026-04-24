@@ -63,6 +63,10 @@ def _compute_iou(
 
 
 def tile_bounds(tile_record: dict) -> tuple[float, float, float, float]:
+    if tile_record.get("bounds") is not None:
+        bounds = tile_record["bounds"]
+        return tuple(float(value) for value in bounds)
+
     tile_size_m = float(tile_record["tile_size_m"])
     min_x = float(tile_record["x_index"]) * tile_size_m
     min_y = float(tile_record["y_index"]) * tile_size_m
