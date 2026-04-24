@@ -9,6 +9,7 @@ from lawful_anomaly_screening.sources.manifest_builder import (
 )
 from lawful_anomaly_screening.sources.polygonization import (
     assign_parent_tile,
+    build_candidate_polygon_records,
     build_full_aoi_anomaly_raster_manifest,
     build_polygonization_manifest,
     deduplicate_polygon_candidates,
@@ -257,6 +258,28 @@ def _candidate_records_for_aoi(aoi_geometry: dict, aoi_bbox: list[float]) -> lis
     return polygonization_manifest["polygons"]
 
 
+def _candidate_polygon_records_for_aoi(aoi_geometry: dict, aoi_bbox: list[float]) -> tuple[dict, list[dict]]:
+    composite_manifest, composite_cache_key, tile_records = _selected_tile_records(
+        aoi_geometry=aoi_geometry,
+        aoi_bbox=aoi_bbox,
+    )
+    full_aoi_manifest = build_full_aoi_anomaly_raster_manifest(
+        composite_manifest,
+        composite_cache_key,
+        tile_records,
+        aoi_geometry=aoi_geometry,
+        aoi_bbox=aoi_bbox,
+    )
+    polygonization_manifest = build_polygonization_manifest(
+        full_aoi_manifest,
+        "full-aoi-cache-key-001",
+    )
+    return polygonization_manifest, build_candidate_polygon_records(
+        polygonization_manifest,
+        "polygonization-cache-key-001",
+    )
+
+
 def test_same_aoi_yields_same_candidate_geometry_coordinates():
     geometry = {
         "type": "Polygon",
@@ -319,4 +342,78 @@ def test_candidate_bounds_fall_inside_parent_tile_bounds():
         min_x, min_y, max_x, max_y = polygon["bounds"]
         assert parent_bounds[0] <= min_x <= max_x <= parent_bounds[2]
         assert parent_bounds[1] <= min_y <= max_y <= parent_bounds[3]
+
+
+def test_same_aoi_yields_same_clipped_candidate_geometry():
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]],
+    }
+    bbox = [3000.0, 1000.0, 4000.0, 2000.0]
+
+    manifest_one, candidates_one = _candidate_polygon_records_for_aoi(geometry, bbox)
+    manifest_two, candidates_two = _candidate_polygon_records_for_aoi(geometry, bbox)
+
+    assert manifest_one == manifest_two
+    assert candidates_one == candidates_two
+
+
+def test_different_same_bbox_aois_yield_different_clipped_candidate_geometry():
+    rectangle_geometry = {
+        "type": "Polygon",
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]],
+    }
+    notch_geometry = {
+        "type": "Polygon",
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3500, 1400], [3000, 2000], [3000, 1000]]],
+    }
+    bbox = [3000.0, 1000.0, 4000.0, 2000.0]
+
+    rectangle_manifest, rectangle_candidates = _candidate_polygon_records_for_aoi(rectangle_geometry, bbox)
+    notch_manifest, notch_candidates = _candidate_polygon_records_for_aoi(notch_geometry, bbox)
+
+    assert rectangle_manifest["aoi_bbox"] == notch_manifest["aoi_bbox"]
+    assert rectangle_manifest["aoi_geometry"] != notch_manifest["aoi_geometry"]
+    assert [
+        (candidate["candidate_id"], candidate["bounds"], candidate["centroid"])
+        for candidate in rectangle_candidates
+    ] != [
+        (candidate["candidate_id"], candidate["bounds"], candidate["centroid"])
+        for candidate in notch_candidates
+    ]
+
+
+def test_candidate_geometry_stays_inside_aoi_bbox_and_reflects_clipping():
+    notch_geometry = {
+        "type": "Polygon",
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3500, 1400], [3000, 2000], [3000, 1000]]],
+    }
+    bbox = [3000.0, 1000.0, 4000.0, 2000.0]
+
+    _, candidates = _candidate_polygon_records_for_aoi(notch_geometry, bbox)
+
+    assert candidates
+    for candidate in candidates:
+        min_x, min_y, max_x, max_y = candidate["bounds"]
+        assert bbox[0] <= min_x <= max_x <= bbox[2]
+        assert bbox[1] <= min_y <= max_y <= bbox[3]
+
+
+def test_notch_shaped_aoi_changes_edge_touching_behavior_vs_rectangle():
+    rectangle_geometry = {
+        "type": "Polygon",
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]],
+    }
+    notch_geometry = {
+        "type": "Polygon",
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3500, 1400], [3000, 2000], [3000, 1000]]],
+    }
+    bbox = [3000.0, 1000.0, 4000.0, 2000.0]
+
+    _, rectangle_candidates = _candidate_polygon_records_for_aoi(rectangle_geometry, bbox)
+    _, notch_candidates = _candidate_polygon_records_for_aoi(notch_geometry, bbox)
+
+    assert [candidate["boundary_touching"] for candidate in rectangle_candidates] != [
+        candidate["boundary_touching"] for candidate in notch_candidates
+    ]
 

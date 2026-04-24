@@ -178,6 +178,8 @@ def scaffold_run_for_run_id(
         composite_manifest,
         composite_record["cache_key"],
         tile_records,
+        aoi_geometry=run_context.get("aoi_geometry"),
+        aoi_bbox=run_context.get("aoi_bbox"),
     )
     full_aoi_record = cache_repository.persist_full_aoi_anomaly_raster(full_aoi_manifest)
     polygonization_manifest = build_polygonization_manifest(

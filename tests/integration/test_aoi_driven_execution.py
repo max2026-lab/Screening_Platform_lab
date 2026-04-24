@@ -21,7 +21,7 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     aoi_path = tmp_path / "test_aoi.geojson"
     aoi_data = {
         "type": "Polygon",
-        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]]
     }
     aoi_path.write_text(json.dumps(aoi_data))
 
@@ -54,7 +54,7 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert len(summary["scene_summary"]["scene_ids"]) == 3
     assert summary["scene_summary"]["start_date"] == "2024-01-01"
     assert summary["scene_summary"]["end_date"] == "2024-03-31"
-    assert summary["aoi_execution_geometry"]["aoi_bbox"] == [0.0, 0.0, 1.0, 1.0]
+    assert summary["aoi_execution_geometry"]["aoi_bbox"] == [3000.0, 1000.0, 4000.0, 2000.0]
     assert summary["aoi_execution_geometry"]["tile_count"] == summary["tile_count"]
     assert summary["aoi_execution_geometry"]["selected_tile_count"] == summary["selected_tile_count"]
     assert len(summary["aoi_execution_geometry"]["derived_tile_bbox"]) == 4
@@ -81,12 +81,12 @@ def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monke
     left_aoi_path = tmp_path / "left_weighted_aoi.geojson"
     left_aoi_path.write_text(json.dumps({
         "type": "Polygon",
-        "coordinates": [[[0, 0], [6, 0], [6, 6], [3, 2], [0, 6], [0, 0]]],
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3500, 1200], [3000, 2000], [3000, 1000]]],
     }))
     right_aoi_path = tmp_path / "right_weighted_aoi.geojson"
     right_aoi_path.write_text(json.dumps({
         "type": "Polygon",
-        "coordinates": [[[0, 0], [6, 0], [6, 6], [3, 4], [0, 6], [0, 0]]],
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3500, 1600], [3000, 2000], [3000, 1000]]],
     }))
 
     assert main([
@@ -117,6 +117,33 @@ def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monke
 
     left_summary = json.loads(left_output.getvalue())
     right_summary = json.loads(right_output.getvalue())
+    left_review_output = io.StringIO()
+    with redirect_stdout(left_review_output):
+        assert main(["review-show", "--candidate-id", left_summary["top_candidate_id"]]) == 0
+    right_review_output = io.StringIO()
+    with redirect_stdout(right_review_output):
+        assert main(["review-show", "--candidate-id", right_summary["top_candidate_id"]]) == 0
+    left_export_output = io.StringIO()
+    with redirect_stdout(left_export_output):
+        assert main([
+            "export-create",
+            "--run-id", "run-left",
+            "--audience", "report_pdf",
+            "--requested-precision", "restricted",
+        ]) == 0
+    right_export_output = io.StringIO()
+    with redirect_stdout(right_export_output):
+        assert main([
+            "export-create",
+            "--run-id", "run-right",
+            "--audience", "report_pdf",
+            "--requested-precision", "restricted",
+        ]) == 0
+
+    left_review = json.loads(left_review_output.getvalue())
+    right_review = json.loads(right_review_output.getvalue())
+    left_export = json.loads(left_export_output.getvalue())
+    right_export = json.loads(right_export_output.getvalue())
     assert left_summary["run_metadata"]["aoi_bbox"] == right_summary["run_metadata"]["aoi_bbox"]
     assert left_summary["run_metadata"]["aoi_geometry"] != right_summary["run_metadata"]["aoi_geometry"]
     assert (
@@ -124,6 +151,8 @@ def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monke
         != right_summary["aoi_execution_geometry"]["derived_tile_bbox"]
         or left_summary["candidate_ids"] != right_summary["candidate_ids"]
     )
+    assert left_review["candidate"]["bounds"] != right_review["candidate"]["bounds"]
+    assert left_export["candidates"] != right_export["candidates"]
 
 def test_create_run_missing_aoi(tmp_path, monkeypatch):
     setup_mocks(tmp_path, monkeypatch)
@@ -195,7 +224,7 @@ def test_acceptance_check_regression(tmp_path, monkeypatch):
     aoi_path = tmp_path / "test_aoi.geojson"
     aoi_data = {
         "type": "Polygon",
-        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]]
     }
     aoi_path.write_text(json.dumps(aoi_data))
 
