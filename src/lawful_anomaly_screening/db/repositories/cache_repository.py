@@ -67,6 +67,18 @@ class CacheRepository:
             payload=tile_feature_input,
         )
 
+    def persist_full_aoi_anomaly_raster(self, full_aoi_anomaly_raster_manifest: dict) -> dict:
+        return self._persist_cached_json(
+            asset_kind="full_aoi_anomaly_raster",
+            payload=full_aoi_anomaly_raster_manifest,
+        )
+
+    def persist_polygonization_manifest(self, polygonization_manifest: dict) -> dict:
+        return self._persist_cached_json(
+            asset_kind="polygonization_manifest",
+            payload=polygonization_manifest,
+        )
+
     def fetch_cached_asset_row(self, cache_key: str) -> sqlite3.Row | None:
         with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
