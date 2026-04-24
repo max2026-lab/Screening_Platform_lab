@@ -22,6 +22,16 @@ CREATE TABLE IF NOT EXISTS source_scene_manifests (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS discovered_scenes (
+    source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+    scene_id TEXT NOT NULL,
+    source_endpoint_id TEXT NOT NULL,
+    acquired_at TEXT NOT NULL,
+    cloud_cover REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (source_scene_manifest_hash, scene_id)
+);
+
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     status TEXT NOT NULL,
@@ -202,6 +212,9 @@ CREATE TABLE IF NOT EXISTS paid_quotes (
 
 CREATE INDEX IF NOT EXISTS idx_paid_quotes_candidate_id
     ON paid_quotes(candidate_id);
+
+CREATE INDEX IF NOT EXISTS idx_discovered_scenes_manifest
+    ON discovered_scenes(source_scene_manifest_hash);
 
 CREATE TABLE IF NOT EXISTS paid_orders (
     provider_order_id TEXT PRIMARY KEY,

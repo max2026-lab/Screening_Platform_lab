@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from hashlib import sha256
 import json
 from pathlib import Path
 
@@ -63,19 +65,38 @@ def discover_scenes(
     if endpoint_id not in active_registry.endpoints:
         raise ValueError(f"unknown endpoint: {endpoint_id}")
 
-    # Stubbed discovery stays deterministic so manifest hashing remains stable in tests.
-    scenes = [
-        {
-            "scene_id": f"{endpoint_id}-scene-001",
-            "acquired_at": "2024-01-01T00:00:00Z",
-            "cloud_cover": 8.5,
-        },
-        {
-            "scene_id": f"{endpoint_id}-scene-002",
-            "acquired_at": "2024-01-03T00:00:00Z",
-            "cloud_cover": 12.0,
-        },
-    ]
+    discovery_seed = sha256(
+        json.dumps(
+            {
+                "source_endpoint_id": endpoint_id,
+                "aoi_hash": aoi_hash,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        ).hexdigest()
+    if start_date and end_date:
+        window_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        window_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    else:
+        window_start = date(2024, 1, 1)
+        window_end = date(2024, 1, 31)
+    window_span_days = max(0, (window_end - window_start).days)
+    scenes = []
+    for index in range(3):
+        token = discovery_seed[index * 16:(index + 1) * 16]
+        acquired_offset = 0 if window_span_days == 0 else int(token[:2], 16) % (window_span_days + 1)
+        acquired_on = window_start + timedelta(days=acquired_offset)
+        cloud_cover = round((int(token[2:6], 16) % 300) / 10.0, 1)
+        scenes.append(
+            {
+                "scene_id": f"{endpoint_id}-scene-{token}",
+                "acquired_at": f"{acquired_on.isoformat()}T00:00:00Z",
+                "cloud_cover": cloud_cover,
+            }
+        )
     return sorted(scenes, key=lambda scene: scene["scene_id"])
 
 

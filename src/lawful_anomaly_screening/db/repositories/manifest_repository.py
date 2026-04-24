@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 import sqlite3
 
-from lawful_anomaly_screening.db.sqlite import connect, insert_source_scene_manifest
+from lawful_anomaly_screening.db.sqlite import (
+    connect,
+    insert_discovered_scene,
+    insert_source_scene_manifest,
+)
 from lawful_anomaly_screening.sources.manifest_builder import (
     create_source_scene_manifest_hash,
     manifest_payload_reference,
@@ -31,6 +35,15 @@ class ManifestRepository:
                 source_name=manifest["source_name"],
                 manifest_path=manifest_path,
             )
+            for scene in manifest.get("scenes", []):
+                insert_discovered_scene(
+                    conn,
+                    source_scene_manifest_hash=manifest_hash,
+                    scene_id=scene["scene_id"],
+                    source_endpoint_id=manifest["source_endpoint_id"],
+                    acquired_at=scene["acquired_at"],
+                    cloud_cover=scene["cloud_cover"],
+                )
             conn.commit()
 
         return {
@@ -39,6 +52,24 @@ class ManifestRepository:
             "source_name": manifest["source_name"],
             "manifest_path": manifest_path,
         }
+
+    def list_scenes(self, source_scene_manifest_hash: str) -> list[dict]:
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    scene_id,
+                    source_endpoint_id,
+                    acquired_at,
+                    cloud_cover
+                FROM discovered_scenes
+                WHERE source_scene_manifest_hash = ?
+                ORDER BY scene_id
+                """,
+                (source_scene_manifest_hash,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def fetch_manifest_row(self, source_scene_manifest_hash: str) -> sqlite3.Row | None:
         with connect(self.db_path) as conn:

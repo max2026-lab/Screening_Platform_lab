@@ -62,6 +62,35 @@ def insert_source_scene_manifest(
     )
 
 
+def insert_discovered_scene(
+    conn: sqlite3.Connection,
+    *,
+    source_scene_manifest_hash: str,
+    scene_id: str,
+    source_endpoint_id: str,
+    acquired_at: str,
+    cloud_cover: float,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO discovered_scenes (
+            source_scene_manifest_hash,
+            scene_id,
+            source_endpoint_id,
+            acquired_at,
+            cloud_cover
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            source_scene_manifest_hash,
+            scene_id,
+            source_endpoint_id,
+            acquired_at,
+            cloud_cover,
+        ),
+    )
+
+
 def insert_run(
     conn: sqlite3.Connection,
     run_id: str,
@@ -114,6 +143,23 @@ def insert_run(
             start_date,
             end_date,
         ),
+    )
+
+
+def update_run_state(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+    status: str,
+    cache_status: str,
+) -> None:
+    conn.execute(
+        """
+        UPDATE runs
+        SET status = ?, cache_status = ?
+        WHERE run_id = ?
+        """,
+        (status, cache_status, run_id),
     )
 
 

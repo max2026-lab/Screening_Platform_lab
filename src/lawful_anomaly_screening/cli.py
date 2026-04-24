@@ -198,8 +198,6 @@ def cmd_execute_run(args: argparse.Namespace) -> int:
             settings.db_path,
             run_id=args.run_id,
         )
-        # Include metadata in summary
-        summary["run_metadata"] = run_metadata
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1

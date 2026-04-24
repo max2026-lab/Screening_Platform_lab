@@ -19,6 +19,7 @@ def test_sqlite_init(tmp_path):
         "feature_versions",
         "runs",
         "source_scene_manifests",
+        "discovered_scenes",
         "cached_assets",
         "geofence_hits",
         "export_records",
@@ -80,6 +81,25 @@ def test_bootstrap_minimal_run_path(tmp_path):
     assert manifest_count == 1
     assert manifest_row == ("earth_search", "earth_search", "data/manifests/manifest-hash-001.json")
     assert run_row == ("new", "earth_search", "synchronous", "review_only", "miss")
+
+
+def test_discovered_scene_schema_supports_manifest_linkage(tmp_path):
+    db = tmp_path / "discovered-scenes.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(discovered_scenes)")
+        }
+
+    assert {
+        "source_scene_manifest_hash",
+        "scene_id",
+        "source_endpoint_id",
+        "acquired_at",
+        "cloud_cover",
+    } <= columns
 
 
 def test_cached_assets_schema_supports_preprocessing_records(tmp_path):

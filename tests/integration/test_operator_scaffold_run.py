@@ -240,6 +240,7 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
         )
     )
     scaffold_run_payload = json.loads(run_cli("scaffold-run", "--run-id", "run-001"))
+    execute_run_payload = json.loads(run_cli("execute-run", "--run-id", "run-001"))
     export_payload = json.loads(
         run_cli(
             "export-create",
@@ -254,6 +255,11 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
 
     assert create_run_payload["run_id"] == "run-001"
     assert scaffold_run_payload["candidate_count"] > 0
+    assert execute_run_payload["run_metadata"]["status"] == "review_ready"
+    assert execute_run_payload["run_metadata"]["cache_status"] == "warm"
+    assert execute_run_payload["scene_summary"]["scene_count"] > 0
+    assert execute_run_payload["scene_summary"]["start_date"] == "2024-01-01"
+    assert execute_run_payload["scene_summary"]["end_date"] == "2024-03-31"
     assert export_payload["run_id"] == "run-001"
     assert export_payload["precision_tier"] == "restricted"
     assert (outside_cwd / export_payload["artifact_path"]).is_file()

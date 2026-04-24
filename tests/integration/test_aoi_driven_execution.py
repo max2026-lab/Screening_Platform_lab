@@ -3,6 +3,7 @@ import io
 from contextlib import redirect_stdout
 from pathlib import Path
 from lawful_anomaly_screening.cli import main
+from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
 from lawful_anomaly_screening.settings import Settings
 
 def setup_mocks(tmp_path, monkeypatch):
@@ -46,6 +47,12 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert "run_metadata" in summary
     assert summary["run_metadata"]["run_id"] == "test-run-001"
     assert summary["run_metadata"]["start_date"] == "2024-01-01"
+    assert summary["run_metadata"]["status"] == "review_ready"
+    assert summary["run_metadata"]["cache_status"] == "warm"
+    assert summary["scene_summary"]["scene_count"] == 3
+    assert len(summary["scene_summary"]["scene_ids"]) == 3
+    assert summary["scene_summary"]["start_date"] == "2024-01-01"
+    assert summary["scene_summary"]["end_date"] == "2024-03-31"
     
     # 3. verify review-queue
     args = ["review-queue", "--run-id", "test-run-001"]
@@ -56,6 +63,11 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     queue = json.loads(f.getvalue())
     assert len(queue) > 0
     assert queue[0]["run_id"] == "test-run-001"
+
+    persisted_scenes = ManifestRepository(db_path).list_scenes(
+        summary["run_metadata"]["source_scene_manifest_hash"]
+    )
+    assert [scene["scene_id"] for scene in persisted_scenes] == summary["scene_summary"]["scene_ids"]
 
 def test_create_run_missing_aoi(tmp_path, monkeypatch):
     setup_mocks(tmp_path, monkeypatch)

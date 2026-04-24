@@ -13,6 +13,7 @@ from lawful_anomaly_screening.db.sqlite import (
     insert_tile,
     insert_tile_feature,
     insert_tile_score,
+    update_run_state,
 )
 from lawful_anomaly_screening.sources.candidate_scoring import (
     build_candidate_score_records,
@@ -230,14 +231,7 @@ def scaffold_run_for_run_id(
                 integrity_delta=score_record["integrity_delta"],
                 integrity_within_tolerance=score_record["integrity_within_tolerance"],
             )
-        conn.execute(
-            """
-            UPDATE runs
-            SET status = ?, cache_status = ?
-            WHERE run_id = ?
-            """,
-            ("review_ready", "warm", run_id),
-        )
+        update_run_state(conn, run_id=run_id, status="review_ready", cache_status="warm")
         conn.commit()
 
     selected_tiles = [tile for tile in flagged_tiles if tile["selected_for_polygonization"]]

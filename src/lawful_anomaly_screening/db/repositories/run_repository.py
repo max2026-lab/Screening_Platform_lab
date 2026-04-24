@@ -44,3 +44,15 @@ class RunRepository:
         if data.get("aoi_bbox"):
             data["aoi_bbox"] = json.loads(data["aoi_bbox"])
         return data
+
+    def update_run_state(self, *, run_id: str, status: str, cache_status: str) -> None:
+        with connect(self.db_path) as conn:
+            conn.execute(
+                """
+                UPDATE runs
+                SET status = ?, cache_status = ?
+                WHERE run_id = ?
+                """,
+                (status, cache_status, run_id),
+            )
+            conn.commit()
