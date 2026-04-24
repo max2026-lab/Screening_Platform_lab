@@ -133,3 +133,21 @@ CREATE TABLE IF NOT EXISTS candidate_features (
     cloud_seam_overlap_ratio REAL NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS candidate_scores (
+    candidate_id TEXT PRIMARY KEY REFERENCES candidate_polygons(candidate_id),
+    polygonization_manifest_cache_key TEXT NOT NULL REFERENCES cached_assets(cache_key),
+    source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+    source_endpoint_id TEXT NOT NULL,
+    parent_tile_id TEXT NOT NULL REFERENCES tiles(tile_id),
+    parent_tile_score REAL NOT NULL,
+    texture_support REAL NOT NULL,
+    compactness_support REAL NOT NULL,
+    polygon_object_score REAL NOT NULL,
+    candidate_score REAL NOT NULL,
+    score_breakdown_json TEXT NOT NULL,
+    contribution_sum REAL NOT NULL,
+    integrity_delta REAL NOT NULL,
+    integrity_within_tolerance INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

@@ -109,3 +109,21 @@ class CandidateFeatureRecord:
     local_contrast_inputs_json: str
     water_edge_overlap_ratio: float
     cloud_seam_overlap_ratio: float
+
+
+@dataclass(frozen=True)
+class CandidateScoreRecord:
+    candidate_id: str
+    polygonization_manifest_cache_key: str
+    source_scene_manifest_hash: str
+    source_endpoint_id: str
+    parent_tile_id: str
+    parent_tile_score: float
+    texture_support: float
+    compactness_support: float
+    polygon_object_score: float
+    candidate_score: float
+    score_breakdown_json: str
+    contribution_sum: float
+    integrity_delta: float
+    integrity_within_tolerance: bool

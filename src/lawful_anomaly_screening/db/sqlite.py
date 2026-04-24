@@ -365,6 +365,62 @@ def insert_candidate_feature(
     )
 
 
+def insert_candidate_score(
+    conn: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    polygonization_manifest_cache_key: str,
+    source_scene_manifest_hash: str,
+    source_endpoint_id: str,
+    parent_tile_id: str,
+    parent_tile_score: float,
+    texture_support: float,
+    compactness_support: float,
+    polygon_object_score: float,
+    candidate_score: float,
+    score_breakdown: dict[str, float],
+    contribution_sum: float,
+    integrity_delta: float,
+    integrity_within_tolerance: bool,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO candidate_scores (
+            candidate_id,
+            polygonization_manifest_cache_key,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            parent_tile_id,
+            parent_tile_score,
+            texture_support,
+            compactness_support,
+            polygon_object_score,
+            candidate_score,
+            score_breakdown_json,
+            contribution_sum,
+            integrity_delta,
+            integrity_within_tolerance
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            candidate_id,
+            polygonization_manifest_cache_key,
+            source_scene_manifest_hash,
+            source_endpoint_id,
+            parent_tile_id,
+            parent_tile_score,
+            texture_support,
+            compactness_support,
+            polygon_object_score,
+            candidate_score,
+            json.dumps(score_breakdown, sort_keys=True),
+            contribution_sum,
+            integrity_delta,
+            int(integrity_within_tolerance),
+        ),
+    )
+
+
 def bootstrap_minimal_run(
     db_path: Path | str,
     *,

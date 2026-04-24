@@ -27,6 +27,7 @@ def test_sqlite_init(tmp_path):
         "tile_scores",
         "candidate_polygons",
         "candidate_features",
+        "candidate_scores",
     } <= tables
 
 
@@ -197,3 +198,31 @@ def test_candidate_schema_supports_polygon_and_feature_records(tmp_path):
         "water_edge_overlap_ratio",
         "cloud_seam_overlap_ratio",
     } <= candidate_feature_columns
+
+
+def test_candidate_score_schema_supports_retained_score_records(tmp_path):
+    db = tmp_path / "candidate-scores.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        candidate_score_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(candidate_scores)")
+        }
+
+    assert {
+        "candidate_id",
+        "polygonization_manifest_cache_key",
+        "source_scene_manifest_hash",
+        "source_endpoint_id",
+        "parent_tile_id",
+        "parent_tile_score",
+        "texture_support",
+        "compactness_support",
+        "polygon_object_score",
+        "candidate_score",
+        "score_breakdown_json",
+        "contribution_sum",
+        "integrity_delta",
+        "integrity_within_tolerance",
+    } <= candidate_score_columns
