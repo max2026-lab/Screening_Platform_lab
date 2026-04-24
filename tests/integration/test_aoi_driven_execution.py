@@ -120,3 +120,49 @@ def test_create_run_end_before_start(tmp_path, monkeypatch):
             sys.stderr = old_stderr
             
     assert "end-date cannot be before start-date" in f.getvalue()
+
+def test_acceptance_check_regression(tmp_path, monkeypatch):
+    setup_mocks(tmp_path, monkeypatch)
+    
+    aoi_path = tmp_path / "test_aoi.geojson"
+    aoi_data = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+    }
+    aoi_path.write_text(json.dumps(aoi_data))
+
+    # Create and execute run 1
+    main([
+        "create-run", "--run-id", "run-1", "--aoi-path", str(aoi_path),
+        "--start-date", "2024-01-01", "--end-date", "2024-03-31",
+        "--attestation", "present", "--geofence", "clear"
+    ])
+    main(["execute-run", "--run-id", "run-1"])
+    
+    # Create and execute run 2
+    main([
+        "create-run", "--run-id", "run-2", "--aoi-path", str(aoi_path),
+        "--start-date", "2024-01-01", "--end-date", "2024-03-31",
+        "--attestation", "present", "--geofence", "clear"
+    ])
+    main(["execute-run", "--run-id", "run-2"])
+    
+    # Run acceptance-check with --retuned-run-id
+    # Use area that might allow PASS if deterministic local paths result in same candidates
+    args = [
+        "acceptance-check",
+        "--run-id", "run-1",
+        "--aoi-area-km2", "20",
+        "--retuned-run-id", "run-2"
+    ]
+    f = io.StringIO()
+    with redirect_stdout(f):
+        # We don't strictly care if it passes or warns, just that it doesn't AttributeError
+        main(args)
+    
+    summary = json.loads(f.getvalue())
+    assert "status" in summary
+    # Verify the check we cared about is present
+    stability_check = next((c for c in summary["checks"] if c["name"] == "top_10_stability_after_small_retune"), None)
+    assert stability_check is not None
+    assert "observed" in stability_check

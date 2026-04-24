@@ -372,7 +372,7 @@ def cmd_acceptance_check(args: argparse.Namespace) -> int:
         repository = AcceptanceRepository(load_settings().db_path)
         stability_value = top10_stability_rate(
             repository.fetch_candidate_rows(args.run_id),
-            repository.fetch_candidate_rows(repository.retuned_run_id),
+            repository.fetch_candidate_rows(args.retuned_run_id),
         )
     summary = build_acceptance_summary(
         kpi_summary=kpi_summary,
