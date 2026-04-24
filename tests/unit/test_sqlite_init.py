@@ -100,6 +100,29 @@ def test_cached_assets_schema_supports_preprocessing_records(tmp_path):
     } <= columns
 
 
+def test_export_record_schema_supports_precision_logging(tmp_path):
+    db = tmp_path / "exports.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        export_record_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(export_records)")
+        }
+
+    assert {
+        "export_record_id",
+        "run_id",
+        "audience",
+        "precision_tier",
+        "artifact_name",
+        "bundle_name",
+        "artifact_path",
+        "exact_coordinates_included",
+        "coordinate_resolution_m",
+    } <= export_record_columns
+
+
 def test_tiles_schema_supports_retained_scoring_records(tmp_path):
     db = tmp_path / "tiles.sqlite3"
     init_db(db)

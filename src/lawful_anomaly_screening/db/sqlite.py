@@ -130,6 +130,47 @@ def insert_cached_asset(
     )
 
 
+def insert_export_record(
+    conn: sqlite3.Connection,
+    *,
+    export_record_id: str,
+    run_id: str,
+    audience: str,
+    precision_tier: str,
+    artifact_name: str,
+    bundle_name: str,
+    artifact_path: str,
+    exact_coordinates_included: bool,
+    coordinate_resolution_m: int | None,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO export_records (
+            export_record_id,
+            run_id,
+            audience,
+            precision_tier,
+            artifact_name,
+            bundle_name,
+            artifact_path,
+            exact_coordinates_included,
+            coordinate_resolution_m
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            export_record_id,
+            run_id,
+            audience,
+            precision_tier,
+            artifact_name,
+            bundle_name,
+            artifact_path,
+            int(exact_coordinates_included),
+            coordinate_resolution_m,
+        ),
+    )
+
+
 def insert_tile(
     conn: sqlite3.Connection,
     *,

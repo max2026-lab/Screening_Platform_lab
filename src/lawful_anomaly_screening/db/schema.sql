@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS export_records (
     run_id TEXT NOT NULL REFERENCES runs(run_id),
     audience TEXT NOT NULL,
     precision_tier TEXT NOT NULL,
+    artifact_name TEXT NOT NULL,
+    bundle_name TEXT NOT NULL,
+    artifact_path TEXT NOT NULL,
+    exact_coordinates_included INTEGER NOT NULL DEFAULT 0,
+    coordinate_resolution_m INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

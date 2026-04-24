@@ -143,3 +143,16 @@ class ReviewActionRecord:
     new_state: str
     note: str | None
     acted_at: str
+
+
+@dataclass(frozen=True)
+class ExportRecord:
+    export_record_id: str
+    run_id: str
+    audience: str
+    precision_tier: str
+    artifact_name: str
+    bundle_name: str
+    artifact_path: str
+    exact_coordinates_included: bool
+    coordinate_resolution_m: int | None

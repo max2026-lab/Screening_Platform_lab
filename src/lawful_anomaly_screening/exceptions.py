@@ -12,3 +12,7 @@ class ReviewDecisionError(LawfulAnomalyScreeningError):
 
 class ReviewStateError(LawfulAnomalyScreeningError):
     """Raised when a review state transition is invalid."""
+
+
+class ExportPolicyError(LawfulAnomalyScreeningError):
+    """Raised when export precision rules are violated."""
