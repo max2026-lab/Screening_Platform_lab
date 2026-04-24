@@ -94,9 +94,9 @@ def test_retained_formula_helpers():
         {"b02": 0.1, "b03": 0.2, "b04": 0.1},
     ) == 33.333333
     assert compute_persistence([1.0, 2.0, 2.5, 1.5]) == 12.5
-    assert compute_cloud_penalty(0.4) == -12.0
-    assert compute_noise_penalty(0.2) == -6.0
-    assert compute_tile_score(30.0, 12.5, -12.0, -6.0) == 24.5
+    assert compute_cloud_penalty(24, 80) == -9.0
+    assert compute_noise_penalty(0.4, 0.2, 0.8, 3.0) == -10.2
+    assert compute_tile_score(30.0, 12.5, -9.0, -10.2) == 23.3
 
 
 def test_component_ranges_and_signed_penalties():
@@ -106,13 +106,54 @@ def test_component_ranges_and_signed_penalties():
         {"b02": 0.01},
     )
     persistence = compute_persistence([0.0, 2.0, 3.0, 4.0])
-    cloud_penalty = compute_cloud_penalty(1.5)
-    noise_penalty = compute_noise_penalty(0.9)
+    cloud_penalty = compute_cloud_penalty(120, 80)
+    noise_penalty = compute_noise_penalty(1.5, 0.9, 0.1, 7.0)
 
     assert 0.0 <= optical_anomaly <= 40.0
     assert 0.0 <= persistence <= 25.0
     assert -30.0 <= cloud_penalty <= 0.0
     assert -30.0 <= noise_penalty <= 0.0
+    assert cloud_penalty <= 0.0
+    assert noise_penalty <= 0.0
+
+
+def test_tile_feature_inputs_match_retained_helper_signatures():
+    composite_manifest, composite_cache_key = _composite_manifest()
+    tile_feature_input = build_tile_feature_input(
+        composite_manifest,
+        composite_cache_key,
+        x_index=2,
+        y_index=1,
+    )
+
+    assert set(tile_feature_input["score_inputs"]) == {
+        "target_bands",
+        "baseline_median_bands",
+        "baseline_std_bands",
+        "valid_season_optical_values",
+        "masked_or_invalid_pixel_count",
+        "total_pixel_count",
+        "water_edge_overlap_ratio",
+        "cloud_seam_overlap_ratio",
+        "compactness_ratio_value",
+        "elongation",
+    }
+
+
+def test_tile_score_uses_signed_penalty_formula():
+    optical_anomaly = 28.0
+    persistence = 12.5
+    cloud_penalty = compute_cloud_penalty(18, 60)
+    noise_penalty = compute_noise_penalty(0.3, 0.25, 0.7, 2.0)
+
+    assert cloud_penalty <= 0.0
+    assert noise_penalty <= 0.0
+    assert compute_tile_score(
+        optical_anomaly,
+        persistence,
+        cloud_penalty,
+        noise_penalty,
+    ) == round(optical_anomaly + persistence + cloud_penalty + noise_penalty, 6)
 
 
 def test_top_valid_tile_selection_flags_only_top_15_percent():

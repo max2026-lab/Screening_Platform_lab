@@ -133,8 +133,12 @@ def test_tiles_schema_supports_retained_scoring_records(tmp_path):
         "baseline_median_bands_json",
         "baseline_std_bands_json",
         "valid_season_optical_values_json",
-        "cloud_fraction",
-        "noise_fraction",
+        "masked_or_invalid_pixel_count",
+        "total_pixel_count",
+        "water_edge_overlap_ratio",
+        "cloud_seam_overlap_ratio",
+        "compactness_ratio_value",
+        "elongation",
     } <= tile_feature_columns
     assert {
         "tile_id",

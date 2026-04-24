@@ -80,8 +80,12 @@ CREATE TABLE IF NOT EXISTS tile_features (
     baseline_median_bands_json TEXT NOT NULL,
     baseline_std_bands_json TEXT NOT NULL,
     valid_season_optical_values_json TEXT NOT NULL,
-    cloud_fraction REAL NOT NULL,
-    noise_fraction REAL NOT NULL,
+    masked_or_invalid_pixel_count INTEGER NOT NULL,
+    total_pixel_count INTEGER NOT NULL,
+    water_edge_overlap_ratio REAL NOT NULL,
+    cloud_seam_overlap_ratio REAL NOT NULL,
+    compactness_ratio_value REAL NOT NULL,
+    elongation REAL NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

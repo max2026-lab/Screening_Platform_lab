@@ -179,8 +179,12 @@ def insert_tile_feature(
     baseline_median_bands: dict[str, float],
     baseline_std_bands: dict[str, float],
     valid_season_optical_values: list[float],
-    cloud_fraction: float,
-    noise_fraction: float,
+    masked_or_invalid_pixel_count: int,
+    total_pixel_count: int,
+    water_edge_overlap_ratio: float,
+    cloud_seam_overlap_ratio: float,
+    compactness_ratio_value: float,
+    elongation: float,
 ) -> None:
     conn.execute(
         """
@@ -193,9 +197,13 @@ def insert_tile_feature(
             baseline_median_bands_json,
             baseline_std_bands_json,
             valid_season_optical_values_json,
-            cloud_fraction,
-            noise_fraction
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            masked_or_invalid_pixel_count,
+            total_pixel_count,
+            water_edge_overlap_ratio,
+            cloud_seam_overlap_ratio,
+            compactness_ratio_value,
+            elongation
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             tile_feature_input_cache_key,
@@ -206,8 +214,12 @@ def insert_tile_feature(
             json.dumps(baseline_median_bands, sort_keys=True),
             json.dumps(baseline_std_bands, sort_keys=True),
             json.dumps(valid_season_optical_values),
-            cloud_fraction,
-            noise_fraction,
+            masked_or_invalid_pixel_count,
+            total_pixel_count,
+            water_edge_overlap_ratio,
+            cloud_seam_overlap_ratio,
+            compactness_ratio_value,
+            elongation,
         ),
     )
 

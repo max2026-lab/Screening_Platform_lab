@@ -191,8 +191,12 @@ def build_tile_feature_input(
                 round(2.1 + ((x_index + y_index) * 0.2), 6),
                 round(2.4 + (y_index * 0.15), 6),
             ],
-            "cloud_fraction": round(0.03 * ((x_index + y_index) % 4), 6),
-            "noise_fraction": round(0.02 * ((x_index * 2 + y_index) % 3), 6),
+            "masked_or_invalid_pixel_count": 6 + (((x_index + y_index) % 5) * 3),
+            "total_pixel_count": 64,
+            "water_edge_overlap_ratio": round(0.1 * ((x_index + y_index) % 4), 6),
+            "cloud_seam_overlap_ratio": round(0.05 * ((x_index * 2 + y_index) % 5), 6),
+            "compactness_ratio_value": round(0.9 - (0.08 * ((x_index + y_index) % 4)), 6),
+            "elongation": round(1.0 + (0.45 * ((x_index * 3 + y_index) % 4)), 6),
         },
     }
     tile_payload["tile_id"] = create_tile_id(tile_payload)
@@ -260,12 +264,34 @@ def compute_persistence(valid_season_optical_values: list[float]) -> float:
     return round(_clamp(25.0 * hit_ratio, 0.0, 25.0), 6)
 
 
-def compute_cloud_penalty(cloud_fraction: float) -> float:
-    return round(_clamp(-30.0 * max(cloud_fraction, 0.0), -30.0, 0.0), 6)
+def compute_cloud_penalty(
+    masked_or_invalid_pixel_count: int,
+    total_pixel_count: int,
+) -> float:
+    if total_pixel_count <= 0:
+        return -30.0
+
+    invalid_ratio = _clamp(masked_or_invalid_pixel_count / total_pixel_count, 0.0, 1.0)
+    return round(_clamp(-30.0 * invalid_ratio, -30.0, 0.0), 6)
 
 
-def compute_noise_penalty(noise_fraction: float) -> float:
-    return round(_clamp(-30.0 * max(noise_fraction, 0.0), -30.0, 0.0), 6)
+def compute_noise_penalty(
+    water_edge_overlap_ratio: float,
+    cloud_seam_overlap_ratio: float,
+    compactness_ratio_value: float,
+    elongation: float,
+) -> float:
+    normalized_water_edge = _clamp(water_edge_overlap_ratio, 0.0, 1.0)
+    normalized_cloud_seam = _clamp(cloud_seam_overlap_ratio, 0.0, 1.0)
+    compactness_deficit = _clamp(1.0 - compactness_ratio_value, 0.0, 1.0)
+    elongation_excess = _clamp((max(elongation, 1.0) - 1.0) / 3.0, 0.0, 1.0)
+    penalty_ratio = (
+        (normalized_water_edge * 0.35)
+        + (normalized_cloud_seam * 0.35)
+        + (compactness_deficit * 0.15)
+        + (elongation_excess * 0.15)
+    )
+    return round(_clamp(-30.0 * penalty_ratio, -30.0, 0.0), 6)
 
 
 def compute_tile_score(
@@ -285,8 +311,16 @@ def score_retained_tile(tile_feature_input: dict) -> dict:
         score_inputs["baseline_std_bands"],
     )
     persistence = compute_persistence(score_inputs["valid_season_optical_values"])
-    cloud_penalty = compute_cloud_penalty(score_inputs["cloud_fraction"])
-    noise_penalty = compute_noise_penalty(score_inputs["noise_fraction"])
+    cloud_penalty = compute_cloud_penalty(
+        score_inputs["masked_or_invalid_pixel_count"],
+        score_inputs["total_pixel_count"],
+    )
+    noise_penalty = compute_noise_penalty(
+        score_inputs["water_edge_overlap_ratio"],
+        score_inputs["cloud_seam_overlap_ratio"],
+        score_inputs["compactness_ratio_value"],
+        score_inputs["elongation"],
+    )
     tile_score = compute_tile_score(
         optical_anomaly,
         persistence,

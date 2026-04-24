@@ -58,8 +58,12 @@ class TileFeatureRecord:
     baseline_median_bands_json: str
     baseline_std_bands_json: str
     valid_season_optical_values_json: str
-    cloud_fraction: float
-    noise_fraction: float
+    masked_or_invalid_pixel_count: int
+    total_pixel_count: int
+    water_edge_overlap_ratio: float
+    cloud_seam_overlap_ratio: float
+    compactness_ratio_value: float
+    elongation: float
 
 
 @dataclass(frozen=True)

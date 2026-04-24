@@ -81,8 +81,12 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
             baseline_median_bands=tile_feature_input["score_inputs"]["baseline_median_bands"],
             baseline_std_bands=tile_feature_input["score_inputs"]["baseline_std_bands"],
             valid_season_optical_values=tile_feature_input["score_inputs"]["valid_season_optical_values"],
-            cloud_fraction=tile_feature_input["score_inputs"]["cloud_fraction"],
-            noise_fraction=tile_feature_input["score_inputs"]["noise_fraction"],
+            masked_or_invalid_pixel_count=tile_feature_input["score_inputs"]["masked_or_invalid_pixel_count"],
+            total_pixel_count=tile_feature_input["score_inputs"]["total_pixel_count"],
+            water_edge_overlap_ratio=tile_feature_input["score_inputs"]["water_edge_overlap_ratio"],
+            cloud_seam_overlap_ratio=tile_feature_input["score_inputs"]["cloud_seam_overlap_ratio"],
+            compactness_ratio_value=tile_feature_input["score_inputs"]["compactness_ratio_value"],
+            elongation=tile_feature_input["score_inputs"]["elongation"],
         )
         insert_tile_score(
             conn,
@@ -121,8 +125,12 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
                 baseline_median_bands_json,
                 baseline_std_bands_json,
                 valid_season_optical_values_json,
-                cloud_fraction,
-                noise_fraction
+                masked_or_invalid_pixel_count,
+                total_pixel_count,
+                water_edge_overlap_ratio,
+                cloud_seam_overlap_ratio,
+                compactness_ratio_value,
+                elongation
             FROM tile_features
             WHERE tile_id = ?
             """,
@@ -158,8 +166,12 @@ def test_tile_record_persistence_with_cached_tile_input(tmp_path):
         json.dumps(tile_feature_input["score_inputs"]["baseline_median_bands"], sort_keys=True),
         json.dumps(tile_feature_input["score_inputs"]["baseline_std_bands"], sort_keys=True),
         json.dumps(tile_feature_input["score_inputs"]["valid_season_optical_values"]),
-        tile_feature_input["score_inputs"]["cloud_fraction"],
-        tile_feature_input["score_inputs"]["noise_fraction"],
+        tile_feature_input["score_inputs"]["masked_or_invalid_pixel_count"],
+        tile_feature_input["score_inputs"]["total_pixel_count"],
+        tile_feature_input["score_inputs"]["water_edge_overlap_ratio"],
+        tile_feature_input["score_inputs"]["cloud_seam_overlap_ratio"],
+        tile_feature_input["score_inputs"]["compactness_ratio_value"],
+        tile_feature_input["score_inputs"]["elongation"],
     )
     assert tile_score_row == (
         scored_tile["tile_id"],
