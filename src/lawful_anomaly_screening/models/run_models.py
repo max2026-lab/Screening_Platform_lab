@@ -89,6 +89,7 @@ class CandidatePolygonRecord:
     source_scene_manifest_hash: str
     source_endpoint_id: str
     parent_tile_id: str
+    current_state: str
     bounds_json: str
     centroid_json: str
     area_m2: float
@@ -129,3 +130,16 @@ class CandidateScoreRecord:
     contribution_sum: float
     integrity_delta: float
     integrity_within_tolerance: bool
+
+
+@dataclass(frozen=True)
+class ReviewActionRecord:
+    review_action_id: int
+    candidate_id: str
+    run_id: str
+    reviewer_id: str
+    decision: str
+    prior_state: str
+    new_state: str
+    note: str | None
+    acted_at: str

@@ -28,6 +28,7 @@ def test_sqlite_init(tmp_path):
         "candidate_polygons",
         "candidate_features",
         "candidate_scores",
+        "review_actions",
     } <= tables
 
 
@@ -177,6 +178,7 @@ def test_candidate_schema_supports_polygon_and_feature_records(tmp_path):
         "source_scene_manifest_hash",
         "source_endpoint_id",
         "parent_tile_id",
+        "current_state",
         "bounds_json",
         "centroid_json",
         "area_m2",
@@ -226,3 +228,26 @@ def test_candidate_score_schema_supports_retained_score_records(tmp_path):
         "integrity_delta",
         "integrity_within_tolerance",
     } <= candidate_score_columns
+
+
+def test_review_action_schema_supports_audit_records(tmp_path):
+    db = tmp_path / "review-actions.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        review_action_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(review_actions)")
+        }
+
+    assert {
+        "review_action_id",
+        "candidate_id",
+        "run_id",
+        "reviewer_id",
+        "decision",
+        "prior_state",
+        "new_state",
+        "note",
+        "acted_at",
+    } <= review_action_columns

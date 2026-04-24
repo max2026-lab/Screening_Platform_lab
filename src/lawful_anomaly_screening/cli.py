@@ -7,8 +7,9 @@ import sys
 
 from . import __version__
 from .db.repositories.manifest_repository import ManifestRepository
+from .db.repositories.review_repository import ReviewRepository
 from .db.sqlite import bootstrap_minimal_run, init_db
-from .exceptions import LegalGateError
+from .exceptions import LegalGateError, ReviewDecisionError, ReviewStateError
 from .legal import LEGAL_OUTCOME_ALLOWED, evaluate_legal_gate
 from .settings import load_settings
 from .sources.earth_search import load_endpoint_registry
@@ -102,6 +103,44 @@ def cmd_create_run(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_review_queue(args: argparse.Namespace) -> int:
+    repository = ReviewRepository(load_settings().db_path)
+    queue = repository.list_review_queue(limit=args.limit)
+    print(json.dumps(queue, indent=2))
+    return 0
+
+
+def cmd_review_show(args: argparse.Namespace) -> int:
+    repository = ReviewRepository(load_settings().db_path)
+    candidate = repository.fetch_candidate(args.candidate_id)
+    if candidate is None:
+        print(f"candidate not found: {args.candidate_id}", file=sys.stderr)
+        return 1
+    payload = {
+        "candidate": candidate,
+        "review_actions": repository.fetch_review_actions(args.candidate_id),
+    }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
+def cmd_review_decide(args: argparse.Namespace) -> int:
+    repository = ReviewRepository(load_settings().db_path)
+    action = repository.decide(
+        candidate_id=args.candidate_id,
+        run_id=args.run_id,
+        reviewer_id=args.reviewer_id,
+        decision=args.decision,
+        note=args.note,
+    )
+    payload = {
+        "review_action": action,
+        "candidate": repository.fetch_candidate(args.candidate_id),
+    }
+    print(json.dumps(payload, indent=2))
+    return 0
+
+
 def _add_legal_gate_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--attestation",
@@ -120,6 +159,26 @@ def _add_create_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--source-endpoint-id", default=None)
 
 
+def _add_review_queue_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--limit", type=int, default=None)
+
+
+def _add_review_show_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--candidate-id", required=True)
+
+
+def _add_review_decide_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--candidate-id", required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--reviewer-id", required=True)
+    parser.add_argument(
+        "--decision",
+        required=True,
+        choices=["reject", "watch", "approve_for_archive_quote"],
+    )
+    parser.add_argument("--note", default=None)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -131,6 +190,9 @@ def build_parser() -> argparse.ArgumentParser:
         "validate-aoi": cmd_validate_aoi,
         "legal-check": cmd_legal_check,
         "create-run": cmd_create_run,
+        "review-queue": cmd_review_queue,
+        "review-show": cmd_review_show,
+        "review-decide": cmd_review_decide,
     }
     for name, func in commands.items():
         p = sub.add_parser(name)
@@ -138,6 +200,12 @@ def build_parser() -> argparse.ArgumentParser:
             _add_legal_gate_arguments(p)
         if name == "create-run":
             _add_create_run_arguments(p)
+        if name == "review-queue":
+            _add_review_queue_arguments(p)
+        if name == "review-show":
+            _add_review_show_arguments(p)
+        if name == "review-decide":
+            _add_review_decide_arguments(p)
         p.set_defaults(func=func)
     return parser
 
@@ -147,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except LegalGateError as exc:
+    except (LegalGateError, ReviewDecisionError, ReviewStateError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

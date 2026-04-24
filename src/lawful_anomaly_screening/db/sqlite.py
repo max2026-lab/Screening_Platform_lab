@@ -276,6 +276,7 @@ def insert_candidate_polygon(
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
     parent_tile_id: str,
+    current_state: str = "pending_review",
     bounds: list[float],
     centroid: list[float],
     area_m2: float,
@@ -293,6 +294,7 @@ def insert_candidate_polygon(
             source_scene_manifest_hash,
             source_endpoint_id,
             parent_tile_id,
+            current_state,
             bounds_json,
             centroid_json,
             area_m2,
@@ -301,7 +303,7 @@ def insert_candidate_polygon(
             boundary_touching,
             possible_duplicate,
             duplicate_resolution_action
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             candidate_id,
@@ -309,6 +311,7 @@ def insert_candidate_polygon(
             source_scene_manifest_hash,
             source_endpoint_id,
             parent_tile_id,
+            current_state,
             json.dumps(bounds),
             json.dumps(centroid),
             area_m2,
@@ -417,6 +420,41 @@ def insert_candidate_score(
             contribution_sum,
             integrity_delta,
             int(integrity_within_tolerance),
+        ),
+    )
+
+
+def insert_review_action(
+    conn: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    run_id: str,
+    reviewer_id: str,
+    decision: str,
+    prior_state: str,
+    new_state: str,
+    note: str | None = None,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO review_actions (
+            candidate_id,
+            run_id,
+            reviewer_id,
+            decision,
+            prior_state,
+            new_state,
+            note
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            candidate_id,
+            run_id,
+            reviewer_id,
+            decision,
+            prior_state,
+            new_state,
+            note,
         ),
     )
 

@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS candidate_polygons (
     source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
     source_endpoint_id TEXT NOT NULL,
     parent_tile_id TEXT NOT NULL REFERENCES tiles(tile_id),
+    current_state TEXT NOT NULL DEFAULT 'pending_review',
     bounds_json TEXT NOT NULL,
     centroid_json TEXT NOT NULL,
     area_m2 REAL NOT NULL,
@@ -150,4 +151,16 @@ CREATE TABLE IF NOT EXISTS candidate_scores (
     integrity_delta REAL NOT NULL,
     integrity_within_tolerance INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS review_actions (
+    review_action_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidate_id TEXT NOT NULL REFERENCES candidate_polygons(candidate_id),
+    run_id TEXT NOT NULL REFERENCES runs(run_id),
+    reviewer_id TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    prior_state TEXT NOT NULL,
+    new_state TEXT NOT NULL,
+    note TEXT,
+    acted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
