@@ -186,7 +186,7 @@ try {
     Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
     Remove-Item Env:LAWFUL_ANOMALY_ENDPOINTS_PATH -ErrorAction SilentlyContinue
     $strictPreprocessingConfigPath = Join-Path $failFlowRoot "strict-preprocessing.json"
-    @'
+    $strictPreprocessingConfig = @'
 {
   "season_windows": {
     "leaf_on": {
@@ -218,7 +218,12 @@ try {
     "fail_mean_cloud_cover_max": 0.0
   }
 }
-'@ | Set-Content -LiteralPath $strictPreprocessingConfigPath -Encoding UTF8
+'@
+    [System.IO.File]::WriteAllText(
+        $strictPreprocessingConfigPath,
+        $strictPreprocessingConfig,
+        [System.Text.UTF8Encoding]::new($false)
+    )
 
     $env:LAWFUL_ANOMALY_PREPROCESSING_CONFIG_PATH = $strictPreprocessingConfigPath
     $env:LAWFUL_ANOMALY_DB_PATH = Join-Path $failFlowRoot "phase7-cloud-fail.sqlite3"
