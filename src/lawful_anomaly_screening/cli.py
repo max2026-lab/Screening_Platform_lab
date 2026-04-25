@@ -46,7 +46,9 @@ from .sources.earth_search import load_endpoint_registry
 from .sources.manifest_builder import build_manifest
 from .orchestration.acceptance import (
     build_acceptance_summary,
+    build_calibration_pack,
     build_kpi_summary,
+    render_calibration_pack_markdown,
     render_acceptance_summary_markdown,
     reproducibility_check,
     top10_stability_rate,
@@ -455,6 +457,39 @@ def cmd_acceptance_check(args: argparse.Namespace) -> int:
     return 0 if summary["status"] in {"pass", "warn"} else 1
 
 
+def cmd_calibration_pack(args: argparse.Namespace) -> int:
+    repository = AcceptanceRepository(load_settings().db_path)
+    run = repository.fetch_run(args.run_id)
+    if run is None:
+        print(f"run not found: {args.run_id}", file=sys.stderr)
+        return 1
+    reproducibility_summary = None
+    if args.comparison_run_id is not None:
+        comparison_run = repository.fetch_run(args.comparison_run_id)
+        if comparison_run is None:
+            print(f"run not found: {args.comparison_run_id}", file=sys.stderr)
+            return 1
+        reproducibility_summary = reproducibility_check(
+            baseline_run=run,
+            comparison_run=comparison_run,
+            baseline_candidates=repository.fetch_candidate_rows(args.run_id),
+            comparison_candidates=repository.fetch_candidate_rows(args.comparison_run_id),
+        )
+    pack = build_calibration_pack(
+        run_metadata=run,
+        candidate_rows=repository.fetch_candidate_rows(args.run_id),
+        review_state_counts=repository.fetch_review_state_counts(args.run_id),
+        export_audit_manifest=repository.fetch_latest_export_audit_manifest(args.run_id),
+        paid_escalation_count=repository.count_paid_escalations(args.run_id),
+        reproducibility_summary=reproducibility_summary,
+    )
+    if args.output == "markdown":
+        print(render_calibration_pack_markdown(pack), end="")
+    else:
+        print(json.dumps(pack, indent=2))
+    return 0 if pack["status"] in {"ready", "incomplete"} else 1
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -583,6 +618,12 @@ def _add_reproducibility_check_arguments(parser: argparse.ArgumentParser) -> Non
     parser.add_argument("--comparison-run-id", required=True)
 
 
+def _add_calibration_pack_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--comparison-run-id", default=None)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -607,6 +648,7 @@ def build_parser() -> argparse.ArgumentParser:
         "paid-order-status": cmd_paid_order_status,
         "kpi-summary": cmd_kpi_summary,
         "acceptance-check": cmd_acceptance_check,
+        "calibration-pack": cmd_calibration_pack,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -641,6 +683,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_kpi_summary_arguments(p)
         if name == "acceptance-check":
             _add_acceptance_check_arguments(p)
+        if name == "calibration-pack":
+            _add_calibration_pack_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

@@ -15,6 +15,11 @@ WARM_CACHE_REVIEW_PACKAGE_MAX_HOURS = 2.0
 PAID_ESCALATION_MAX_PER_100_KM2 = 5.0
 
 APPROVED_REVIEW_STATE = "approved_for_archive_quote"
+PENDING_REVIEW_STATE = "pending_review"
+WATCH_REVIEW_STATE = "watch"
+REJECTED_REVIEW_STATE = "rejected"
+CALIBRATION_REVIEW_COVERAGE_MINIMUM_RATE = 0.20
+CALIBRATION_TOP20_REVIEW_COVERAGE_MINIMUM_RATE = 0.50
 
 
 @dataclass(frozen=True)
@@ -61,6 +66,18 @@ def approval_rate(candidate_rows: list[dict], top_n: int = 20) -> float:
         1 for candidate in top_candidates if candidate.get("review_state") == APPROVED_REVIEW_STATE
     )
     return round(approved_count / len(top_candidates), 6)
+
+
+def review_coverage_rate(candidate_rows: list[dict], top_n: int | None = None) -> float:
+    ranked_candidates = rank_candidates(candidate_rows)
+    if top_n is not None:
+        ranked_candidates = ranked_candidates[:top_n]
+    if not ranked_candidates:
+        return 0.0
+    reviewed_count = sum(
+        1 for candidate in ranked_candidates if candidate.get("review_state") != PENDING_REVIEW_STATE
+    )
+    return round(reviewed_count / len(ranked_candidates), 6)
 
 
 def paid_escalations_per_100_km2(escalation_count: int, aoi_area_km2: float) -> float:
@@ -511,6 +528,220 @@ def build_acceptance_summary(
     }
 
 
+def build_calibration_pack(
+    *,
+    run_metadata: dict,
+    candidate_rows: list[dict],
+    review_state_counts: dict[str, int] | None = None,
+    export_audit_manifest: dict | None = None,
+    paid_escalation_count: int = 0,
+    reproducibility_summary: dict | None = None,
+) -> dict:
+    sorted_review_state_counts = dict(sorted((review_state_counts or {}).items()))
+    candidate_count = len(candidate_rows)
+    reviewed_count = sum(
+        count
+        for state, count in sorted_review_state_counts.items()
+        if state != PENDING_REVIEW_STATE
+    )
+    approved_count = int(sorted_review_state_counts.get(APPROVED_REVIEW_STATE, 0))
+    rejected_count = int(sorted_review_state_counts.get(REJECTED_REVIEW_STATE, 0))
+    watched_count = int(sorted_review_state_counts.get(WATCH_REVIEW_STATE, 0))
+    coverage_rate = review_coverage_rate(candidate_rows)
+    top20_coverage_rate = review_coverage_rate(candidate_rows, top_n=20)
+    top20_approval_rate = approval_rate(candidate_rows, top_n=20)
+    export_audit_ready = export_audit_manifest is not None
+    legal_gate = run_metadata.get("legal_gate")
+    legal_gate_decision = (legal_gate or {}).get("decision")
+    composite_quality = run_metadata.get("composite_quality")
+
+    acceptance_reasons = []
+    acceptance_status = "pass"
+    if legal_gate_decision not in {None, "pass"}:
+        acceptance_status = "fail"
+        acceptance_reasons.append(
+            f"Legal gate failed: {(legal_gate or {}).get('reason') or 'legal gate did not pass'}"
+        )
+    if candidate_count == 0:
+        acceptance_status = "fail"
+        acceptance_reasons.append("No candidates produced for run")
+    cloud_policy_decision = (composite_quality or {}).get("cloud_policy_decision")
+    if cloud_policy_decision == "warn":
+        if acceptance_status == "pass":
+            acceptance_status = "warn"
+        acceptance_reasons.append(
+            f"Composite cloud policy warning: {(composite_quality or {}).get('cloud_policy_reason') or 'cloud conditions require operator review'}"
+        )
+    if cloud_policy_decision == "fail":
+        acceptance_status = "fail"
+        acceptance_reasons.append(
+            f"Composite cloud policy failed: {(composite_quality or {}).get('cloud_policy_reason') or 'cloud policy blocked run'}"
+        )
+    if not export_audit_ready:
+        if acceptance_status == "pass":
+            acceptance_status = "warn"
+        acceptance_reasons.append("Export audit manifest not created yet")
+    normalized_reproducibility_summary = None
+    if reproducibility_summary is not None:
+        normalized_reproducibility_summary = {
+            "status": reproducibility_summary["status"],
+            "top10_stability_rate": reproducibility_summary["top10_stability_rate"],
+            "same_aoi_hash": reproducibility_summary["same_aoi_hash"],
+            "same_date_window": reproducibility_summary["same_date_window"],
+            "same_source_scene_manifest_hash": reproducibility_summary["same_source_scene_manifest_hash"],
+            "reasons": list(reproducibility_summary["reasons"]),
+        }
+        if reproducibility_summary["status"] == "fail":
+            acceptance_status = "fail"
+        elif reproducibility_summary["status"] == "warn" and acceptance_status == "pass":
+            acceptance_status = "warn"
+        if reproducibility_summary["status"] in {"warn", "fail"}:
+            acceptance_reasons.extend(normalized_reproducibility_summary["reasons"])
+    if not acceptance_reasons:
+        acceptance_reasons = ["Acceptance evidence available"]
+
+    readiness_checks = [
+        {
+            "name": "legal_gate",
+            "status": "pass" if legal_gate_decision == "pass" else "fail",
+            "observed": legal_gate_decision,
+            "target": "decision == pass",
+        },
+        {
+            "name": "candidate_count",
+            "status": "pass" if candidate_count > 0 else "incomplete",
+            "observed": candidate_count,
+            "target": ">= 1",
+        },
+        {
+            "name": "review_coverage_rate",
+            "status": "pass" if coverage_rate >= CALIBRATION_REVIEW_COVERAGE_MINIMUM_RATE else "incomplete",
+            "observed": coverage_rate,
+            "target": ">= 0.20",
+        },
+        {
+            "name": "top20_review_coverage_rate",
+            "status": "pass"
+            if top20_coverage_rate >= CALIBRATION_TOP20_REVIEW_COVERAGE_MINIMUM_RATE
+            else "incomplete",
+            "observed": top20_coverage_rate,
+            "target": ">= 0.50",
+        },
+        {
+            "name": "export_audit_ready",
+            "status": "pass" if export_audit_ready else "incomplete",
+            "observed": export_audit_ready,
+            "target": "export audit manifest available",
+        },
+    ]
+    if reproducibility_summary is None:
+        readiness_checks.append(
+            {
+                "name": "reproducibility",
+                "status": "incomplete",
+                "observed": None,
+                "target": "comparison run supplied with pass status",
+            }
+        )
+    else:
+        readiness_checks.append(
+            {
+                "name": "reproducibility",
+                "status": "pass" if reproducibility_summary["status"] == "pass" else reproducibility_summary["status"],
+                "observed": {
+                    "status": reproducibility_summary["status"],
+                    "top10_stability_rate": reproducibility_summary["top10_stability_rate"],
+                    "same_aoi_hash": reproducibility_summary["same_aoi_hash"],
+                    "same_date_window": reproducibility_summary["same_date_window"],
+                    "same_source_scene_manifest_hash": reproducibility_summary["same_source_scene_manifest_hash"],
+                },
+                "target": "comparison run supplied with pass status",
+            }
+        )
+
+    reasons = []
+    if legal_gate_decision != "pass":
+        reasons.append(
+            f"Legal gate failed: {(legal_gate or {}).get('reason') or 'legal gate did not pass'}"
+        )
+    if candidate_count == 0:
+        reasons.append("No candidates produced for run")
+    if coverage_rate < CALIBRATION_REVIEW_COVERAGE_MINIMUM_RATE:
+        reasons.append(
+            f"Review coverage rate {coverage_rate:.2f} is below minimum {CALIBRATION_REVIEW_COVERAGE_MINIMUM_RATE:.2f}"
+        )
+    if top20_coverage_rate < CALIBRATION_TOP20_REVIEW_COVERAGE_MINIMUM_RATE:
+        reasons.append(
+            f"Top-20 review coverage rate {top20_coverage_rate:.2f} is below minimum {CALIBRATION_TOP20_REVIEW_COVERAGE_MINIMUM_RATE:.2f}"
+        )
+    if not export_audit_ready:
+        reasons.append("Export audit manifest not created yet")
+    if reproducibility_summary is None:
+        reasons.append("Reproducibility comparison run not supplied")
+    elif reproducibility_summary["status"] != "pass":
+        reasons.extend(reproducibility_summary["reasons"])
+
+    check_statuses = {check["status"] for check in readiness_checks}
+    if "fail" in check_statuses:
+        status = "fail"
+    elif "incomplete" in check_statuses or "warn" in check_statuses:
+        status = "incomplete"
+    else:
+        status = "ready"
+
+    seen_reasons = set()
+    ordered_reasons = []
+    for reason in reasons:
+        if reason not in seen_reasons:
+            ordered_reasons.append(reason)
+            seen_reasons.add(reason)
+    if not ordered_reasons:
+        ordered_reasons = ["Calibration readiness checks passed"]
+
+    payload = {
+        "run_id": run_metadata["run_id"],
+        "status": status,
+        "reasons": ordered_reasons,
+        "processing_baseline_id": run_metadata.get("processing_baseline_id"),
+        "score_formula_version": run_metadata.get("score_formula_version"),
+        "source_scene_manifest_hash": run_metadata.get("source_scene_manifest_hash"),
+        "legal_gate": legal_gate,
+        "composite_quality": composite_quality,
+        "candidate_count": candidate_count,
+        "review_state_counts": sorted_review_state_counts,
+        "reviewed_candidate_count": reviewed_count,
+        "approved_candidate_count": approved_count,
+        "rejected_candidate_count": rejected_count,
+        "watched_candidate_count": watched_count,
+        "review_coverage_rate": coverage_rate,
+        "top20_review_coverage_rate": top20_coverage_rate,
+        "top20_approval_rate": top20_approval_rate,
+        "acceptance_summary": {
+            "run_id": run_metadata["run_id"],
+            "status": acceptance_status,
+            "reasons": acceptance_reasons,
+            "legal_gate": legal_gate,
+            "composite_quality": composite_quality,
+            "candidate_count": candidate_count,
+            "review_state_counts": sorted_review_state_counts,
+            "export_audit_ready": export_audit_ready,
+            "latest_export_audit_manifest_hash": (
+                export_audit_manifest.get("audit_manifest_hash") if export_audit_manifest else None
+            ),
+            "reproducibility_summary": normalized_reproducibility_summary,
+        },
+        "export_audit_ready": export_audit_ready,
+        "latest_export_audit_manifest_hash": (
+            export_audit_manifest.get("audit_manifest_hash") if export_audit_manifest else None
+        ),
+        "paid_escalation_count": paid_escalation_count,
+        "calibration_readiness_checks": readiness_checks,
+    }
+    if normalized_reproducibility_summary is not None:
+        payload["reproducibility_summary"] = normalized_reproducibility_summary
+    return payload
+
+
 def render_acceptance_summary_markdown(summary: dict) -> str:
     lines = [
         "# Acceptance Summary",
@@ -547,4 +778,49 @@ def render_acceptance_summary_markdown(summary: dict) -> str:
         lines.append(
             f"| `{check['name']}` | `{check['status']}` | {observed} | {check['target']} |"
         )
+    return "\n".join(lines) + "\n"
+
+
+def render_calibration_pack_markdown(pack: dict) -> str:
+    lines = [
+        "# Calibration Evidence Pack",
+        "",
+        f"- Run ID: `{pack['run_id']}`",
+        f"- Status: `{pack['status']}`",
+        f"- Candidate count: `{pack['candidate_count']}`",
+        f"- Reviewed candidate count: `{pack['reviewed_candidate_count']}`",
+        f"- Review coverage rate: `{pack['review_coverage_rate']}`",
+        f"- Top-20 review coverage rate: `{pack['top20_review_coverage_rate']}`",
+        f"- Top-20 approval rate: `{pack['top20_approval_rate']}`",
+        f"- Export audit ready: `{pack['export_audit_ready']}`",
+        f"- Paid escalation count: `{pack['paid_escalation_count']}`",
+    ]
+    if pack.get("legal_gate") is not None:
+        lines.append(f"- Legal gate: `{pack['legal_gate'].get('decision')}`")
+    if pack.get("composite_quality") is not None:
+        lines.append(
+            f"- Composite cloud policy: `{pack['composite_quality'].get('cloud_policy_decision')}`"
+        )
+    lines.extend(
+        [
+            "",
+            "## Readiness Checks",
+            "",
+            "| Check | Status | Observed | Target |",
+            "| --- | --- | ---: | --- |",
+        ]
+    )
+    for check in pack["calibration_readiness_checks"]:
+        observed = json.dumps(check["observed"])
+        lines.append(
+            f"| `{check['name']}` | `{check['status']}` | {observed} | {check['target']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Reasons",
+            "",
+        ]
+    )
+    lines.extend(f"- {reason}" for reason in pack["reasons"])
     return "\n".join(lines) + "\n"
