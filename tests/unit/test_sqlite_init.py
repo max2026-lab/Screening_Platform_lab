@@ -1,6 +1,11 @@
 import sqlite3
 
-from lawful_anomaly_screening.db.sqlite import bootstrap_minimal_run, init_db
+from lawful_anomaly_screening.db.repositories.run_repository import RunRepository
+from lawful_anomaly_screening.db.sqlite import (
+    LEGAL_GATE_MIGRATION_TIMESTAMP,
+    bootstrap_minimal_run,
+    init_db,
+)
 
 
 def test_sqlite_init(tmp_path):
@@ -81,6 +86,117 @@ def test_bootstrap_minimal_run_path(tmp_path):
     assert manifest_count == 1
     assert manifest_row == ("earth_search", "earth_search", "data/manifests/manifest-hash-001.json")
     assert run_row == ("new", "earth_search", "synchronous", "review_only", "miss", None)
+    assert result["legal_gate"]["evaluated_at"]
+
+
+def test_init_db_upgrades_existing_runs_table_with_legal_columns(tmp_path):
+    db = tmp_path / "legacy.sqlite3"
+    with sqlite3.connect(db) as conn:
+        conn.executescript(
+            """
+            PRAGMA foreign_keys = ON;
+            CREATE TABLE processing_baselines (
+                processing_baseline_id TEXT PRIMARY KEY,
+                score_formula_version TEXT NOT NULL,
+                execution_mode TEXT NOT NULL,
+                persistence_backend TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE source_scene_manifests (
+                source_scene_manifest_hash TEXT PRIMARY KEY,
+                source_endpoint_id TEXT NOT NULL,
+                source_name TEXT NOT NULL,
+                manifest_path TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE runs (
+                run_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                processing_baseline_id TEXT NOT NULL REFERENCES processing_baselines(processing_baseline_id),
+                source_scene_manifest_hash TEXT NOT NULL REFERENCES source_scene_manifests(source_scene_manifest_hash),
+                source_endpoint_id TEXT NOT NULL,
+                execution_mode TEXT NOT NULL,
+                rerun_mode TEXT NOT NULL,
+                cache_status TEXT NOT NULL,
+                aoi_path TEXT,
+                aoi_geometry_type TEXT,
+                aoi_geometry_json TEXT,
+                aoi_bbox TEXT,
+                aoi_hash TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO processing_baselines (
+                processing_baseline_id,
+                score_formula_version,
+                execution_mode,
+                persistence_backend
+            ) VALUES ('baseline-001', 'v1', 'synchronous', 'sqlite');
+            INSERT INTO source_scene_manifests (
+                source_scene_manifest_hash,
+                source_endpoint_id,
+                source_name,
+                manifest_path
+            ) VALUES ('manifest-001', 'earth_search', 'earth_search', 'data/manifests/manifest-001.json');
+            INSERT INTO runs (
+                run_id,
+                status,
+                processing_baseline_id,
+                source_scene_manifest_hash,
+                source_endpoint_id,
+                execution_mode,
+                rerun_mode,
+                cache_status,
+                aoi_hash,
+                start_date,
+                end_date
+            ) VALUES (
+                'run-legacy-001',
+                'new',
+                'baseline-001',
+                'manifest-001',
+                'earth_search',
+                'synchronous',
+                'review_only',
+                'miss',
+                'hash-001',
+                '2024-01-01',
+                '2024-03-31'
+            );
+            """
+        )
+        conn.commit()
+
+    init_db(db)
+
+    run = RunRepository(db).fetch_run("run-legacy-001")
+
+    assert run is not None
+    assert run["legal_gate"]["attestation_status"] == "missing"
+    assert run["legal_gate"]["geofence_status"] == "missing"
+    assert run["legal_gate"]["decision"] == "fail"
+    assert run["legal_gate"]["reason"] == ""
+    assert run["legal_gate"]["evaluated_at"] == LEGAL_GATE_MIGRATION_TIMESTAMP
+
+
+def test_runs_schema_supports_persisted_legal_gate_evidence(tmp_path):
+    db = tmp_path / "runs.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        run_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(runs)")
+        }
+
+    assert {
+        "legal_attestation_status",
+        "legal_geofence_status",
+        "legal_gate_decision",
+        "legal_gate_reason",
+        "legal_gate_evaluated_at",
+    } <= run_columns
 
 
 def test_discovered_scene_schema_supports_manifest_linkage(tmp_path):

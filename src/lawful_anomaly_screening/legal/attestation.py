@@ -8,3 +8,9 @@ def normalize_attestation_status(status: str | None = None) -> str:
     if normalized in VALID_ATTESTATION_STATUSES:
         return normalized
     return "unknown"
+
+
+def is_valid_attestation_status(status: str | None = None) -> bool:
+    if status is None:
+        return True
+    return status.strip().lower() in VALID_ATTESTATION_STATUSES

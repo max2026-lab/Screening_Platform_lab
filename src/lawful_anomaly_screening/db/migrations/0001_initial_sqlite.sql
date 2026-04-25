@@ -31,6 +31,18 @@ CREATE TABLE IF NOT EXISTS runs (
     execution_mode TEXT NOT NULL,
     rerun_mode TEXT NOT NULL,
     cache_status TEXT NOT NULL,
+    aoi_path TEXT,
+    aoi_geometry_type TEXT,
+    aoi_geometry_json TEXT,
+    aoi_bbox TEXT,
+    aoi_hash TEXT,
+    start_date TEXT,
+    end_date TEXT,
+    legal_attestation_status TEXT NOT NULL DEFAULT 'missing',
+    legal_geofence_status TEXT NOT NULL DEFAULT 'missing',
+    legal_gate_decision TEXT NOT NULL DEFAULT 'fail',
+    legal_gate_reason TEXT NOT NULL DEFAULT '',
+    legal_gate_evaluated_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -46,6 +46,12 @@ class Settings:
             "config/sources/endpoints.json",
         )
     )
+    geofence_policy_path: Path = field(
+        default_factory=lambda: _resolve_runtime_path(
+            "LAWFUL_ANOMALY_GEOFENCE_POLICY_PATH",
+            "config/legal/geofence_policy.json",
+        )
+    )
     preprocessing_config_path: Path = field(
         default_factory=lambda: _resolve_runtime_path(
             "LAWFUL_ANOMALY_PREPROCESSING_CONFIG_PATH",
