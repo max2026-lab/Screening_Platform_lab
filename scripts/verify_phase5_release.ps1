@@ -8,9 +8,16 @@ if ($currentDir -ne $repoRoot) {
     throw "Run this script from repo root: $repoRoot"
 }
 
-if (-not (Get-Command lawful-anomaly -ErrorAction SilentlyContinue)) {
-    throw "Required command not found: lawful-anomaly. Install the package first (for example, `uv tool install C:\Dev\Screening_Platform_lab`)."
+$repoLocalCliPath = Join-Path $repoRoot ".venv\Scripts\lawful-anomaly.exe"
+if (-not (Test-Path $repoLocalCliPath)) {
+    throw "Repo-local lawful-anomaly CLI not found at $repoLocalCliPath.`nRun: uv sync`nRun: uv pip install -e $repoRoot"
 }
+$env:PATH = "$(Split-Path -Parent $repoLocalCliPath);$env:PATH"
+$lawfulAnomalyCommand = Get-Command lawful-anomaly -ErrorAction SilentlyContinue
+if ($null -eq $lawfulAnomalyCommand) {
+    throw "Required command not found after PATH update: lawful-anomaly"
+}
+Write-Host "Using lawful-anomaly: $($lawfulAnomalyCommand.Source)"
 
 $helpOutput = & lawful-anomaly --help 2>&1
 if ($LASTEXITCODE -ne 0) {

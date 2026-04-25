@@ -97,7 +97,11 @@ After smoke execution:
 To run the scripted Phase 5 release verification:
 
 ```powershell
-# prerequisite: package already installed so `lawful-anomaly` is on PATH
+# from repo root
+uv sync
+uv pip install -e C:\Dev\Screening_Platform_lab
+
+# release scripts prefer repo-local .venv\Scripts\lawful-anomaly.exe
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase5_release.ps1
 ```
 
@@ -105,7 +109,8 @@ The script is launched from repo root, but executes operator commands from tempo
 
 ## Phase 6 Legal Verification
 
-Prerequisite: `lawful-anomaly` is already installed and available on `PATH`.
+From repo root, run `uv sync` and `uv pip install -e C:\Dev\Screening_Platform_lab` first.
+The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase6_legal_release.ps1
@@ -113,7 +118,8 @@ powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\v
 
 ## Phase 7 Composite Verification
 
-Prerequisite: `lawful-anomaly` is already installed and available on `PATH`.
+From repo root, run `uv sync` and `uv pip install -e C:\Dev\Screening_Platform_lab` first.
+The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase7_composite_release.ps1
