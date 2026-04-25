@@ -83,6 +83,25 @@ def test_bootstrap_minimal_run_path(tmp_path):
     assert run_row == ("new", "earth_search", "synchronous", "review_only", "miss", None)
 
 
+def test_runs_schema_supports_persisted_legal_gate_evidence(tmp_path):
+    db = tmp_path / "runs.sqlite3"
+    init_db(db)
+
+    with sqlite3.connect(db) as conn:
+        run_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(runs)")
+        }
+
+    assert {
+        "legal_attestation_status",
+        "legal_geofence_status",
+        "legal_gate_decision",
+        "legal_gate_reason",
+        "legal_gate_evaluated_at",
+    } <= run_columns
+
+
 def test_discovered_scene_schema_supports_manifest_linkage(tmp_path):
     db = tmp_path / "discovered-scenes.sqlite3"
     init_db(db)

@@ -15,6 +15,7 @@ from .db.repositories.paid_repository import PaidRepository
 from .db.repositories.review_repository import ReviewRepository
 from .db.repositories.run_repository import RunRepository
 from .db.sqlite import bootstrap_minimal_run, init_db
+from .db.sqlite import bootstrap_gate_failed_run
 from .exceptions import (
     ExportPolicyError,
     LegalGateError,
@@ -25,7 +26,13 @@ from .exceptions import (
 )
 from .orchestration.scaffold_run import scaffold_run_for_run_id
 from .orchestration.run_pipeline import execute_run
-from .legal import LEGAL_OUTCOME_ALLOWED, evaluate_legal_gate
+from .legal import (
+    LEGAL_GATE_DECISION_PASS,
+    LEGAL_OUTCOME_ALLOWED,
+    build_legal_gate_record,
+    evaluate_legal_gate,
+)
+from .legal.geofence import load_geofence_policy
 from .paid.order_service import (
     ORDER_STATUS_CANCELLED,
     ORDER_STATUS_CONFIRMED,
@@ -52,6 +59,22 @@ def _load_json(path: Path) -> object:
 
 def _load_baseline() -> dict:
     return _load_json(load_settings().baseline_path)
+
+
+def _build_legal_gate_for_aoi(
+    args: argparse.Namespace,
+    *,
+    aoi_path: str,
+    aoi_hash: str,
+) -> dict[str, str]:
+    settings = load_settings()
+    return build_legal_gate_record(
+        attestation_status=getattr(args, "attestation", None),
+        geofence_status=getattr(args, "geofence", None),
+        aoi_path=aoi_path,
+        aoi_hash=aoi_hash,
+        geofence_policy=load_geofence_policy(settings.geofence_policy_path),
+    ).as_dict()
 
 
 def _validate_date_window(start_str: str | None, end_str: str | None) -> tuple[str, str]:
@@ -91,6 +114,7 @@ def cmd_show_config(_: argparse.Namespace) -> int:
             "logging_config_path": str(settings.logging_config_path),
             "export_precision_path": str(settings.export_precision_path),
             "endpoints_path": str(settings.endpoints_path),
+            "geofence_policy_path": str(settings.geofence_policy_path),
             "preprocessing_config_path": str(settings.preprocessing_config_path),
         },
         indent=2,
@@ -123,9 +147,6 @@ def cmd_legal_check(_: argparse.Namespace) -> int:
 
 
 def cmd_create_run(_: argparse.Namespace) -> int:
-    outcome = _legal_gate_outcome(_)
-    if outcome != LEGAL_OUTCOME_ALLOWED:
-        raise LegalGateError(f"legal gate {outcome}")
     settings = load_settings()
     baseline = _load_baseline()
     init_db(settings.db_path)
@@ -135,6 +156,28 @@ def cmd_create_run(_: argparse.Namespace) -> int:
     aoi_metadata = validate_aoi_file(_.aoi_path)
 
     start_date, end_date = _validate_date_window(_.start_date, _.end_date)
+    run_id = _.run_id or f"run-{aoi_metadata['aoi_hash'][:8]}"
+    legal_gate = _build_legal_gate_for_aoi(
+        _,
+        aoi_path=aoi_metadata["aoi_path"],
+        aoi_hash=aoi_metadata["aoi_hash"],
+    )
+    if legal_gate["decision"] != LEGAL_GATE_DECISION_PASS:
+        bootstrap_gate_failed_run(
+            settings.db_path,
+            processing_baseline_id=baseline["processing_baseline_id"],
+            score_formula_version=baseline["score_formula_version"],
+            run_id=run_id,
+            aoi_path=aoi_metadata.get("aoi_path"),
+            aoi_geometry_type=aoi_metadata.get("aoi_geometry_type"),
+            aoi_geometry=aoi_metadata.get("aoi_geometry"),
+            aoi_bbox=aoi_metadata.get("aoi_bbox"),
+            aoi_hash=aoi_metadata.get("aoi_hash"),
+            start_date=start_date,
+            end_date=end_date,
+            legal_gate=legal_gate,
+        )
+        raise LegalGateError(legal_gate["reason"])
 
     registry = load_endpoint_registry()
     manifest = build_manifest(
@@ -146,7 +189,6 @@ def cmd_create_run(_: argparse.Namespace) -> int:
     manifest_repository = ManifestRepository(settings.db_path)
     manifest_record = manifest_repository.persist_manifest(manifest)
 
-    run_id = _.run_id or f"run-{manifest_record['source_scene_manifest_hash'][:8]}"
     run_record = bootstrap_minimal_run(
         settings.db_path,
         processing_baseline_id=baseline["processing_baseline_id"],
@@ -163,6 +205,7 @@ def cmd_create_run(_: argparse.Namespace) -> int:
         aoi_hash=aoi_metadata.get("aoi_hash"),
         start_date=start_date,
         end_date=end_date,
+        legal_gate=legal_gate,
     )
     if "fallback_diagnostics" in manifest:
         run_record["fallback_diagnostics"] = manifest["fallback_diagnostics"]
@@ -190,6 +233,13 @@ def cmd_execute_run(args: argparse.Namespace) -> int:
     
     if run_metadata is None:
         print(f"run not found: {args.run_id}", file=sys.stderr)
+        return 1
+
+    if run_metadata["legal_gate"]["decision"] != LEGAL_GATE_DECISION_PASS:
+        print(
+            f"run {args.run_id} blocked by legal gate: {run_metadata['legal_gate']['reason']}",
+            file=sys.stderr,
+        )
         return 1
         
     if not run_metadata.get("aoi_hash") or not run_metadata.get("start_date"):
@@ -409,12 +459,10 @@ def cmd_reproducibility_check(args: argparse.Namespace) -> int:
 def _add_legal_gate_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--attestation",
-        choices=["present", "missing", "unknown"],
         default="missing",
     )
     parser.add_argument(
         "--geofence",
-        choices=["clear", "hit", "missing", "unknown"],
         default="missing",
     )
 

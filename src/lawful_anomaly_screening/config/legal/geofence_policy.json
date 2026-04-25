@@ -1,0 +1,7 @@
+{
+  "default_status": "clear",
+  "blocked_path_suffixes": [
+    "tests/fixtures/blocked_aoi.geojson"
+  ],
+  "blocked_aoi_hashes": []
+}

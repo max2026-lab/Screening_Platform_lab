@@ -62,6 +62,8 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     expected_source_scene_ids = None
 
     assert create_run_1_payload["source_scene_manifest_hash"] == create_run_2_payload["source_scene_manifest_hash"]
+    assert create_run_1_payload["legal_gate"]["decision"] == "pass"
+    assert create_run_2_payload["legal_gate"]["decision"] == "pass"
 
     assert main(["scaffold-run", "--run-id", "run-001"]) == 0
     scaffold_run_1_payload = json.loads(capsys.readouterr().out)
@@ -138,6 +140,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     export_payload = json.loads(capsys.readouterr().out)
     export_path = Path(export_payload["artifact_path"])
     assert export_payload["precision_tier"] == "restricted"
+    assert export_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
     assert export_payload["exact_coordinates_included"] is False
     assert export_payload["candidates"]
     assert len(export_payload["candidates"][0]["bounds"]) == 4
@@ -331,9 +334,11 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     )
 
     assert create_run_payload["run_id"] == "run-001"
+    assert create_run_payload["legal_gate"]["decision"] == "pass"
     assert scaffold_run_payload["candidate_count"] > 0
     assert execute_run_payload["run_metadata"]["status"] == "review_ready"
     assert execute_run_payload["run_metadata"]["cache_status"] == "warm"
+    assert execute_run_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
     assert execute_run_payload["scene_summary"]["scene_count"] > 0
     assert execute_run_payload["scene_summary"]["start_date"] == "2024-01-01"
     assert execute_run_payload["scene_summary"]["end_date"] == "2024-03-31"
@@ -351,6 +356,7 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert review_show_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
     assert isinstance(review_show_payload["candidate"]["boundary_touching"], int)
     assert export_payload["run_id"] == "run-001"
+    assert export_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
     assert export_payload["precision_tier"] == "restricted"
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2
@@ -455,6 +461,7 @@ def test_installed_operator_cli_proves_provider_fallback_via_endpoint_override(t
 
     assert create_run_payload["run_id"] == "run-001"
     assert create_run_payload["source_endpoint_id"] == "cdse"
+    assert create_run_payload["legal_gate"]["decision"] == "pass"
     assert create_run_payload["fallback_diagnostics"]["fallback_used"] is True
     assert create_run_payload["fallback_diagnostics"]["attempted_endpoint_ids"] == [
         "sim_empty",
@@ -463,6 +470,7 @@ def test_installed_operator_cli_proves_provider_fallback_via_endpoint_override(t
     assert create_run_payload["fallback_diagnostics"]["selected_endpoint_id"] == "cdse"
     assert execute_run_payload["source_endpoint_id"] == "cdse"
     assert execute_run_payload["run_metadata"]["source_endpoint_id"] == "cdse"
+    assert execute_run_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
     assert execute_run_payload["scene_summary"]["scene_ids"]
     assert all(scene_id.startswith("cdse-scene-") for scene_id in execute_run_payload["scene_summary"]["scene_ids"])
     assert not (outside_cwd / "config").exists()

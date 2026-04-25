@@ -11,6 +11,7 @@ def test_config_loading():
     assert settings.logging_config_path == PACKAGE_ROOT / "config/logging/logging.yaml"
     assert settings.export_precision_path == PACKAGE_ROOT / "config/exports/precision_tiers.json"
     assert settings.endpoints_path == PACKAGE_ROOT / "config/sources/endpoints.json"
+    assert settings.geofence_policy_path == PACKAGE_ROOT / "config/legal/geofence_policy.json"
     assert settings.preprocessing_config_path == PACKAGE_ROOT / "config/sources/preprocessing.json"
 
 

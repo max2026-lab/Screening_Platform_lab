@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import sqlite3
 from typing import Any
+from hashlib import sha256
 
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
@@ -20,6 +21,35 @@ def init_db(db_path: Path | str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with connect(path) as conn:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        _ensure_runs_legal_gate_columns(conn)
+
+
+def _ensure_runs_legal_gate_columns(conn: sqlite3.Connection) -> None:
+    run_columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(runs)")
+    }
+    if "legal_attestation_status" not in run_columns:
+        conn.execute(
+            "ALTER TABLE runs ADD COLUMN legal_attestation_status TEXT NOT NULL DEFAULT 'missing'"
+        )
+    if "legal_geofence_status" not in run_columns:
+        conn.execute(
+            "ALTER TABLE runs ADD COLUMN legal_geofence_status TEXT NOT NULL DEFAULT 'missing'"
+        )
+    if "legal_gate_decision" not in run_columns:
+        conn.execute(
+            "ALTER TABLE runs ADD COLUMN legal_gate_decision TEXT NOT NULL DEFAULT 'fail'"
+        )
+    if "legal_gate_reason" not in run_columns:
+        conn.execute(
+            "ALTER TABLE runs ADD COLUMN legal_gate_reason TEXT NOT NULL DEFAULT ''"
+        )
+    if "legal_gate_evaluated_at" not in run_columns:
+        conn.execute(
+            "ALTER TABLE runs ADD COLUMN legal_gate_evaluated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        )
+    conn.commit()
 
 
 def insert_processing_baseline(
@@ -108,6 +138,11 @@ def insert_run(
     aoi_hash: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    legal_attestation_status: str = "missing",
+    legal_geofence_status: str = "missing",
+    legal_gate_decision: str = "fail",
+    legal_gate_reason: str = "",
+    legal_gate_evaluated_at: str | None = None,
 ) -> None:
     conn.execute(
         """
@@ -126,8 +161,13 @@ def insert_run(
             aoi_bbox,
             aoi_hash,
             start_date,
-            end_date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            end_date,
+            legal_attestation_status,
+            legal_geofence_status,
+            legal_gate_decision,
+            legal_gate_reason,
+            legal_gate_evaluated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -145,6 +185,11 @@ def insert_run(
             aoi_hash,
             start_date,
             end_date,
+            legal_attestation_status,
+            legal_geofence_status,
+            legal_gate_decision,
+            legal_gate_reason,
+            legal_gate_evaluated_at,
         ),
     )
 
@@ -754,7 +799,15 @@ def bootstrap_minimal_run(
     aoi_hash: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    legal_gate: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    resolved_legal_gate = legal_gate or {
+        "attestation_status": "missing",
+        "geofence_status": "missing",
+        "decision": "fail",
+        "reason": "",
+        "evaluated_at": None,
+    }
     with connect(db_path) as conn:
         insert_processing_baseline(
             conn,
@@ -782,6 +835,11 @@ def bootstrap_minimal_run(
             aoi_hash=aoi_hash,
             start_date=start_date,
             end_date=end_date,
+            legal_attestation_status=resolved_legal_gate["attestation_status"],
+            legal_geofence_status=resolved_legal_gate["geofence_status"],
+            legal_gate_decision=resolved_legal_gate["decision"],
+            legal_gate_reason=resolved_legal_gate["reason"],
+            legal_gate_evaluated_at=resolved_legal_gate["evaluated_at"],
         )
         conn.commit()
     return {
@@ -789,4 +847,74 @@ def bootstrap_minimal_run(
         "source_scene_manifest_hash": source_scene_manifest_hash,
         "source_endpoint_id": source_endpoint_id,
         "run_id": run_id,
+        "legal_gate": resolved_legal_gate,
+    }
+
+
+def bootstrap_gate_failed_run(
+    db_path: Path | str,
+    *,
+    processing_baseline_id: str,
+    score_formula_version: str,
+    run_id: str,
+    aoi_path: str | None = None,
+    aoi_geometry_type: str | None = None,
+    aoi_geometry: dict[str, Any] | None = None,
+    aoi_bbox: list[float] | None = None,
+    aoi_hash: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    legal_gate: dict[str, str],
+) -> dict[str, Any]:
+    placeholder_payload = {
+        "aoi_hash": aoi_hash,
+        "decision": legal_gate["decision"],
+        "geofence_status": legal_gate["geofence_status"],
+        "run_id": run_id,
+    }
+    source_scene_manifest_hash = f"legal-gate-{sha256(json.dumps(placeholder_payload, sort_keys=True).encode('utf-8')).hexdigest()[:16]}"
+    source_endpoint_id = "legal_gate"
+
+    with connect(db_path) as conn:
+        insert_processing_baseline(
+            conn,
+            processing_baseline_id=processing_baseline_id,
+            score_formula_version=score_formula_version,
+        )
+        insert_source_scene_manifest(
+            conn,
+            source_scene_manifest_hash=source_scene_manifest_hash,
+            source_endpoint_id=source_endpoint_id,
+            source_name="legal_gate",
+            manifest_path="",
+        )
+        insert_run(
+            conn,
+            run_id=run_id,
+            processing_baseline_id=processing_baseline_id,
+            source_scene_manifest_hash=source_scene_manifest_hash,
+            source_endpoint_id=source_endpoint_id,
+            status="legal_gate_failed",
+            cache_status="blocked",
+            aoi_path=aoi_path,
+            aoi_geometry_type=aoi_geometry_type,
+            aoi_geometry=aoi_geometry,
+            aoi_bbox=aoi_bbox,
+            aoi_hash=aoi_hash,
+            start_date=start_date,
+            end_date=end_date,
+            legal_attestation_status=legal_gate["attestation_status"],
+            legal_geofence_status=legal_gate["geofence_status"],
+            legal_gate_decision=legal_gate["decision"],
+            legal_gate_reason=legal_gate["reason"],
+            legal_gate_evaluated_at=legal_gate["evaluated_at"],
+        )
+        conn.commit()
+
+    return {
+        "processing_baseline_id": processing_baseline_id,
+        "source_scene_manifest_hash": source_scene_manifest_hash,
+        "source_endpoint_id": source_endpoint_id,
+        "run_id": run_id,
+        "legal_gate": legal_gate,
     }

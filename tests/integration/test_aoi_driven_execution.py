@@ -70,6 +70,9 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert summary["run_metadata"]["start_date"] == "2024-01-01"
     assert summary["run_metadata"]["status"] == "review_ready"
     assert summary["run_metadata"]["cache_status"] == "warm"
+    assert summary["run_metadata"]["legal_gate"]["decision"] == "pass"
+    assert summary["run_metadata"]["legal_gate"]["attestation_status"] == "present"
+    assert summary["run_metadata"]["legal_gate"]["geofence_status"] == "clear"
     assert summary["run_metadata"]["aoi_geometry"] == aoi_data
     assert summary["scene_summary"]["scene_count"] == 3
     assert len(summary["scene_summary"]["scene_ids"]) == 3
@@ -109,6 +112,7 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
             "--requested-precision", "restricted",
         ]) == 0
     export_payload = json.loads(export_output.getvalue())
+    assert export_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
     top_export_candidate = _candidate_by_id(export_payload, summary["top_candidate_id"])
     run_scene_ids = set(summary["scene_summary"]["scene_ids"])
     assert top_export_candidate["source_scene_ids"] == review_payload["candidate"]["source_scene_ids"]

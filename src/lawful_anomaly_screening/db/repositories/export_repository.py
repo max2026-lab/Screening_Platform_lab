@@ -7,6 +7,7 @@ import sqlite3
 
 from lawful_anomaly_screening.db.sqlite import connect, insert_export_record
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
+from lawful_anomaly_screening.db.repositories.run_repository import RunRepository
 from lawful_anomaly_screening.exports.precision_policy import (
     build_artifact_name,
     build_bundle_name,
@@ -31,6 +32,7 @@ class ExportRepository:
         candidates: list[dict],
         requested_precision: str | None = None,
     ) -> dict:
+        run_metadata = RunRepository(self.db_path).fetch_run(run_id)
         normalized_audience = normalize_export_tier(audience)
         policy = resolve_export_policy(normalized_audience, requested_precision)
         sanitized_candidates = sanitize_candidates_for_export(
@@ -98,6 +100,7 @@ class ExportRepository:
         return {
             "export_record_id": export_record_id,
             "run_id": run_id,
+            "run_metadata": run_metadata,
             "audience": normalized_audience,
             "precision_tier": policy.precision_tier,
             "artifact_name": artifact_name,

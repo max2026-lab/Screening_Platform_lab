@@ -32,6 +32,11 @@ class RunRepository:
                     aoi_hash,
                     start_date,
                     end_date,
+                    legal_attestation_status,
+                    legal_geofence_status,
+                    legal_gate_decision,
+                    legal_gate_reason,
+                    legal_gate_evaluated_at,
                     created_at
                 FROM runs
                 WHERE run_id = ?
@@ -46,6 +51,13 @@ class RunRepository:
             data["aoi_geometry"] = json.loads(data.pop("aoi_geometry_json"))
         if data.get("aoi_bbox"):
             data["aoi_bbox"] = json.loads(data["aoi_bbox"])
+        data["legal_gate"] = {
+            "attestation_status": data.pop("legal_attestation_status"),
+            "geofence_status": data.pop("legal_geofence_status"),
+            "decision": data.pop("legal_gate_decision"),
+            "reason": data.pop("legal_gate_reason"),
+            "evaluated_at": data.pop("legal_gate_evaluated_at"),
+        }
         return data
 
     def update_run_state(self, *, run_id: str, status: str, cache_status: str) -> None:

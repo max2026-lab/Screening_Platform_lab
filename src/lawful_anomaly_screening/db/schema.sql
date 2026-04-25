@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS runs (
     aoi_hash TEXT,
     start_date TEXT,
     end_date TEXT,
+    legal_attestation_status TEXT NOT NULL DEFAULT 'missing',
+    legal_geofence_status TEXT NOT NULL DEFAULT 'missing',
+    legal_gate_decision TEXT NOT NULL DEFAULT 'fail',
+    legal_gate_reason TEXT NOT NULL DEFAULT '',
+    legal_gate_evaluated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
