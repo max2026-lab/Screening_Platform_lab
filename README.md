@@ -23,6 +23,8 @@ pip install .
 lawful-anomaly --help
 ```
 
+Operator runbook: `docs/operator_runbook.md`
+
 ## Core commands
 
 - `version`
