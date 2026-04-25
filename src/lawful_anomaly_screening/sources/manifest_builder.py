@@ -21,21 +21,16 @@ def _stable_manifest_json(payload: dict) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
 
-def build_manifest(
-    source_endpoint_id: str | None = None,
+def _try_discover_and_validate(
+    endpoint_id: str,
     *,
-    scenes: list[dict] | None = None,
-    aoi_hash: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-) -> dict:
-    registry = load_endpoint_registry()
-    endpoint_id = source_endpoint_id or registry.primary_endpoint_id
-    if endpoint_id not in registry.endpoints:
-        raise SourceError(f"unknown source endpoint: {endpoint_id}")
-    
+    registry: EndpointRegistry,
+    aoi_hash: str | None,
+    start_date: str | None,
+    end_date: str | None,
+) -> list[dict]:
     endpoint = registry.endpoints[endpoint_id]
-    manifest_scenes = scenes if scenes is not None else discover_scenes(
+    manifest_scenes = discover_scenes(
         endpoint.endpoint_id,
         registry=registry,
         aoi_hash=aoi_hash,
@@ -66,8 +61,89 @@ def build_manifest(
             )
 
     normalized_scenes.sort(key=lambda scene: scene["scene_id"])
+    return normalized_scenes
 
-    return {
+
+def build_manifest(
+    source_endpoint_id: str | None = None,
+    *,
+    scenes: list[dict] | None = None,
+    aoi_hash: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> dict:
+    registry = load_endpoint_registry()
+    
+    if source_endpoint_id is not None:
+        if source_endpoint_id not in registry.endpoints:
+            raise SourceError(f"unknown source endpoint: {source_endpoint_id}")
+        endpoints_to_try = [source_endpoint_id]
+        allow_fallback = False
+    else:
+        endpoints_to_try = [registry.primary_endpoint_id] + list(registry.fallback_endpoint_ids)
+        allow_fallback = True
+
+    attempted_endpoint_ids = []
+    normalized_scenes = []
+    selected_endpoint_id = None
+    last_error = None
+
+    if scenes is not None:
+        selected_endpoint_id = endpoints_to_try[0]
+        attempted_endpoint_ids = [selected_endpoint_id]
+        endpoint = registry.endpoints[selected_endpoint_id]
+        if not scenes:
+            raise SourceError(
+                f"no scenes discovered for endpoint '{endpoint.endpoint_id}' "
+                f"({endpoint.provider}) in window {start_date} to {end_date}"
+            )
+        for index, scene in enumerate(scenes):
+            try:
+                normalized_scenes.append(
+                    {
+                        "scene_id": scene["scene_id"],
+                        "acquired_at": scene["acquired_at"],
+                        "cloud_cover": scene["cloud_cover"],
+                    }
+                )
+            except KeyError as exc:
+                raise SourceError(
+                    f"malformed scene record at index {index} from endpoint '{endpoint.endpoint_id}': "
+                    f"missing expected field {exc}"
+                )
+        normalized_scenes.sort(key=lambda scene: scene["scene_id"])
+    else:
+        for endpoint_id in endpoints_to_try:
+            attempted_endpoint_ids.append(endpoint_id)
+            try:
+                normalized_scenes = _try_discover_and_validate(
+                    endpoint_id,
+                    registry=registry,
+                    aoi_hash=aoi_hash,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                selected_endpoint_id = endpoint_id
+                last_error = None
+                break
+            except SourceError as exc:
+                last_error = exc
+                if not allow_fallback:
+                    break
+
+        if last_error is not None:
+            if allow_fallback and len(attempted_endpoint_ids) > 1:
+                raise SourceError(f"all configured endpoints failed. last error: {last_error}")
+            else:
+                raise last_error
+        
+        if selected_endpoint_id is None:
+            raise SourceError("no endpoints available to try")
+
+    endpoint = registry.endpoints[selected_endpoint_id]
+    fallback_used = allow_fallback and selected_endpoint_id != registry.primary_endpoint_id
+
+    manifest_payload = {
         "manifest_version": "phase4-aoi-manifest-v1",
         "execution_mode": "synchronous",
         "source_endpoint_id": endpoint.endpoint_id,
@@ -78,6 +154,13 @@ def build_manifest(
         "scene_count": len(normalized_scenes),
         "scenes": normalized_scenes,
     }
+    if fallback_used:
+        manifest_payload["fallback_diagnostics"] = {
+            "attempted_endpoint_ids": attempted_endpoint_ids,
+            "selected_endpoint_id": selected_endpoint_id,
+            "fallback_used": fallback_used,
+        }
+    return manifest_payload
 
 
 def create_source_scene_manifest_hash(manifest: dict) -> str:

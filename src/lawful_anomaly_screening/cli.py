@@ -165,6 +165,8 @@ def cmd_create_run(_: argparse.Namespace) -> int:
         start_date=start_date,
         end_date=end_date,
     )
+    if "fallback_diagnostics" in manifest:
+        run_record["fallback_diagnostics"] = manifest["fallback_diagnostics"]
     print(json.dumps(run_record, indent=2))
     return 0
 

@@ -13,12 +13,18 @@ def test_unknown_source_endpoint_id_fails_clearly():
 def test_empty_discovered_scenes_fails_clearly():
     # Using our simulation hook: aoi_hash="empty_discovery_trigger"
     with pytest.raises(SourceError, match="no scenes discovered for endpoint"):
-        build_manifest(aoi_hash="empty_discovery_trigger")
+        build_manifest(
+            source_endpoint_id="earth_search",
+            aoi_hash="empty_discovery_trigger"
+        )
 
 def test_malformed_provider_scene_payload_fails_clearly():
     # Using our simulation hook: aoi_hash="malformed_discovery_trigger"
     with pytest.raises(SourceError, match="malformed scene record"):
-        build_manifest(aoi_hash="malformed_discovery_trigger")
+        build_manifest(
+            source_endpoint_id="earth_search",
+            aoi_hash="malformed_discovery_trigger"
+        )
 
 def test_invalid_endpoint_config_fails_clearly(tmp_path):
     config_file = tmp_path / "invalid_endpoints.json"
