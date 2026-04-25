@@ -121,10 +121,17 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert run_2_candidate_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
     assert expected_source_scene_ids
     assert isinstance(run_2_candidate_payload["candidate"]["boundary_touching"], int)
+    assert run_1_candidate_payload["candidate"]["scoring_explanation"]["rank"] == 1
+    assert run_2_candidate_payload["candidate"]["scoring_explanation"]["rank"] == 1
+    assert run_1_candidate_payload["candidate"]["scoring_explanation"]["score_formula_version"] == "v1.5.1-phase0"
+    assert run_2_candidate_payload["candidate"]["scoring_explanation"]["score_formula_version"] == "v1.5.1-phase0"
     assert run_2_candidate_payload["candidate"]["source_scenes"]
     assert [
         scene["scene_id"] for scene in run_2_candidate_payload["candidate"]["source_scenes"]
     ] == run_2_candidate_payload["candidate"]["source_scene_ids"]
+    assert run_1_candidate_payload["candidate"]["scoring_explanation"] == (
+        run_2_candidate_payload["candidate"]["scoring_explanation"]
+    )
 
     assert main(
         [
@@ -148,6 +155,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"
     assert export_payload["candidates"][0]["source_scene_ids"]
     assert export_payload["candidates"][0]["source_scenes"]
+    assert export_payload["candidates"][0]["scoring_explanation"]["score_formula_version"] == "v1.5.1-phase0"
     assert [
         scene["scene_id"] for scene in export_payload["candidates"][0]["source_scenes"]
     ] == export_payload["candidates"][0]["source_scene_ids"]
@@ -172,6 +180,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     export_run_2_payload = json.loads(capsys.readouterr().out)
     assert sorted(
         (
+            json.dumps(candidate["scoring_explanation"], sort_keys=True),
             tuple(candidate["source_scene_ids"]),
             tuple(
                 (
@@ -185,6 +194,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
         for candidate in export_payload["candidates"]
     ) == sorted(
         (
+            json.dumps(candidate["scoring_explanation"], sort_keys=True),
             tuple(candidate["source_scene_ids"]),
             tuple(
                 (
@@ -361,6 +371,9 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert execute_run_payload["scene_summary"]["end_date"] == "2024-03-31"
     assert review_show_payload["candidate"]["source_scene_ids"]
     assert review_show_payload["candidate"]["source_scenes"]
+    assert review_show_payload["candidate"]["scoring_explanation"]["candidate_score"] == (
+        review_show_payload["candidate"]["candidate_score"]
+    )
     assert [
         scene["scene_id"] for scene in review_show_payload["candidate"]["source_scenes"]
     ] == review_show_payload["candidate"]["source_scene_ids"]
@@ -386,6 +399,7 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     )
     assert top_export_candidate["source_scene_ids"] == review_show_payload["candidate"]["source_scene_ids"]
     assert top_export_candidate["source_scenes"] == review_show_payload["candidate"]["source_scenes"]
+    assert top_export_candidate["scoring_explanation"] == review_show_payload["candidate"]["scoring_explanation"]
     assert [
         scene["scene_id"] for scene in top_export_candidate["source_scenes"]
     ] == top_export_candidate["source_scene_ids"]

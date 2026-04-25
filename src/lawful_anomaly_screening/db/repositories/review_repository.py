@@ -7,6 +7,10 @@ import sqlite3
 from lawful_anomaly_screening.db.sqlite import connect, insert_review_action
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
 from lawful_anomaly_screening.exceptions import ReviewDecisionError, ReviewStateError
+from lawful_anomaly_screening.sources.candidate_explainability import (
+    build_candidate_scoring_explanation,
+    rank_items_by_score,
+)
 
 
 REVIEW_DECISION_REJECT = "reject"
@@ -144,15 +148,25 @@ class ReviewRepository:
                     cp.boundary_touching,
                     cp.possible_duplicate,
                     cp.duplicate_resolution_action,
+                    pb.score_formula_version,
                     cs.parent_tile_score,
                     cs.candidate_score,
-                    cs.score_breakdown_json
+                    cs.score_breakdown_json,
+                    ts.optical_anomaly,
+                    ts.persistence,
+                    ts.cloud_penalty,
+                    ts.noise_penalty
                 FROM candidate_polygons cp
                 JOIN runs r
                     ON r.run_id = cp.run_id
+                LEFT JOIN processing_baselines pb
+                    ON pb.processing_baseline_id = r.processing_baseline_id
                 LEFT JOIN candidate_scores cs
                     ON cs.candidate_id = cp.candidate_id
                     AND cs.run_id = cp.run_id
+                LEFT JOIN tile_scores ts
+                    ON ts.tile_id = cp.parent_tile_id
+                    AND ts.run_id = cp.run_id
                 WHERE cp.candidate_id = ?
                     {run_filter_clause}
                 ORDER BY cp.run_id ASC
@@ -179,7 +193,76 @@ class ReviewRepository:
         candidate["score_breakdown"] = (
             json.loads(score_breakdown_json) if score_breakdown_json is not None else None
         )
+        candidate["scoring_explanation"] = self._build_scoring_explanation(candidate)
         return candidate
+
+    def _build_scoring_explanation(self, candidate: dict) -> dict:
+        candidate_rank = self._candidate_rank_map(str(candidate["run_id"])).get(str(candidate["candidate_id"]))
+        parent_tile_rank = self._tile_rank_map(str(candidate["run_id"])).get(str(candidate["parent_tile_id"]))
+        score_breakdown = candidate.get("score_breakdown") or {}
+        return build_candidate_scoring_explanation(
+            candidate_score=candidate.get("candidate_score"),
+            parent_tile_score=candidate.get("parent_tile_score"),
+            score_formula_version=candidate.get("score_formula_version"),
+            rank=candidate_rank,
+            parent_tile_rank=parent_tile_rank,
+            texture_support=score_breakdown.get("texture_support"),
+            compactness_support=score_breakdown.get("compactness_support"),
+            polygon_object_score=score_breakdown.get("polygon_object_score"),
+            weighted_parent_tile_score=score_breakdown.get("weighted_parent_tile_score"),
+            weighted_polygon_object_score=score_breakdown.get("weighted_polygon_object_score"),
+            optical_anomaly=candidate.get("optical_anomaly"),
+            persistence=candidate.get("persistence"),
+            cloud_penalty=candidate.get("cloud_penalty"),
+            noise_penalty=candidate.get("noise_penalty"),
+            source_scene_ids=list(candidate.get("source_scene_ids") or []),
+            source_scenes=list(candidate.get("source_scenes") or []),
+            boundary_touching=bool(candidate.get("boundary_touching")),
+            area_m2=candidate.get("area_m2"),
+        )
+
+    def _candidate_rank_map(self, run_id: str) -> dict[str, int]:
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    cp.candidate_id,
+                    cs.parent_tile_score,
+                    cs.candidate_score
+                FROM candidate_polygons cp
+                LEFT JOIN candidate_scores cs
+                    ON cs.candidate_id = cp.candidate_id
+                    AND cs.run_id = cp.run_id
+                WHERE cp.run_id = ?
+                """,
+                (run_id,),
+            ).fetchall()
+        return rank_items_by_score(
+            [dict(row) for row in rows],
+            id_key="candidate_id",
+            primary_score_key="candidate_score",
+            secondary_score_key="parent_tile_score",
+        )
+
+    def _tile_rank_map(self, run_id: str) -> dict[str, int]:
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    tile_id,
+                    tile_score
+                FROM tile_scores
+                WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchall()
+        return rank_items_by_score(
+            [dict(row) for row in rows],
+            id_key="tile_id",
+            primary_score_key="tile_score",
+        )
 
     def fetch_review_actions(self, candidate_id: str) -> list[dict]:
         with connect(self.db_path) as conn:

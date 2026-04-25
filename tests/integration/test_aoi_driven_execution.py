@@ -104,6 +104,14 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert review_payload["candidate"]["clipped_geometry"]["type"] == "MultiPolygon"
     assert review_payload["candidate"]["source_scene_ids"]
     assert review_payload["candidate"]["source_scenes"]
+    assert review_payload["candidate"]["scoring_explanation"]["candidate_score"] == (
+        review_payload["candidate"]["candidate_score"]
+    )
+    assert review_payload["candidate"]["scoring_explanation"]["rank"] == 1
+    assert review_payload["candidate"]["scoring_explanation"]["score_formula_version"] == "v1.5.1-phase0"
+    assert review_payload["candidate"]["scoring_explanation"]["source_scene_ids"] == (
+        review_payload["candidate"]["source_scene_ids"]
+    )
     assert [scene["scene_id"] for scene in review_payload["candidate"]["source_scenes"]] == review_payload["candidate"]["source_scene_ids"]
     assert set(review_payload["candidate"]["source_scene_ids"]) < set(summary["scene_summary"]["scene_ids"])
 
@@ -122,6 +130,7 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     run_scene_ids = set(summary["scene_summary"]["scene_ids"])
     assert top_export_candidate["source_scene_ids"] == review_payload["candidate"]["source_scene_ids"]
     assert top_export_candidate["source_scenes"] == review_payload["candidate"]["source_scenes"]
+    assert top_export_candidate["scoring_explanation"] == review_payload["candidate"]["scoring_explanation"]
     assert [scene["scene_id"] for scene in top_export_candidate["source_scenes"]] == top_export_candidate["source_scene_ids"]
     assert set(top_export_candidate["source_scene_ids"]) < run_scene_ids
     assert all(set(candidate["source_scene_ids"]).issubset(run_scene_ids) for candidate in export_payload["candidates"])
@@ -243,6 +252,7 @@ def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monke
     assert left_summary["scene_summary"]["scene_ids"] != right_summary["scene_summary"]["scene_ids"]
     assert left_review["candidate"]["source_scene_ids"] != right_review["candidate"]["source_scene_ids"]
     assert left_review["candidate"]["source_scenes"] != right_review["candidate"]["source_scenes"]
+    assert left_review["candidate"]["scoring_explanation"] != right_review["candidate"]["scoring_explanation"]
     assert (
         left_summary["aoi_execution_geometry"]["derived_tile_bbox"]
         != right_summary["aoi_execution_geometry"]["derived_tile_bbox"]

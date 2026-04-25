@@ -21,6 +21,10 @@ from lawful_anomaly_screening.sources.manifest_builder import (
     build_composite_quality_metadata,
     resolve_cloud_policy_thresholds,
 )
+from lawful_anomaly_screening.sources.candidate_explainability import (
+    build_candidate_scoring_explanation,
+    rank_items_by_score,
+)
 
 
 class ExportRepository:
@@ -169,12 +173,25 @@ class ExportRepository:
                     cp.boundary_touching,
                     cp.possible_duplicate,
                     cp.duplicate_resolution_action,
+                    pb.score_formula_version,
                     cs.parent_tile_score,
-                    cs.candidate_score
+                    cs.candidate_score,
+                    cs.score_breakdown_json,
+                    ts.optical_anomaly,
+                    ts.persistence,
+                    ts.cloud_penalty,
+                    ts.noise_penalty
                 FROM candidate_polygons cp
+                JOIN runs r
+                    ON r.run_id = cp.run_id
+                LEFT JOIN processing_baselines pb
+                    ON pb.processing_baseline_id = r.processing_baseline_id
                 LEFT JOIN candidate_scores cs
                     ON cs.candidate_id = cp.candidate_id
                     AND cs.run_id = cp.run_id
+                LEFT JOIN tile_scores ts
+                    ON ts.tile_id = cp.parent_tile_id
+                    AND ts.run_id = cp.run_id
                 WHERE cp.run_id = ?
                 ORDER BY
                     COALESCE(cs.candidate_score, -1.0) DESC,
@@ -186,6 +203,13 @@ class ExportRepository:
 
         candidates = []
         manifest_repository = ManifestRepository(self.db_path)
+        rank_map = rank_items_by_score(
+            [dict(row) for row in rows],
+            id_key="candidate_id",
+            primary_score_key="candidate_score",
+            secondary_score_key="parent_tile_score",
+        )
+        tile_rank_map = self._tile_rank_map(run_id)
         for row in rows:
             candidate = dict(row)
             source_scene_manifest_hash = candidate.pop("source_scene_manifest_hash")
@@ -200,10 +224,57 @@ class ExportRepository:
             candidate["clipped_geometry"] = (
                 json.loads(clipped_geometry_json) if clipped_geometry_json is not None else None
             )
+            score_breakdown_json = candidate.pop("score_breakdown_json")
+            candidate["score_breakdown"] = (
+                json.loads(score_breakdown_json) if score_breakdown_json is not None else None
+            )
             candidate["boundary_touching"] = bool(candidate["boundary_touching"])
             candidate["possible_duplicate"] = bool(candidate["possible_duplicate"])
+            candidate["scoring_explanation"] = build_candidate_scoring_explanation(
+                candidate_score=candidate.get("candidate_score"),
+                parent_tile_score=candidate.get("parent_tile_score"),
+                score_formula_version=candidate.get("score_formula_version"),
+                rank=rank_map.get(str(candidate["candidate_id"])),
+                parent_tile_rank=tile_rank_map.get(str(candidate["parent_tile_id"])),
+                texture_support=(candidate.get("score_breakdown") or {}).get("texture_support"),
+                compactness_support=(candidate.get("score_breakdown") or {}).get("compactness_support"),
+                polygon_object_score=(candidate.get("score_breakdown") or {}).get("polygon_object_score"),
+                weighted_parent_tile_score=(candidate.get("score_breakdown") or {}).get(
+                    "weighted_parent_tile_score"
+                ),
+                weighted_polygon_object_score=(candidate.get("score_breakdown") or {}).get(
+                    "weighted_polygon_object_score"
+                ),
+                optical_anomaly=candidate.get("optical_anomaly"),
+                persistence=candidate.get("persistence"),
+                cloud_penalty=candidate.get("cloud_penalty"),
+                noise_penalty=candidate.get("noise_penalty"),
+                source_scene_ids=list(candidate.get("source_scene_ids") or []),
+                source_scenes=list(candidate.get("source_scenes") or []),
+                boundary_touching=bool(candidate.get("boundary_touching")),
+                area_m2=candidate.get("area_m2"),
+            )
             candidates.append(candidate)
         return candidates
+
+    def _tile_rank_map(self, run_id: str) -> dict[str, int]:
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    tile_id,
+                    tile_score
+                FROM tile_scores
+                WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchall()
+        return rank_items_by_score(
+            [dict(row) for row in rows],
+            id_key="tile_id",
+            primary_score_key="tile_score",
+        )
 
     @staticmethod
     def _create_export_record_id(

@@ -9,6 +9,9 @@ from lawful_anomaly_screening.sources.candidate_scoring import (
     compute_texture_support,
     rank_candidate_scores,
 )
+from lawful_anomaly_screening.sources.candidate_explainability import (
+    build_candidate_scoring_explanation,
+)
 from lawful_anomaly_screening.sources.manifest_builder import (
     build_composite_metadata_manifest,
     build_preprocessing_manifest,
@@ -213,3 +216,63 @@ def test_candidate_ranking_is_deterministic():
         "candidate-b",
     ]
     assert [record["rank"] for record in ranked_records] == [1, 2, 3]
+
+
+def test_candidate_scoring_explanation_is_deterministic_and_operator_readable():
+    explanation = build_candidate_scoring_explanation(
+        candidate_score=67.971429,
+        parent_tile_score=82.0,
+        score_formula_version="v1.5.1-phase0",
+        rank=1,
+        parent_tile_rank=2,
+        texture_support=6.666667,
+        compactness_support=18.0,
+        polygon_object_score=35.238096,
+        weighted_parent_tile_score=57.4,
+        weighted_polygon_object_score=10.571429,
+        optical_anomaly=31.25,
+        persistence=18.75,
+        cloud_penalty=-4.21875,
+        noise_penalty=-6.5,
+        source_scene_ids=["scene-002", "scene-001"],
+        source_scenes=[
+            {"scene_id": "scene-001", "cloud_cover": 10.0},
+            {"scene_id": "scene-002", "cloud_cover": 15.0},
+        ],
+        boundary_touching=False,
+        area_m2=12000.0,
+    )
+
+    assert explanation == build_candidate_scoring_explanation(
+        candidate_score=67.971429,
+        parent_tile_score=82.0,
+        score_formula_version="v1.5.1-phase0",
+        rank=1,
+        parent_tile_rank=2,
+        texture_support=6.666667,
+        compactness_support=18.0,
+        polygon_object_score=35.238096,
+        weighted_parent_tile_score=57.4,
+        weighted_polygon_object_score=10.571429,
+        optical_anomaly=31.25,
+        persistence=18.75,
+        cloud_penalty=-4.21875,
+        noise_penalty=-6.5,
+        source_scene_ids=["scene-002", "scene-001"],
+        source_scenes=[
+            {"scene_id": "scene-001", "cloud_cover": 10.0},
+            {"scene_id": "scene-002", "cloud_cover": 15.0},
+        ],
+        boundary_touching=False,
+        area_m2=12000.0,
+    )
+    assert explanation["score_formula_version"] == "v1.5.1-phase0"
+    assert explanation["rank"] == 1
+    assert explanation["parent_tile_rank"] == 2
+    assert explanation["component_scores"]["optical_anomaly"] == 31.25
+    assert explanation["penalties"]["cloud_penalty"] == -4.21875
+    assert explanation["source_scene_ids"] == ["scene-001", "scene-002"]
+    assert explanation["composite_quality"]["cloud_policy_decision"] == "pass"
+    assert "candidate score 67.971429" in explanation["reason"]
+    assert "tile signals optical 31.250000" in explanation["reason"]
+    assert "2 source scenes" in explanation["reason"]

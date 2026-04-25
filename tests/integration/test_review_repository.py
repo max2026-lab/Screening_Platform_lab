@@ -264,6 +264,15 @@ def test_review_queue_ordering_and_decision_persistence(tmp_path):
             "cloud_cover": 0.3,
         },
     ]
+    assert candidate["scoring_explanation"]["candidate_score"] == candidate["candidate_score"]
+    assert candidate["scoring_explanation"]["parent_tile_score"] == candidate["parent_tile_score"]
+    assert candidate["scoring_explanation"]["score_formula_version"] == "v1.5.1-phase0"
+    assert candidate["scoring_explanation"]["source_scene_count"] == 3
+    assert candidate["scoring_explanation"]["source_scene_ids"] == candidate["source_scene_ids"]
+    assert candidate["scoring_explanation"]["composite_quality"]["contributing_scene_ids"] == (
+        candidate["source_scene_ids"]
+    )
+    assert "candidate score" in candidate["scoring_explanation"]["reason"]
     assert len(review_actions) == 1
     assert review_actions[0]["decision"] == "watch"
 
