@@ -91,3 +91,14 @@ After smoke execution:
 - verify no `config/` was copied into the outside working directory
 - verify no `PYTHONPATH` and no `sitecustomize` usage
 - run `git status` in repo root and confirm clean working tree
+
+## Repeatable Release Verification
+
+To run the scripted Phase 5 release verification:
+
+```powershell
+# prerequisite: package already installed so `lawful-anomaly` is on PATH
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase5_release.ps1
+```
+
+The script is launched from repo root, but executes operator commands from temporary directories outside the repository.
