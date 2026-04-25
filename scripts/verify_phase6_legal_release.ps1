@@ -23,9 +23,17 @@ function Invoke-ProcessCapture {
 
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $FilePath
-    foreach ($argument in $Arguments) {
-        [void]$startInfo.ArgumentList.Add($argument)
-    }
+    $startInfo.Arguments = [string]::Join(
+        " ",
+        ($Arguments | ForEach-Object {
+            if ($_ -match '[\s"]') {
+                '"' + ($_ -replace '"', '\"') + '"'
+            }
+            else {
+                $_
+            }
+        })
+    )
     $startInfo.WorkingDirectory = (Get-Location).Path
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
