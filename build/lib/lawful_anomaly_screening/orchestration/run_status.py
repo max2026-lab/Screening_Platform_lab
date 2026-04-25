@@ -1,3 +1,0 @@
-RUN_STATUS_NEW = "new"
-RUN_STATUS_BLOCKED = "blocked"
-RUN_STATUS_READY = "ready"
