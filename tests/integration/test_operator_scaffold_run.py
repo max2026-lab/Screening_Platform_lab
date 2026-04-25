@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 from lawful_anomaly_screening.cli import main
-from lawful_anomaly_screening.settings import REPO_ROOT
+from lawful_anomaly_screening.settings import REPO_ROOT, PACKAGE_ROOT
 
 
 def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows(
@@ -381,4 +381,4 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert isinstance(export_payload["candidates"][0]["boundary_touching"], bool)
     assert (outside_cwd / export_payload["artifact_path"]).is_file()
     assert not (outside_cwd / "config").exists()
-    assert (REPO_ROOT / "config" / "sources" / "endpoints.json").is_file()
+    assert (PACKAGE_ROOT / "config" / "sources" / "endpoints.json").is_file()

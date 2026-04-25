@@ -1,11 +1,11 @@
 import json
-from pathlib import Path
 
 from lawful_anomaly_screening.exports.precision_policy import (
     allow_exact_coordinates,
     apply_precision_to_centroid,
     redacted_for_public,
 )
+from lawful_anomaly_screening.settings import load_settings
 
 
 def test_public_export_never_precise():
@@ -19,7 +19,7 @@ def test_public_export_never_precise():
 
 
 def test_report_pdf_allows_exact_precision_option():
-    tiers = json.loads(Path("config/exports/precision_tiers.json").read_text(encoding="utf-8"))
+    tiers = json.loads(load_settings().export_precision_path.read_text(encoding="utf-8"))
     report_pdf = tiers["report_pdf"]
     assert report_pdf["precision"] == "configurable"
     assert report_pdf["allow_exact_coordinates"] is True

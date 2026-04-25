@@ -1,9 +1,10 @@
 import json
-from pathlib import Path
+
+from lawful_anomaly_screening.settings import load_settings
 
 
 def test_baseline_shape():
-    data = json.loads(Path("config/baselines/baseline_v1_5_default.json").read_text(encoding="utf-8"))
+    data = json.loads(load_settings().baseline_path.read_text(encoding="utf-8"))
     assert data["processing_baseline_id"] == "baseline_v1_5_default"
     assert data["score_formula_version"] == "v1.5.1-phase0"
     assert data["execution"]["tile_size"] == 320

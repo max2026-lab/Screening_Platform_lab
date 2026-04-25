@@ -6,9 +6,21 @@ This repository is intentionally synchronous, SQLite-only, and structured around
 
 ## Quick start
 
+For development:
 ```powershell
 uv sync
 uv run python -m lawful_anomaly_screening.cli --help
+```
+
+For operators:
+```powershell
+# Install the package globally (e.g. via pipx or uv tool)
+uv tool install .
+lawful-anomaly --help
+
+# Or install it into an active virtual environment
+pip install .
+lawful-anomaly --help
 ```
 
 ## Core commands

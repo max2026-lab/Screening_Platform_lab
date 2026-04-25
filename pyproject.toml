@@ -16,6 +16,12 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.yaml", "*.sql"]
+
+[project.scripts]
+lawful-anomaly = "lawful_anomaly_screening.cli:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

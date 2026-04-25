@@ -5,14 +5,14 @@ from pathlib import Path
 import os
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+PACKAGE_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = PACKAGE_ROOT.parent.parent
 
 
 def _resolve_runtime_path(env_var: str, default_relative_path: str) -> Path:
-    configured_path = Path(os.getenv(env_var, default_relative_path))
-    if configured_path.is_absolute():
-        return configured_path
-    return REPO_ROOT / configured_path
+    if env_path := os.getenv(env_var):
+        return Path(env_path)
+    return PACKAGE_ROOT / default_relative_path
 
 
 @dataclass(frozen=True)
