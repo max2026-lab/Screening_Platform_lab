@@ -440,7 +440,7 @@ try {
         throw "Calibration flow run B markdown calibration-pack unexpectedly failed.`n$($markdownBResult.StdErr)"
     }
     Assert-TextIncludes -Text $markdownBResult.StdOut -Expected "# Calibration Evidence Pack" -Context "Calibration flow run B markdown calibration-pack"
-    Assert-TextIncludes -Text $markdownBResult.StdOut -Expected "Status: `incomplete`" -Context "Calibration flow run B markdown calibration-pack"
+    Assert-TextIncludes -Text $markdownBResult.StdOut -Expected 'Status: `incomplete`' -Context "Calibration flow run B markdown calibration-pack"
     Assert-TextIncludes -Text $markdownBResult.StdOut -Expected "## Readiness Checks" -Context "Calibration flow run B markdown calibration-pack"
     Assert-TextIncludes -Text $markdownBResult.StdOut -Expected "## Reasons" -Context "Calibration flow run B markdown calibration-pack"
 
