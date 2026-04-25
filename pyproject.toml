@@ -17,7 +17,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"*" = ["*.json", "*.yaml", "*.sql"]
+lawful_anomaly_screening = ["config/**/*.json", "config/**/*.yaml", "db/**/*.sql"]
 
 [project.scripts]
 lawful-anomaly = "lawful_anomaly_screening.cli:main"

@@ -281,8 +281,10 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     env["LAWFUL_ANOMALY_DB_PATH"] = str(db_path)
 
     def run_cli(*args: str) -> str:
+        # Use 'lawful-anomaly' instead of 'python -m ...' to test the installed command path
+        # In this test environment, we use 'uv run' to ensure the command is available in the venv
         completed = subprocess.run(
-            [sys.executable, "-m", "lawful_anomaly_screening.cli", *args],
+            ["uv", "run", "lawful-anomaly", *args],
             cwd=outside_cwd,
             env=env,
             capture_output=True,
