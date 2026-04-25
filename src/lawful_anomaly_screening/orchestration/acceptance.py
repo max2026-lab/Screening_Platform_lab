@@ -10,6 +10,7 @@ TOP20_APPROVAL_MINIMUM_VIABLE_RATE = 0.15
 TOP20_APPROVAL_ASPIRATIONAL_RATE = 0.25
 REPRODUCIBILITY_SCORE_TOLERANCE = 0.5
 TOP10_STABILITY_MINIMUM_RATE = 0.70
+REPRODUCIBILITY_TOP10_MINIMUM_RATE = 0.80
 WARM_CACHE_REVIEW_PACKAGE_MAX_HOURS = 2.0
 PAID_ESCALATION_MAX_PER_100_KM2 = 5.0
 
@@ -109,33 +110,147 @@ def scores_within_tolerance(
     return True
 
 
+def _normalize_reproducibility_run(run: dict) -> dict:
+    return {
+        "processing_baseline_id": run.get("processing_baseline_id"),
+        "source_scene_manifest_hash": run.get("source_scene_manifest_hash"),
+        "aoi_hash": run.get("aoi_hash"),
+        "start_date": run.get("start_date"),
+        "end_date": run.get("end_date"),
+        "composite_quality": run.get("composite_quality"),
+    }
+
+
+def _ranked_candidates_by_key(candidate_rows: list[dict]) -> tuple[list[dict], dict[str, dict], dict[str, int]]:
+    ranked_candidates = rank_candidates(candidate_rows)
+    candidates_by_key = {candidate_identity(row): row for row in ranked_candidates}
+    ranks_by_key = {
+        candidate_identity(row): index
+        for index, row in enumerate(ranked_candidates, start=1)
+    }
+    return ranked_candidates, candidates_by_key, ranks_by_key
+
+
 def reproducibility_check(
-    baseline_manifest_hash: str,
-    comparison_manifest_hash: str,
+    *,
+    baseline_run: dict,
+    comparison_run: dict,
     baseline_candidates: list[dict],
     comparison_candidates: list[dict],
-    tolerance: float = REPRODUCIBILITY_SCORE_TOLERANCE,
-    top_n: int = 10,
+    top10_threshold: float = REPRODUCIBILITY_TOP10_MINIMUM_RATE,
 ) -> dict:
-    same_manifest = baseline_manifest_hash == comparison_manifest_hash
-    baseline_top_ids = top_candidate_match_keys(baseline_candidates, top_n)
-    comparison_top_ids = top_candidate_match_keys(comparison_candidates, top_n)
-    same_top_rank_order = baseline_top_ids == comparison_top_ids
-    scores_match = scores_within_tolerance(
-        baseline_candidates,
-        comparison_candidates,
-        tolerance=tolerance,
-        top_n=top_n,
+    same_processing_baseline = (
+        baseline_run.get("processing_baseline_id") == comparison_run.get("processing_baseline_id")
     )
-    passed = same_manifest and same_top_rank_order and scores_match
+    same_aoi_hash = baseline_run.get("aoi_hash") == comparison_run.get("aoi_hash")
+    same_date_window = (
+        baseline_run.get("start_date") == comparison_run.get("start_date")
+        and baseline_run.get("end_date") == comparison_run.get("end_date")
+    )
+    same_source_scene_manifest_hash = (
+        baseline_run.get("source_scene_manifest_hash")
+        == comparison_run.get("source_scene_manifest_hash")
+    )
+
+    baseline_ranked, baseline_by_key, baseline_ranks = _ranked_candidates_by_key(baseline_candidates)
+    comparison_ranked, comparison_by_key, comparison_ranks = _ranked_candidates_by_key(comparison_candidates)
+    common_keys = [
+        candidate_identity(row)
+        for row in baseline_ranked
+        if candidate_identity(row) in comparison_by_key
+    ]
+    added_keys = sorted(set(comparison_by_key) - set(baseline_by_key))
+    removed_keys = sorted(set(baseline_by_key) - set(comparison_by_key))
+    stability_rate = top10_stability_rate(baseline_candidates, comparison_candidates)
+
+    rank_deltas = [
+        {
+            "stable_candidate_key": stable_candidate_key,
+            "baseline_candidate_id": baseline_by_key[stable_candidate_key]["candidate_id"],
+            "comparison_candidate_id": comparison_by_key[stable_candidate_key]["candidate_id"],
+            "baseline_rank": baseline_ranks[stable_candidate_key],
+            "comparison_rank": comparison_ranks[stable_candidate_key],
+            "rank_delta": comparison_ranks[stable_candidate_key] - baseline_ranks[stable_candidate_key],
+        }
+        for stable_candidate_key in common_keys
+    ]
+    score_deltas = [
+        {
+            "stable_candidate_key": stable_candidate_key,
+            "baseline_candidate_id": baseline_by_key[stable_candidate_key]["candidate_id"],
+            "comparison_candidate_id": comparison_by_key[stable_candidate_key]["candidate_id"],
+            "baseline_score": round(
+                float(baseline_by_key[stable_candidate_key].get("candidate_score") or 0.0),
+                6,
+            ),
+            "comparison_score": round(
+                float(comparison_by_key[stable_candidate_key].get("candidate_score") or 0.0),
+                6,
+            ),
+            "score_delta": round(
+                float(comparison_by_key[stable_candidate_key].get("candidate_score") or 0.0)
+                - float(baseline_by_key[stable_candidate_key].get("candidate_score") or 0.0),
+                6,
+            ),
+        }
+        for stable_candidate_key in common_keys
+    ]
+
+    fail_reasons = []
+    warn_reasons = []
+    if not same_aoi_hash:
+        fail_reasons.append("AOI hash differs between runs")
+    if not same_date_window:
+        warn_dates = (
+            f"{baseline_run.get('start_date')} to {baseline_run.get('end_date')} vs "
+            f"{comparison_run.get('start_date')} to {comparison_run.get('end_date')}"
+        )
+        fail_reasons.append(f"Date window differs between runs: {warn_dates}")
+    if not same_processing_baseline:
+        warn_reasons.append("Processing baseline differs between runs")
+    if not same_source_scene_manifest_hash:
+        warn_reasons.append("Source scene manifest differs between runs")
+    if stability_rate < top10_threshold:
+        warn_reasons.append(
+            f"Top-10 stability rate {stability_rate:.2f} is below threshold {top10_threshold:.2f}"
+        )
+
+    if fail_reasons:
+        status = "fail"
+        reasons = fail_reasons + warn_reasons
+    elif warn_reasons:
+        status = "warn"
+        reasons = warn_reasons
+    else:
+        status = "pass"
+        reasons = ["Deterministic checks stable"]
+
     return {
-        "status": "pass" if passed else "fail",
-        "same_manifest": same_manifest,
-        "same_top_10_rank_order": same_top_rank_order,
-        "scores_within_tolerance": scores_match,
-        "score_tolerance": tolerance,
-        "baseline_top_10": baseline_top_ids,
-        "comparison_top_10": comparison_top_ids,
+        "baseline_run_id": baseline_run["run_id"],
+        "comparison_run_id": comparison_run["run_id"],
+        "same_processing_baseline": same_processing_baseline,
+        "same_aoi_hash": same_aoi_hash,
+        "same_date_window": same_date_window,
+        "same_source_scene_manifest_hash": same_source_scene_manifest_hash,
+        "baseline_candidate_count": len(baseline_ranked),
+        "comparison_candidate_count": len(comparison_ranked),
+        "common_candidate_count": len(common_keys),
+        "added_candidate_ids": [
+            comparison_by_key[stable_candidate_key]["candidate_id"]
+            for stable_candidate_key in added_keys
+        ],
+        "removed_candidate_ids": [
+            baseline_by_key[stable_candidate_key]["candidate_id"]
+            for stable_candidate_key in removed_keys
+        ],
+        "top10_stability_rate": stability_rate,
+        "top10_stability_threshold": top10_threshold,
+        "rank_deltas": rank_deltas,
+        "score_deltas": score_deltas,
+        "status": status,
+        "reasons": reasons,
+        "baseline_run": _normalize_reproducibility_run(baseline_run),
+        "comparison_run": _normalize_reproducibility_run(comparison_run),
     }
 
 

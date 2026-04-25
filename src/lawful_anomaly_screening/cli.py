@@ -447,13 +447,13 @@ def cmd_reproducibility_check(args: argparse.Namespace) -> int:
         print(f"run not found: {args.comparison_run_id}", file=sys.stderr)
         return 1
     result = reproducibility_check(
-        baseline_manifest_hash=baseline_run["source_scene_manifest_hash"],
-        comparison_manifest_hash=comparison_run["source_scene_manifest_hash"],
+        baseline_run=baseline_run,
+        comparison_run=comparison_run,
         baseline_candidates=repository.fetch_candidate_rows(args.run_id),
         comparison_candidates=repository.fetch_candidate_rows(args.comparison_run_id),
     )
     print(json.dumps(result, indent=2))
-    return 0 if result["status"] == "pass" else 1
+    return 0 if result["status"] in {"pass", "warn"} else 1
 
 
 def _add_legal_gate_arguments(parser: argparse.ArgumentParser) -> None:

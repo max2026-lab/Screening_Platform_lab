@@ -277,6 +277,21 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     ) == 0
     reproducibility_payload = json.loads(capsys.readouterr().out)
     assert reproducibility_payload["status"] == "pass"
+    assert reproducibility_payload["baseline_run_id"] == "run-001"
+    assert reproducibility_payload["comparison_run_id"] == "run-002"
+    assert reproducibility_payload["same_processing_baseline"] is True
+    assert reproducibility_payload["same_aoi_hash"] is True
+    assert reproducibility_payload["same_date_window"] is True
+    assert reproducibility_payload["same_source_scene_manifest_hash"] is True
+    assert reproducibility_payload["baseline_candidate_count"] == scaffold_run_1_payload["candidate_count"]
+    assert reproducibility_payload["comparison_candidate_count"] == scaffold_run_2_payload["candidate_count"]
+    assert reproducibility_payload["added_candidate_ids"] == []
+    assert reproducibility_payload["removed_candidate_ids"] == []
+    assert reproducibility_payload["top10_stability_rate"] == 1.0
+    assert reproducibility_payload["baseline_run"]["source_scene_manifest_hash"] == create_run_1_payload["source_scene_manifest_hash"]
+    assert reproducibility_payload["comparison_run"]["source_scene_manifest_hash"] == create_run_2_payload["source_scene_manifest_hash"]
+    assert reproducibility_payload["baseline_run"]["composite_quality"] is not None
+    assert reproducibility_payload["comparison_run"]["composite_quality"] is not None
 
 
 def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):

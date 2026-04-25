@@ -1,4 +1,5 @@
 from lawful_anomaly_screening.orchestration.acceptance import (
+    REPRODUCIBILITY_TOP10_MINIMUM_RATE,
     build_acceptance_summary,
     build_kpi_summary,
     candidate_count_per_100_km2,
@@ -8,12 +9,40 @@ from lawful_anomaly_screening.orchestration.acceptance import (
 )
 
 
-def _candidate(candidate_id: str, score: float, state: str = "pending_review") -> dict:
+def _candidate(
+    candidate_id: str,
+    score: float,
+    state: str = "pending_review",
+    *,
+    stable_candidate_key: str | None = None,
+) -> dict:
     return {
         "candidate_id": candidate_id,
         "candidate_score": score,
         "parent_tile_score": score - 1.0,
         "review_state": state,
+        "stable_candidate_key": stable_candidate_key or candidate_id,
+    }
+
+
+def _run(
+    run_id: str,
+    *,
+    processing_baseline_id: str = "baseline_v1_5_default",
+    source_scene_manifest_hash: str = "manifest-hash-001",
+    aoi_hash: str = "aoi-hash-001",
+    start_date: str = "2024-01-01",
+    end_date: str = "2024-03-31",
+    composite_quality: dict | None = None,
+) -> dict:
+    return {
+        "run_id": run_id,
+        "processing_baseline_id": processing_baseline_id,
+        "source_scene_manifest_hash": source_scene_manifest_hash,
+        "aoi_hash": aoi_hash,
+        "start_date": start_date,
+        "end_date": end_date,
+        "composite_quality": composite_quality,
     }
 
 
@@ -74,31 +103,182 @@ def test_acceptance_summary_warns_for_minimum_viable_approval_rate():
     assert summary["status"] == "warn"
 
 
-def test_reproducibility_requires_same_manifest_rank_order_and_score_tolerance():
-    baseline = [_candidate(f"candidate-{index:03d}", 100.0 - index) for index in range(1, 12)]
+def test_reproducibility_identical_deterministic_reruns_return_pass():
+    baseline_run = _run("run-001")
+    comparison_run = _run("run-002")
+    baseline = [
+        _candidate(f"baseline-{index:03d}", 100.0 - index, stable_candidate_key=f"stable-{index:03d}")
+        for index in range(1, 12)
+    ]
     comparison = [
-        _candidate(candidate["candidate_id"], candidate["candidate_score"] + 0.4)
-        for candidate in baseline
+        _candidate(f"comparison-{index:03d}", 100.0 - index, stable_candidate_key=f"stable-{index:03d}")
+        for index in range(1, 12)
     ]
 
-    passing = reproducibility_check(
-        baseline_manifest_hash="manifest-hash-001",
-        comparison_manifest_hash="manifest-hash-001",
-        baseline_candidates=baseline,
-        comparison_candidates=comparison,
-    )
-    failing = reproducibility_check(
-        baseline_manifest_hash="manifest-hash-001",
-        comparison_manifest_hash="different-manifest",
+    result = reproducibility_check(
+        baseline_run=baseline_run,
+        comparison_run=comparison_run,
         baseline_candidates=baseline,
         comparison_candidates=comparison,
     )
 
-    assert passing["status"] == "pass"
-    assert passing["same_top_10_rank_order"] is True
-    assert passing["scores_within_tolerance"] is True
-    assert failing["status"] == "fail"
-    assert failing["same_manifest"] is False
+    assert result["status"] == "pass"
+    assert result["same_processing_baseline"] is True
+    assert result["same_aoi_hash"] is True
+    assert result["same_date_window"] is True
+    assert result["same_source_scene_manifest_hash"] is True
+    assert result["common_candidate_count"] == 11
+    assert result["added_candidate_ids"] == []
+    assert result["removed_candidate_ids"] == []
+    assert result["top10_stability_rate"] == 1.0
+    assert result["reasons"] == ["Deterministic checks stable"]
+    assert result["baseline_run"]["processing_baseline_id"] == "baseline_v1_5_default"
+
+
+def test_reproducibility_fails_for_aoi_mismatch_with_clear_reason():
+    result = reproducibility_check(
+        baseline_run=_run("run-001", aoi_hash="aoi-hash-001"),
+        comparison_run=_run("run-002", aoi_hash="aoi-hash-002"),
+        baseline_candidates=[_candidate("baseline-001", 99.0, stable_candidate_key="stable-001")],
+        comparison_candidates=[_candidate("comparison-001", 99.0, stable_candidate_key="stable-001")],
+    )
+
+    assert result["status"] == "fail"
+    assert result["same_aoi_hash"] is False
+    assert "AOI hash differs between runs" in result["reasons"]
+
+
+def test_reproducibility_fails_for_date_window_mismatch_with_clear_reason():
+    result = reproducibility_check(
+        baseline_run=_run("run-001", start_date="2024-01-01", end_date="2024-03-31"),
+        comparison_run=_run("run-002", start_date="2024-02-01", end_date="2024-03-31"),
+        baseline_candidates=[_candidate("baseline-001", 99.0, stable_candidate_key="stable-001")],
+        comparison_candidates=[_candidate("comparison-001", 99.0, stable_candidate_key="stable-001")],
+    )
+
+    assert result["status"] == "fail"
+    assert result["same_date_window"] is False
+    assert any(reason.startswith("Date window differs between runs:") for reason in result["reasons"])
+
+
+def test_reproducibility_warns_for_manifest_mismatch_with_clear_reason():
+    result = reproducibility_check(
+        baseline_run=_run("run-001", source_scene_manifest_hash="manifest-hash-001"),
+        comparison_run=_run("run-002", source_scene_manifest_hash="manifest-hash-002"),
+        baseline_candidates=[_candidate("baseline-001", 99.0, stable_candidate_key="stable-001")],
+        comparison_candidates=[_candidate("comparison-001", 99.0, stable_candidate_key="stable-001")],
+    )
+
+    assert result["status"] == "warn"
+    assert result["same_source_scene_manifest_hash"] is False
+    assert "Source scene manifest differs between runs" in result["reasons"]
+
+
+def test_candidate_added_removed_and_common_counts_are_correct():
+    result = reproducibility_check(
+        baseline_run=_run("run-001"),
+        comparison_run=_run("run-002"),
+        baseline_candidates=[
+            _candidate("baseline-001", 99.0, stable_candidate_key="stable-001"),
+            _candidate("baseline-002", 98.0, stable_candidate_key="stable-002"),
+        ],
+        comparison_candidates=[
+            _candidate("comparison-001", 99.0, stable_candidate_key="stable-001"),
+            _candidate("comparison-003", 97.0, stable_candidate_key="stable-003"),
+        ],
+    )
+
+    assert result["baseline_candidate_count"] == 2
+    assert result["comparison_candidate_count"] == 2
+    assert result["common_candidate_count"] == 1
+    assert result["added_candidate_ids"] == ["comparison-003"]
+    assert result["removed_candidate_ids"] == ["baseline-002"]
+
+
+def test_rank_deltas_and_score_deltas_are_deterministic():
+    result = reproducibility_check(
+        baseline_run=_run("run-001"),
+        comparison_run=_run("run-002"),
+        baseline_candidates=[
+            _candidate("baseline-001", 100.0, stable_candidate_key="stable-001"),
+            _candidate("baseline-002", 99.0, stable_candidate_key="stable-002"),
+        ],
+        comparison_candidates=[
+            _candidate("comparison-002", 100.5, stable_candidate_key="stable-002"),
+            _candidate("comparison-001", 99.5, stable_candidate_key="stable-001"),
+        ],
+    )
+
+    assert result["rank_deltas"] == [
+        {
+            "stable_candidate_key": "stable-001",
+            "baseline_candidate_id": "baseline-001",
+            "comparison_candidate_id": "comparison-001",
+            "baseline_rank": 1,
+            "comparison_rank": 2,
+            "rank_delta": 1,
+        },
+        {
+            "stable_candidate_key": "stable-002",
+            "baseline_candidate_id": "baseline-002",
+            "comparison_candidate_id": "comparison-002",
+            "baseline_rank": 2,
+            "comparison_rank": 1,
+            "rank_delta": -1,
+        },
+    ]
+    assert result["score_deltas"] == [
+        {
+            "stable_candidate_key": "stable-001",
+            "baseline_candidate_id": "baseline-001",
+            "comparison_candidate_id": "comparison-001",
+            "baseline_score": 100.0,
+            "comparison_score": 99.5,
+            "score_delta": -0.5,
+        },
+        {
+            "stable_candidate_key": "stable-002",
+            "baseline_candidate_id": "baseline-002",
+            "comparison_candidate_id": "comparison-002",
+            "baseline_score": 99.0,
+            "comparison_score": 100.5,
+            "score_delta": 1.5,
+        },
+    ]
+
+
+def test_top10_stability_threshold_warning_works():
+    baseline = [
+        _candidate(f"baseline-{index:03d}", 100.0 - index, stable_candidate_key=f"stable-{index:03d}")
+        for index in range(1, 12)
+    ]
+    comparison = [
+        _candidate("comparison-001", 100.0, stable_candidate_key="stable-001"),
+        _candidate("comparison-002", 99.0, stable_candidate_key="stable-002"),
+        _candidate("comparison-003", 98.0, stable_candidate_key="stable-003"),
+        _candidate("comparison-004", 97.0, stable_candidate_key="stable-004"),
+        _candidate("comparison-005", 96.0, stable_candidate_key="stable-005"),
+        _candidate("comparison-006", 95.0, stable_candidate_key="stable-006"),
+        _candidate("comparison-007", 94.0, stable_candidate_key="stable-007"),
+        _candidate("comparison-011", 93.0, stable_candidate_key="stable-011"),
+        _candidate("comparison-012", 92.0, stable_candidate_key="stable-012"),
+        _candidate("comparison-013", 91.0, stable_candidate_key="stable-013"),
+    ]
+
+    result = reproducibility_check(
+        baseline_run=_run("run-001"),
+        comparison_run=_run("run-002"),
+        baseline_candidates=baseline,
+        comparison_candidates=comparison,
+    )
+
+    assert result["top10_stability_rate"] == 0.7
+    assert result["top10_stability_threshold"] == REPRODUCIBILITY_TOP10_MINIMUM_RATE
+    assert result["status"] == "warn"
+    assert (
+        f"Top-10 stability rate 0.70 is below threshold {REPRODUCIBILITY_TOP10_MINIMUM_RATE:.2f}"
+        in result["reasons"]
+    )
 
 
 def test_top10_stability_after_small_retune():

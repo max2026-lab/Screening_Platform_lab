@@ -6,6 +6,11 @@ from pathlib import Path
 import sqlite3
 
 from lawful_anomaly_screening.db.sqlite import connect
+from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
+from lawful_anomaly_screening.sources.manifest_builder import (
+    build_composite_quality_metadata,
+    resolve_cloud_policy_thresholds,
+)
 
 
 class AcceptanceRepository:
@@ -20,6 +25,7 @@ class AcceptanceRepository:
                 SELECT
                     run_id,
                     status,
+                    processing_baseline_id,
                     source_scene_manifest_hash,
                     source_endpoint_id,
                     cache_status,
@@ -40,6 +46,15 @@ class AcceptanceRepository:
         data = dict(row)
         if data.get("aoi_bbox"):
             data["aoi_bbox"] = json.loads(data["aoi_bbox"])
+        scenes = ManifestRepository(self.db_path).list_scenes(data["source_scene_manifest_hash"])
+        data["composite_quality"] = (
+            build_composite_quality_metadata(
+                scenes,
+                cloud_policy_thresholds=resolve_cloud_policy_thresholds(),
+            )
+            if scenes
+            else None
+        )
         return data
 
     def fetch_candidate_rows(self, run_id: str) -> list[dict]:
