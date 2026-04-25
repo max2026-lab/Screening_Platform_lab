@@ -15,8 +15,8 @@ Example setup from an outside working directory:
 
 ```powershell
 # One-time installation examples
-uv tool install .
-# or: pip install .
+uv tool install C:\Dev\Screening_Platform_lab
+# or: pip install C:\Dev\Screening_Platform_lab
 
 lawful-anomaly --help
 ```
@@ -91,4 +91,3 @@ After smoke execution:
 - verify no `config/` was copied into the outside working directory
 - verify no `PYTHONPATH` and no `sitecustomize` usage
 - run `git status` in repo root and confirm clean working tree
-
