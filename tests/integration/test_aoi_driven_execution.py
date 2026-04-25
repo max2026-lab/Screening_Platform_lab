@@ -126,6 +126,15 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     export_payload = json.loads(export_output.getvalue())
     assert export_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
     assert export_payload["run_metadata"]["composite_quality"] == summary["run_metadata"]["composite_quality"]
+    assert export_payload["audit_manifest"]["legal_gate"]["decision"] == "pass"
+    assert export_payload["audit_manifest"]["composite_quality"] == export_payload["run_metadata"]["composite_quality"]
+    assert export_payload["audit_manifest"]["candidate_count"] == len(export_payload["candidates"])
+    assert export_payload["audit_manifest"]["candidate_ids"] == sorted(
+        candidate["candidate_id"] for candidate in export_payload["candidates"]
+    )
+    assert export_payload["audit_manifest"]["top_candidate_id"] == summary["top_candidate_id"]
+    assert export_payload["audit_manifest"]["score_formula_version"] == "v1.5.1-phase0"
+    assert export_payload["audit_manifest"]["audit_manifest_hash"]
     top_export_candidate = _candidate_by_id(export_payload, summary["top_candidate_id"])
     run_scene_ids = set(summary["scene_summary"]["scene_ids"])
     assert top_export_candidate["source_scene_ids"] == review_payload["candidate"]["source_scene_ids"]

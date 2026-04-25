@@ -43,6 +43,7 @@ class ExportRepository:
         run_metadata = RunRepository(self.db_path).fetch_run(run_id)
         if run_metadata is not None:
             run_metadata = dict(run_metadata)
+            run_metadata["score_formula_version"] = self._fetch_score_formula_version(run_id)
             scenes = ManifestRepository(self.db_path).list_scenes(
                 run_metadata["source_scene_manifest_hash"]
             )
@@ -113,6 +114,14 @@ class ExportRepository:
                 coordinate_resolution_m=policy.coordinate_resolution_m,
             )
             conn.commit()
+        export_record = self._fetch_export_record(export_record_id)
+        audit_manifest = self._build_audit_manifest(
+            export_record=export_record,
+            run_metadata=run_metadata,
+            policy=policy,
+            candidates=candidates,
+            sanitized_candidates=sanitized_candidates,
+        )
 
         return {
             "export_record_id": export_record_id,
@@ -126,6 +135,7 @@ class ExportRepository:
             "exact_coordinates_included": policy.exact_coordinates_included,
             "coordinate_resolution_m": policy.coordinate_resolution_m,
             "candidates": sanitized_candidates,
+            "audit_manifest": audit_manifest,
         }
 
     def fetch_export_records(self, run_id: str) -> list[dict]:
@@ -275,6 +285,111 @@ class ExportRepository:
             id_key="tile_id",
             primary_score_key="tile_score",
         )
+
+    def _fetch_export_record(self, export_record_id: str) -> dict:
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                """
+                SELECT
+                    export_record_id,
+                    run_id,
+                    audience,
+                    precision_tier,
+                    artifact_name,
+                    bundle_name,
+                    artifact_path,
+                    exact_coordinates_included,
+                    coordinate_resolution_m,
+                    created_at
+                FROM export_records
+                WHERE export_record_id = ?
+                """,
+                (export_record_id,),
+            ).fetchone()
+        if row is None:
+            raise ValueError(f"export record not found: {export_record_id}")
+        record = dict(row)
+        record["exact_coordinates_included"] = bool(record["exact_coordinates_included"])
+        return record
+
+    def _fetch_score_formula_version(self, run_id: str) -> str | None:
+        with connect(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT pb.score_formula_version
+                FROM runs r
+                JOIN processing_baselines pb
+                    ON pb.processing_baseline_id = r.processing_baseline_id
+                WHERE r.run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return str(row[0]) if row[0] is not None else None
+
+    def _build_audit_manifest(
+        self,
+        *,
+        export_record: dict,
+        run_metadata: dict | None,
+        policy,
+        candidates: list[dict],
+        sanitized_candidates: list[dict],
+    ) -> dict:
+        sorted_candidate_ids = sorted(
+            str(candidate["candidate_id"])
+            for candidate in sanitized_candidates
+        )
+        candidate_score_formula_versions = sorted(
+            {
+                str(candidate["score_formula_version"])
+                for candidate in candidates
+                if candidate.get("score_formula_version") is not None
+            }
+        )
+        audit_manifest = {
+            "export_record_id": export_record["export_record_id"],
+            "run_id": export_record["run_id"],
+            "created_at": export_record.get("created_at"),
+            "audience": export_record["audience"],
+            "precision_tier": export_record["precision_tier"],
+            "exact_coordinates_included": bool(export_record["exact_coordinates_included"]),
+            "coordinate_resolution_m": export_record.get("coordinate_resolution_m"),
+            "artifact_name_resolution_m": policy.artifact_name_resolution_m,
+            "processing_baseline_id": run_metadata.get("processing_baseline_id") if run_metadata else None,
+            "score_formula_version": run_metadata.get("score_formula_version") if run_metadata else None,
+            "source_endpoint_id": run_metadata.get("source_endpoint_id") if run_metadata else None,
+            "source_scene_manifest_hash": (
+                run_metadata.get("source_scene_manifest_hash") if run_metadata else None
+            ),
+            "legal_gate": (
+                {
+                    "decision": run_metadata["legal_gate"].get("decision"),
+                    "reason": run_metadata["legal_gate"].get("reason"),
+                    "evaluated_at": run_metadata["legal_gate"].get("evaluated_at"),
+                }
+                if run_metadata and run_metadata.get("legal_gate") is not None
+                else None
+            ),
+            "composite_quality": run_metadata.get("composite_quality") if run_metadata else None,
+            "candidate_count": len(sorted_candidate_ids),
+            "candidate_ids": sorted_candidate_ids,
+            "top_candidate_id": str(candidates[0]["candidate_id"]) if candidates else None,
+            "candidate_score_formula_versions": candidate_score_formula_versions,
+        }
+        hash_payload = dict(audit_manifest)
+        hash_payload.pop("created_at", None)
+        audit_manifest["audit_manifest_hash"] = self._stable_hash(hash_payload)
+        return audit_manifest
+
+    @staticmethod
+    def _stable_hash(payload: dict) -> str:
+        digest = sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return digest
 
     @staticmethod
     def _create_export_record_id(

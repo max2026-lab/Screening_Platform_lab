@@ -63,6 +63,20 @@ def test_export_repository_persists_precision_and_report_scaffold(tmp_path):
     assert public_record["precision_tier"] == "coarse"
     assert public_record["exact_coordinates_included"] is False
     assert public_record["coordinate_resolution_m"] == 1000
+    assert public_record["audit_manifest"]["precision_tier"] == "coarse"
+    assert public_record["audit_manifest"]["exact_coordinates_included"] is False
+    assert public_record["audit_manifest"]["coordinate_resolution_m"] == 1000
+    assert public_record["audit_manifest"]["artifact_name_resolution_m"] == 1000
+    assert public_record["audit_manifest"]["processing_baseline_id"] == "baseline_v1_5_default"
+    assert public_record["audit_manifest"]["score_formula_version"] == "v1.5.1-phase0"
+    assert public_record["audit_manifest"]["source_endpoint_id"] == "earth_search"
+    assert public_record["audit_manifest"]["source_scene_manifest_hash"] == "manifest-hash-001"
+    assert public_record["audit_manifest"]["legal_gate"]["decision"] == "fail"
+    assert public_record["audit_manifest"]["candidate_count"] == 2
+    assert public_record["audit_manifest"]["candidate_ids"] == ["candidate-001", "candidate-002"]
+    assert public_record["audit_manifest"]["top_candidate_id"] == "candidate-002"
+    assert public_record["audit_manifest"]["candidate_score_formula_versions"] == []
+    assert public_record["audit_manifest"]["audit_manifest_hash"]
     assert public_record["candidates"][0]["candidate_id"] == "candidate-001"
     assert public_record["candidates"][0]["centroid"] == [2000.0, 3000.0]
     assert "e2000_n3000" in public_record["artifact_name"]
@@ -80,9 +94,25 @@ def test_export_repository_persists_precision_and_report_scaffold(tmp_path):
     assert report_record["precision_tier"] == "restricted"
     assert report_record["exact_coordinates_included"] is False
     assert report_record["coordinate_resolution_m"] == 100
+    assert report_record["audit_manifest"]["precision_tier"] == "restricted"
+    assert report_record["audit_manifest"]["coordinate_resolution_m"] == 100
+    assert report_record["audit_manifest"]["artifact_name_resolution_m"] == 100
+    assert report_record["audit_manifest"]["candidate_ids"] == ["candidate-001", "candidate-002"]
+    assert report_record["audit_manifest"]["candidate_count"] == 2
+    assert report_record["audit_manifest"]["top_candidate_id"] == "candidate-002"
     assert report_record["artifact_path"].endswith(".md")
     assert report_path.exists()
     assert "Lawful Anomaly Screening Report" in report_path.read_text(encoding="utf-8")
     assert "`restricted`" in report_path.read_text(encoding="utf-8")
 
     assert [record["audience"] for record in records] == ["field", "public", "report_pdf", "reviewer"]
+    repeated_report_record = repository.persist_export(
+        run_id="run-001",
+        audience="report_pdf",
+        requested_precision="restricted",
+        candidates=candidates,
+    )
+    assert repeated_report_record["audit_manifest"]["candidate_ids"] == report_record["audit_manifest"]["candidate_ids"]
+    assert repeated_report_record["audit_manifest"]["audit_manifest_hash"] == (
+        report_record["audit_manifest"]["audit_manifest_hash"]
+    )

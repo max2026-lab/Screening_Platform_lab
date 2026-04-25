@@ -149,6 +149,20 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert export_payload["precision_tier"] == "restricted"
     assert export_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
     assert export_payload["exact_coordinates_included"] is False
+    assert export_payload["audit_manifest"]["run_id"] == "run-001"
+    assert export_payload["audit_manifest"]["precision_tier"] == "restricted"
+    assert export_payload["audit_manifest"]["processing_baseline_id"] == "baseline_v1_5_default"
+    assert export_payload["audit_manifest"]["score_formula_version"] == "v1.5.1-phase0"
+    assert export_payload["audit_manifest"]["source_scene_manifest_hash"] == create_run_1_payload["source_scene_manifest_hash"]
+    assert export_payload["audit_manifest"]["legal_gate"]["decision"] == "pass"
+    assert export_payload["audit_manifest"]["composite_quality"] == export_payload["run_metadata"]["composite_quality"]
+    assert export_payload["audit_manifest"]["candidate_count"] == len(export_payload["candidates"])
+    assert export_payload["audit_manifest"]["candidate_ids"] == sorted(
+        candidate["candidate_id"] for candidate in export_payload["candidates"]
+    )
+    assert export_payload["audit_manifest"]["top_candidate_id"] == review_queue_run_1_payload[0]["candidate_id"]
+    assert export_payload["audit_manifest"]["candidate_score_formula_versions"] == ["v1.5.1-phase0"]
+    assert export_payload["audit_manifest"]["audit_manifest_hash"]
     assert export_payload["candidates"]
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2
@@ -389,6 +403,12 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert export_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
     assert export_payload["run_metadata"]["composite_quality"] == execute_run_payload["run_metadata"]["composite_quality"]
     assert export_payload["precision_tier"] == "restricted"
+    assert export_payload["audit_manifest"]["legal_gate"]["decision"] == "pass"
+    assert export_payload["audit_manifest"]["composite_quality"] == export_payload["run_metadata"]["composite_quality"]
+    assert export_payload["audit_manifest"]["candidate_ids"] == sorted(
+        candidate["candidate_id"] for candidate in export_payload["candidates"]
+    )
+    assert export_payload["audit_manifest"]["top_candidate_id"] == execute_run_payload["top_candidate_id"]
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2
     assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"
