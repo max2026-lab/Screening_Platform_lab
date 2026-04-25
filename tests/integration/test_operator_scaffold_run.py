@@ -277,6 +277,33 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
 
     assert main(
         [
+            "acceptance-check",
+            "--run-id",
+            "run-001",
+            "--aoi-area-km2",
+            "100",
+        ]
+    ) == 1
+    acceptance_without_comparison = json.loads(capsys.readouterr().out)
+    assert acceptance_without_comparison["run_id"] == "run-001"
+    assert acceptance_without_comparison["status"] == "fail"
+    assert acceptance_without_comparison["legal_gate"]["decision"] == "pass"
+    assert acceptance_without_comparison["composite_quality"] == export_payload["run_metadata"]["composite_quality"]
+    assert acceptance_without_comparison["processing_baseline_id"] == "baseline_v1_5_default"
+    assert acceptance_without_comparison["score_formula_version"] == "v1.5.1-phase0"
+    assert acceptance_without_comparison["candidate_count"] == run_1_kpi_summary_payload["candidate_count"]
+    assert acceptance_without_comparison["review_state_counts"]["approved_for_archive_quote"] == 1
+    assert acceptance_without_comparison["export_audit_ready"] is True
+    assert acceptance_without_comparison["latest_export_audit_manifest_hash"] == (
+        export_payload["audit_manifest"]["audit_manifest_hash"]
+    )
+    assert acceptance_without_comparison["reproducibility_summary"] is None
+    assert acceptance_without_comparison["source_scene_manifest_hash"] == (
+        create_run_1_payload["source_scene_manifest_hash"]
+    )
+
+    assert main(
+        [
             "kpi-summary",
             "--run-id",
             "run-002",
@@ -316,6 +343,36 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert reproducibility_payload["comparison_run"]["source_scene_manifest_hash"] == create_run_2_payload["source_scene_manifest_hash"]
     assert reproducibility_payload["baseline_run"]["composite_quality"] is not None
     assert reproducibility_payload["comparison_run"]["composite_quality"] is not None
+
+    assert main(
+        [
+            "acceptance-check",
+            "--run-id",
+            "run-001",
+            "--aoi-area-km2",
+            "100",
+            "--comparison-run-id",
+            "run-002",
+        ]
+    ) == 1
+    acceptance_with_comparison = json.loads(capsys.readouterr().out)
+    assert acceptance_with_comparison["status"] == "fail"
+    assert acceptance_with_comparison["export_audit_ready"] is True
+    assert acceptance_with_comparison["latest_export_audit_manifest_hash"] == (
+        export_payload["audit_manifest"]["audit_manifest_hash"]
+    )
+    assert acceptance_with_comparison["reproducibility_summary"] == {
+        "status": "pass",
+        "top10_stability_rate": 1.0,
+        "same_aoi_hash": True,
+        "same_date_window": True,
+        "same_source_scene_manifest_hash": True,
+        "reasons": ["Deterministic checks stable"],
+    }
+    reproducibility_check_entry = next(
+        check for check in acceptance_with_comparison["checks"] if check["name"] == "reproducibility"
+    )
+    assert reproducibility_check_entry["status"] == "pass"
 
 
 def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):

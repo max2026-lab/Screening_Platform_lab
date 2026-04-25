@@ -377,7 +377,59 @@ def test_acceptance_check_regression(tmp_path, monkeypatch):
     
     summary = json.loads(f.getvalue())
     assert "status" in summary
+    assert summary["legal_gate"]["decision"] == "pass"
+    assert summary["processing_baseline_id"] == "baseline_v1_5_default"
+    assert summary["score_formula_version"] == "v1.5.1-phase0"
+    assert summary["export_audit_ready"] is False
+    assert summary["latest_export_audit_manifest_hash"] is None
+    assert "Export audit manifest not created yet" in summary["reasons"]
+    assert summary["review_state_counts"]["pending_review"] == summary["candidate_count"]
+    assert summary["reproducibility_summary"]["status"] == "pass"
+    assert summary["reproducibility_summary"]["top10_stability_rate"] == 1.0
     # Verify the check we cared about is present
     stability_check = next((c for c in summary["checks"] if c["name"] == "top_10_stability_after_small_retune"), None)
     assert stability_check is not None
     assert "observed" in stability_check
+    export_audit_check = next((c for c in summary["checks"] if c["name"] == "export_audit_ready"), None)
+    assert export_audit_check is not None
+    assert export_audit_check["status"] == "warn"
+
+
+def test_acceptance_check_fails_clearly_for_legal_denial(tmp_path, monkeypatch):
+    setup_mocks(tmp_path, monkeypatch)
+
+    aoi_path = tmp_path / "test_aoi.geojson"
+    aoi_path.write_text(
+        json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]],
+            }
+        )
+    )
+
+    create_output = io.StringIO()
+    with redirect_stdout(create_output):
+        assert main([
+            "create-run",
+            "--run-id", "run-denied",
+            "--aoi-path", str(aoi_path),
+            "--start-date", "2024-01-01",
+            "--end-date", "2024-03-31",
+            "--attestation", "missing",
+            "--geofence", "clear",
+        ]) == 1
+
+    acceptance_output = io.StringIO()
+    with redirect_stdout(acceptance_output):
+        assert main([
+            "acceptance-check",
+            "--run-id", "run-denied",
+            "--aoi-area-km2", "20",
+        ]) == 1
+
+    summary = json.loads(acceptance_output.getvalue())
+    assert summary["status"] == "fail"
+    assert summary["legal_gate"]["decision"] == "fail"
+    assert "Legal gate failed" in " ".join(summary["reasons"])
+    assert "No candidates produced for run" in summary["reasons"]

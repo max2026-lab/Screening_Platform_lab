@@ -24,6 +24,8 @@ def test_acceptance_cli_commands_are_registered():
             "100",
             "--retuned-run-id",
             "run-002",
+            "--comparison-run-id",
+            "run-003",
             "--output",
             "markdown",
         ]
@@ -43,6 +45,7 @@ def test_acceptance_cli_commands_are_registered():
     assert kpi_args.time_to_first_review_package_hours == 1.5
     assert acceptance_args.command == "acceptance-check"
     assert acceptance_args.retuned_run_id == "run-002"
+    assert acceptance_args.comparison_run_id == "run-003"
     assert acceptance_args.output == "markdown"
     assert reproducibility_args.command == "reproducibility-check"
     assert reproducibility_args.comparison_run_id == "run-002"

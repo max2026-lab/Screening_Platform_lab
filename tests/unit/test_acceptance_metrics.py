@@ -68,7 +68,11 @@ def test_kpi_summary_and_acceptance_thresholds():
         time_to_first_review_package_hours=1.5,
         paid_escalation_count=5,
     )
-    summary = build_acceptance_summary(kpi_summary=kpis, top10_stability_rate_value=0.8)
+    summary = build_acceptance_summary(
+        kpi_summary=kpis,
+        top10_stability_rate_value=0.8,
+        export_audit_manifest={"audit_manifest_hash": "audit-hash-001"},
+    )
 
     assert kpis["candidate_count_per_100_km2"] == 20.0
     assert kpis["top_20_approval_rate"] == 0.25
@@ -101,6 +105,160 @@ def test_acceptance_summary_warns_for_minimum_viable_approval_rate():
     assert approval_check["observed"] == 0.15
     assert approval_check["status"] == "warn"
     assert summary["status"] == "warn"
+
+
+def test_acceptance_summary_includes_operator_metadata_and_export_warning():
+    candidates = [
+        _candidate(f"candidate-{index:03d}", 100.0 - index, "approved_for_archive_quote")
+        if index <= 4
+        else _candidate(f"candidate-{index:03d}", 100.0 - index)
+        for index in range(1, 21)
+    ]
+    kpis = build_kpi_summary(
+        run_id="run-001",
+        source_scene_manifest_hash="manifest-hash-001",
+        candidate_rows=candidates,
+        aoi_area_km2=100.0,
+        time_to_first_review_package_hours=1.5,
+        paid_escalation_count=0,
+    )
+
+    summary = build_acceptance_summary(
+        kpi_summary=kpis,
+        run_metadata={
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {
+                "decision": "pass",
+                "reason": "legal gate passed",
+                "evaluated_at": "2026-01-01T00:00:00Z",
+            },
+            "composite_quality": {
+                "cloud_policy_decision": "warn",
+                "cloud_policy_reason": "mean cloud cover approaching warning threshold",
+            },
+        },
+        review_state_counts={"pending_review": 20},
+    )
+
+    assert summary["status"] == "warn"
+    assert summary["legal_gate"]["decision"] == "pass"
+    assert summary["composite_quality"]["cloud_policy_decision"] == "warn"
+    assert summary["processing_baseline_id"] == "baseline_v1_5_default"
+    assert summary["score_formula_version"] == "v1.5.1-phase0"
+    assert summary["candidate_count"] == 20
+    assert summary["review_state_counts"] == {"pending_review": 20}
+    assert summary["export_audit_ready"] is False
+    assert summary["latest_export_audit_manifest_hash"] is None
+    assert "Export audit manifest not created yet" in summary["reasons"]
+    assert any(
+        check["name"] == "composite_cloud_policy" and check["status"] == "warn"
+        for check in summary["checks"]
+    )
+
+
+def test_acceptance_summary_includes_export_audit_hash_and_reproducibility_warning():
+    candidates = [
+        _candidate(f"candidate-{index:03d}", 100.0 - index, "approved_for_archive_quote")
+        if index <= 6
+        else _candidate(f"candidate-{index:03d}", 100.0 - index)
+        for index in range(1, 21)
+    ]
+    kpis = build_kpi_summary(
+        run_id="run-001",
+        source_scene_manifest_hash="manifest-hash-001",
+        candidate_rows=candidates,
+        aoi_area_km2=100.0,
+        time_to_first_review_package_hours=1.0,
+        paid_escalation_count=0,
+    )
+
+    summary = build_acceptance_summary(
+        kpi_summary=kpis,
+        top10_stability_rate_value=0.75,
+        run_metadata={
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {
+                "decision": "pass",
+                "reason": "legal gate passed",
+                "evaluated_at": "2026-01-01T00:00:00Z",
+            },
+            "composite_quality": {
+                "cloud_policy_decision": "pass",
+                "cloud_policy_reason": "cloud policy passed",
+            },
+        },
+        review_state_counts={
+            "approved_for_archive_quote": 6,
+            "pending_review": 14,
+        },
+        export_audit_manifest={"audit_manifest_hash": "audit-hash-001"},
+        reproducibility_summary={
+            "status": "warn",
+            "top10_stability_rate": 0.75,
+            "same_aoi_hash": True,
+            "same_date_window": True,
+            "same_source_scene_manifest_hash": False,
+            "reasons": ["Source scene manifest differs between runs"],
+        },
+    )
+
+    assert summary["status"] == "warn"
+    assert summary["export_audit_ready"] is True
+    assert summary["latest_export_audit_manifest_hash"] == "audit-hash-001"
+    assert summary["reproducibility_summary"] == {
+        "status": "warn",
+        "top10_stability_rate": 0.75,
+        "same_aoi_hash": True,
+        "same_date_window": True,
+        "same_source_scene_manifest_hash": False,
+        "reasons": ["Source scene manifest differs between runs"],
+    }
+    assert "Source scene manifest differs between runs" in summary["reasons"]
+    assert any(
+        check["name"] == "reproducibility" and check["status"] == "warn"
+        for check in summary["checks"]
+    )
+
+
+def test_acceptance_summary_fails_for_legal_and_zero_candidate_run():
+    kpis = build_kpi_summary(
+        run_id="run-001",
+        source_scene_manifest_hash="manifest-hash-001",
+        candidate_rows=[],
+        aoi_area_km2=100.0,
+        time_to_first_review_package_hours=None,
+        paid_escalation_count=0,
+    )
+
+    summary = build_acceptance_summary(
+        kpi_summary=kpis,
+        run_metadata={
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {
+                "decision": "fail",
+                "reason": "attestation missing",
+                "evaluated_at": "2026-01-01T00:00:00Z",
+            },
+            "composite_quality": {
+                "cloud_policy_decision": "fail",
+                "cloud_policy_reason": "mean cloud cover exceeds fail threshold",
+            },
+        },
+    )
+
+    assert summary["status"] == "fail"
+    assert "Legal gate failed: attestation missing" in summary["reasons"]
+    assert "No candidates produced for run" in summary["reasons"]
+    assert (
+        "Composite cloud policy failed: mean cloud cover exceeds fail threshold"
+        in summary["reasons"]
+    )
 
 
 def test_reproducibility_identical_deterministic_reruns_return_pass():

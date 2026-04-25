@@ -417,17 +417,34 @@ def cmd_kpi_summary(args: argparse.Namespace) -> int:
 
 
 def cmd_acceptance_check(args: argparse.Namespace) -> int:
+    repository = AcceptanceRepository(load_settings().db_path)
+    run = repository.fetch_run(args.run_id)
+    if run is None:
+        print(f"run not found: {args.run_id}", file=sys.stderr)
+        return 1
     kpi_summary = _build_kpi_summary_from_args(args)
+    comparison_run_id = args.comparison_run_id or args.retuned_run_id
+    reproducibility_summary = None
     stability_value = None
-    if args.retuned_run_id is not None:
-        repository = AcceptanceRepository(load_settings().db_path)
-        stability_value = top10_stability_rate(
-            repository.fetch_candidate_rows(args.run_id),
-            repository.fetch_candidate_rows(args.retuned_run_id),
+    if comparison_run_id is not None:
+        comparison_run = repository.fetch_run(comparison_run_id)
+        if comparison_run is None:
+            print(f"run not found: {comparison_run_id}", file=sys.stderr)
+            return 1
+        reproducibility_summary = reproducibility_check(
+            baseline_run=run,
+            comparison_run=comparison_run,
+            baseline_candidates=repository.fetch_candidate_rows(args.run_id),
+            comparison_candidates=repository.fetch_candidate_rows(comparison_run_id),
         )
+        stability_value = reproducibility_summary["top10_stability_rate"]
     summary = build_acceptance_summary(
         kpi_summary=kpi_summary,
         top10_stability_rate_value=stability_value,
+        run_metadata=run,
+        review_state_counts=repository.fetch_review_state_counts(args.run_id),
+        export_audit_manifest=repository.fetch_latest_export_audit_manifest(args.run_id),
+        reproducibility_summary=reproducibility_summary,
     )
     if args.output == "markdown":
         print(render_acceptance_summary_markdown(summary), end="")
@@ -555,6 +572,7 @@ def _add_kpi_summary_arguments(parser: argparse.ArgumentParser) -> None:
 def _add_acceptance_check_arguments(parser: argparse.ArgumentParser) -> None:
     _add_kpi_summary_arguments(parser)
     parser.add_argument("--retuned-run-id", default=None)
+    parser.add_argument("--comparison-run-id", default=None)
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 

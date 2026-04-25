@@ -54,7 +54,11 @@ def test_acceptance_repository_reads_candidates_reviews_and_paid_escalations(tmp
 
     assert run is not None
     assert run["source_scene_manifest_hash"] == "manifest-hash-001"
+    assert run["score_formula_version"] == "v1.5.1-phase0"
+    assert run["legal_gate"]["decision"] == "fail"
     assert candidates[0]["candidate_id"] == approved_candidate_id
     assert candidates[0]["review_state"] == "approved_for_archive_quote"
+    assert repository.fetch_review_state_counts("run-001")["approved_for_archive_quote"] == 1
+    assert repository.fetch_latest_export_audit_manifest("run-001") is None
     assert repository.count_paid_escalations("run-001") == 1
     assert len(candidates) == len(candidate_records)

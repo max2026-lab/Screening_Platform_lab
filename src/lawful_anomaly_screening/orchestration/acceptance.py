@@ -302,6 +302,10 @@ def build_acceptance_summary(
     *,
     kpi_summary: dict,
     top10_stability_rate_value: float | None = None,
+    run_metadata: dict | None = None,
+    review_state_counts: dict[str, int] | None = None,
+    export_audit_manifest: dict | None = None,
+    reproducibility_summary: dict | None = None,
 ) -> dict:
     checks = [
         {
@@ -358,11 +362,152 @@ def build_acceptance_summary(
                 "target": ">= 0.70",
             }
         )
+    candidate_count = int(kpi_summary["candidate_count"])
+    legal_gate = (run_metadata or {}).get("legal_gate")
+    legal_gate_decision = (legal_gate or {}).get("decision")
+    if legal_gate_decision is not None:
+        checks.append(
+            {
+                "name": "legal_gate",
+                "status": "pass" if legal_gate_decision == "pass" else "fail",
+                "observed": legal_gate_decision,
+                "target": "decision == pass",
+            }
+        )
+
+    checks.append(
+        {
+            "name": "candidate_count",
+            "status": "pass" if candidate_count > 0 else "fail",
+            "observed": candidate_count,
+            "target": ">= 1",
+        }
+    )
+
+    composite_quality = (run_metadata or {}).get("composite_quality")
+    cloud_policy_decision = (composite_quality or {}).get("cloud_policy_decision")
+    if cloud_policy_decision is not None:
+        checks.append(
+            {
+                "name": "composite_cloud_policy",
+                "status": cloud_policy_decision,
+                "observed": cloud_policy_decision,
+                "target": "pass preferred; warn allowed; fail blocks run",
+            }
+        )
+
+    export_audit_ready = export_audit_manifest is not None
+    checks.append(
+        {
+            "name": "export_audit_ready",
+            "status": "pass" if export_audit_ready else "warn",
+            "observed": export_audit_ready,
+            "target": "export audit manifest available",
+        }
+    )
+
+    normalized_reproducibility_summary = None
+    if reproducibility_summary is not None:
+        normalized_reproducibility_summary = {
+            "status": reproducibility_summary["status"],
+            "top10_stability_rate": reproducibility_summary["top10_stability_rate"],
+            "same_aoi_hash": reproducibility_summary["same_aoi_hash"],
+            "same_date_window": reproducibility_summary["same_date_window"],
+            "same_source_scene_manifest_hash": reproducibility_summary["same_source_scene_manifest_hash"],
+            "reasons": list(reproducibility_summary["reasons"]),
+        }
+        checks.append(
+            {
+                "name": "reproducibility",
+                "status": reproducibility_summary["status"],
+                "observed": {
+                    "top10_stability_rate": reproducibility_summary["top10_stability_rate"],
+                    "same_aoi_hash": reproducibility_summary["same_aoi_hash"],
+                    "same_date_window": reproducibility_summary["same_date_window"],
+                    "same_source_scene_manifest_hash": reproducibility_summary["same_source_scene_manifest_hash"],
+                },
+                "target": "deterministic comparison stable",
+            }
+        )
+
+    reasons = []
+    if legal_gate_decision not in {None, "pass"}:
+        reasons.append(
+            f"Legal gate failed: {(legal_gate or {}).get('reason') or 'legal gate did not pass'}"
+        )
+    if candidate_count == 0:
+        reasons.append("No candidates produced for run")
+    if cloud_policy_decision == "warn":
+        reasons.append(
+            f"Composite cloud policy warning: {(composite_quality or {}).get('cloud_policy_reason') or 'cloud conditions require operator review'}"
+        )
+    if cloud_policy_decision == "fail":
+        reasons.append(
+            f"Composite cloud policy failed: {(composite_quality or {}).get('cloud_policy_reason') or 'cloud policy blocked run'}"
+        )
+    if not export_audit_ready:
+        reasons.append("Export audit manifest not created yet")
+    if normalized_reproducibility_summary is not None and reproducibility_summary["status"] in {"warn", "fail"}:
+        reasons.extend(normalized_reproducibility_summary["reasons"])
+
+    for check in checks:
+        if check["status"] == "warn" and check["name"] == "top_20_approval_rate":
+            reasons.append(
+                f"Top-20 approval rate {float(check['observed']):.2f} is below aspirational threshold"
+            )
+        elif check["status"] == "fail" and check["name"] == "top_20_approval_rate":
+            reasons.append(
+                f"Top-20 approval rate {float(check['observed']):.2f} is below minimum viable target"
+            )
+        elif check["status"] == "fail" and check["name"] == "candidate_count_per_100_km2":
+            reasons.append(
+                f"Candidate density {float(check['observed']):.2f} is outside target range {check['target']}"
+            )
+        elif check["status"] == "fail" and check["name"] == "paid_escalations_per_100_km2":
+            reasons.append(
+                f"Paid escalations per 100 km2 {float(check['observed']):.2f} exceeds target {check['target']}"
+            )
+        elif check["status"] == "fail" and check["name"] == "time_to_first_review_package_hours":
+            reasons.append(
+                f"Time to first review package {float(check['observed']):.2f}h exceeds target {check['target']}"
+            )
+        elif check["status"] == "fail" and check["name"] == "top_10_stability_after_small_retune":
+            reasons.append(
+                f"Top-10 stability after small retune {float(check['observed']):.2f} is below target {check['target']}"
+            )
+
+    seen_reasons = set()
+    ordered_reasons = []
+    for reason in reasons:
+        if reason not in seen_reasons:
+            ordered_reasons.append(reason)
+            seen_reasons.add(reason)
+
+    status = acceptance_status(checks)
+    if not ordered_reasons:
+        ordered_reasons = ["Acceptance checks passed"]
+
     return {
         "run_id": kpi_summary["run_id"],
-        "status": acceptance_status(checks),
+        "status": status,
+        "reasons": ordered_reasons,
         "checks": checks,
         "kpis": kpi_summary,
+        "legal_gate": legal_gate,
+        "composite_quality": composite_quality,
+        "source_scene_manifest_hash": (run_metadata or {}).get(
+            "source_scene_manifest_hash",
+            kpi_summary["source_scene_manifest_hash"],
+        ),
+        "processing_baseline_id": (run_metadata or {}).get("processing_baseline_id"),
+        "score_formula_version": (run_metadata or {}).get("score_formula_version"),
+        "candidate_count": candidate_count,
+        "review_state_counts": dict(sorted((review_state_counts or {}).items())),
+        "export_audit_ready": export_audit_ready,
+        "latest_export_audit_manifest_hash": (
+            export_audit_manifest.get("audit_manifest_hash") if export_audit_manifest else None
+        ),
+        "reproducibility_summary": normalized_reproducibility_summary,
     }
 
 
@@ -372,10 +517,31 @@ def render_acceptance_summary_markdown(summary: dict) -> str:
         "",
         f"- Run ID: `{summary['run_id']}`",
         f"- Overall status: `{summary['status']}`",
+        f"- Candidate count: `{summary.get('candidate_count')}`",
+        f"- Export audit ready: `{summary.get('export_audit_ready')}`",
+    ]
+    if summary.get("legal_gate") is not None:
+        lines.append(f"- Legal gate: `{summary['legal_gate'].get('decision')}`")
+    if summary.get("composite_quality") is not None:
+        lines.append(
+            f"- Composite cloud policy: `{summary['composite_quality'].get('cloud_policy_decision')}`"
+        )
+    if summary.get("reasons"):
+        lines.extend(
+            [
+                "",
+                "## Reasons",
+                "",
+            ]
+        )
+        lines.extend(f"- {reason}" for reason in summary["reasons"])
+    lines.extend(
+        [
         "",
         "| Check | Status | Observed | Target |",
         "| --- | --- | ---: | --- |",
-    ]
+        ]
+    )
     for check in summary["checks"]:
         observed = json.dumps(check["observed"])
         lines.append(

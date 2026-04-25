@@ -162,6 +162,46 @@ class ExportRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def fetch_latest_audit_manifest(self, run_id: str) -> dict | None:
+        export_records = self.fetch_export_records(run_id)
+        if not export_records:
+            return None
+        latest_record = max(
+            export_records,
+            key=lambda record: (
+                str(record.get("created_at") or ""),
+                str(record["export_record_id"]),
+            ),
+        )
+        run_metadata = RunRepository(self.db_path).fetch_run(run_id)
+        if run_metadata is not None:
+            run_metadata = dict(run_metadata)
+            run_metadata["score_formula_version"] = self._fetch_score_formula_version(run_id)
+            scenes = ManifestRepository(self.db_path).list_scenes(
+                run_metadata["source_scene_manifest_hash"]
+            )
+            run_metadata["composite_quality"] = build_composite_quality_metadata(
+                scenes,
+                cloud_policy_thresholds=resolve_cloud_policy_thresholds(),
+            )
+        candidates = self.fetch_export_candidates(run_id)
+        policy = resolve_export_policy(
+            latest_record["audience"],
+            latest_record["precision_tier"],
+        )
+        sanitized_candidates = sanitize_candidates_for_export(
+            candidates,
+            latest_record["audience"],
+            latest_record["precision_tier"],
+        )
+        return self._build_audit_manifest(
+            export_record=latest_record,
+            run_metadata=run_metadata,
+            policy=policy,
+            candidates=candidates,
+            sanitized_candidates=sanitized_candidates,
+        )
+
     def fetch_export_candidates(self, run_id: str) -> list[dict]:
         with connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row

@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 
 from lawful_anomaly_screening.db.sqlite import connect
+from lawful_anomaly_screening.db.repositories.export_repository import ExportRepository
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
 from lawful_anomaly_screening.sources.manifest_builder import (
     build_composite_quality_metadata,
@@ -26,6 +27,11 @@ class AcceptanceRepository:
                     run_id,
                     status,
                     processing_baseline_id,
+                    (
+                        SELECT pb.score_formula_version
+                        FROM processing_baselines pb
+                        WHERE pb.processing_baseline_id = runs.processing_baseline_id
+                    ) AS score_formula_version,
                     source_scene_manifest_hash,
                     source_endpoint_id,
                     cache_status,
@@ -35,6 +41,11 @@ class AcceptanceRepository:
                     aoi_hash,
                     start_date,
                     end_date,
+                    legal_attestation_status,
+                    legal_geofence_status,
+                    legal_gate_decision,
+                    legal_gate_reason,
+                    legal_gate_evaluated_at,
                     created_at
                 FROM runs
                 WHERE run_id = ?
@@ -46,6 +57,13 @@ class AcceptanceRepository:
         data = dict(row)
         if data.get("aoi_bbox"):
             data["aoi_bbox"] = json.loads(data["aoi_bbox"])
+        data["legal_gate"] = {
+            "attestation_status": data.pop("legal_attestation_status"),
+            "geofence_status": data.pop("legal_geofence_status"),
+            "decision": data.pop("legal_gate_decision"),
+            "reason": data.pop("legal_gate_reason"),
+            "evaluated_at": data.pop("legal_gate_evaluated_at"),
+        }
         scenes = ManifestRepository(self.db_path).list_scenes(data["source_scene_manifest_hash"])
         data["composite_quality"] = (
             build_composite_quality_metadata(
@@ -92,6 +110,23 @@ class AcceptanceRepository:
             candidate["stable_candidate_key"] = _stable_candidate_key(candidate)
             candidate_rows.append(candidate)
         return candidate_rows
+
+    def fetch_review_state_counts(self, run_id: str) -> dict[str, int]:
+        with connect(self.db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT current_state, COUNT(*)
+                FROM candidate_polygons
+                WHERE run_id = ?
+                GROUP BY current_state
+                ORDER BY current_state ASC
+                """,
+                (run_id,),
+            ).fetchall()
+        return {str(state): int(count) for state, count in rows}
+
+    def fetch_latest_export_audit_manifest(self, run_id: str) -> dict | None:
+        return ExportRepository(self.db_path).fetch_latest_audit_manifest(run_id)
 
     def count_paid_escalations(self, run_id: str) -> int:
         with connect(self.db_path) as conn:
