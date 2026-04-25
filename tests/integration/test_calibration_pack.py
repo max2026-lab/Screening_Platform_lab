@@ -82,15 +82,18 @@ def test_calibration_pack_cli_is_ready_after_review_export_and_comparison(
 
     output = io.StringIO()
     with redirect_stdout(output):
-        assert main(
-            [
-                "calibration-pack",
-                "--run-id",
-                "run-001",
-                "--comparison-run-id",
-                "run-002",
-            ]
-        ) == 0
+        assert (
+            main(
+                [
+                    "calibration-pack",
+                    "--run-id",
+                    "run-001",
+                    "--comparison-run-id",
+                    "run-002",
+                ]
+            )
+            == 0
+        )
     pack = json.loads(output.getvalue())
 
     assert pack["status"] == "ready"
@@ -99,17 +102,24 @@ def test_calibration_pack_cli_is_ready_after_review_export_and_comparison(
     assert pack["score_formula_version"] == "v1.5.1-phase0"
     assert pack["legal_gate"]["decision"] == "pass"
     assert pack["candidate_count"] == len(run_1_summary["candidate_ids"])
-    assert pack["reviewed_candidate_count"] == len(approved_candidate_ids) + len(watched_candidate_ids)
+    assert pack["reviewed_candidate_count"] == len(approved_candidate_ids) + len(
+        watched_candidate_ids
+    )
     assert pack["approved_candidate_count"] == len(approved_candidate_ids)
     assert pack["watched_candidate_count"] == len(watched_candidate_ids)
     assert pack["review_coverage_rate"] == 1.0
     assert pack["top20_review_coverage_rate"] == 1.0
     assert pack["export_audit_ready"] is True
-    assert pack["latest_export_audit_manifest_hash"] == (
-        export_payload["audit_manifest"]["audit_manifest_hash"]
+    assert (
+        pack["latest_export_audit_manifest_hash"]
+        == (export_payload["audit_manifest"]["audit_manifest_hash"])
     )
     assert pack["reproducibility_summary"]["status"] == "pass"
     assert pack["reasons"] == ["Calibration readiness checks passed"]
+    assert pack["calibration_policy_id"] == "calibration_policy_v1_0_default"
+    assert pack["calibration_policy"]["review_coverage_minimum_rate"] == 0.20
+    assert pack["calibration_policy"]["requires_export_audit_manifest"] is True
+    assert pack["threshold_policy_source"] is not None
 
 
 def test_calibration_pack_markdown_is_operator_readable(monkeypatch, tmp_path):
@@ -121,15 +131,18 @@ def test_calibration_pack_markdown_is_operator_readable(monkeypatch, tmp_path):
 
     output = io.StringIO()
     with redirect_stdout(output):
-        assert main(
-            [
-                "calibration-pack",
-                "--run-id",
-                "run-001",
-                "--output",
-                "markdown",
-            ]
-        ) == 0
+        assert (
+            main(
+                [
+                    "calibration-pack",
+                    "--run-id",
+                    "run-001",
+                    "--output",
+                    "markdown",
+                ]
+            )
+            == 0
+        )
     markdown = output.getvalue()
 
     assert "# Calibration Evidence Pack" in markdown

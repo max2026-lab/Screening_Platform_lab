@@ -16,7 +16,9 @@ def test_config_loading():
 
 
 def test_endpoint_keys_exist():
-    endpoints = json.loads((PACKAGE_ROOT / "config/sources/endpoints.json").read_text(encoding="utf-8"))
+    endpoints = json.loads(
+        (PACKAGE_ROOT / "config/sources/endpoints.json").read_text(encoding="utf-8")
+    )
     assert endpoints["primary"] == "earth_search"
     assert endpoints["fallbacks"] == ["cdse", "landsatlook"]
     assert {"earth_search", "cdse", "landsatlook"} <= set(endpoints)
@@ -25,7 +27,10 @@ def test_endpoint_keys_exist():
 def test_endpoint_registry_exposes_primary_and_fallbacks():
     registry = load_endpoint_registry()
     assert registry.primary_endpoint.endpoint_id == "earth_search"
-    assert [endpoint.endpoint_id for endpoint in registry.fallback_endpoints] == ["cdse", "landsatlook"]
+    assert [endpoint.endpoint_id for endpoint in registry.fallback_endpoints] == [
+        "cdse",
+        "landsatlook",
+    ]
 
 
 def test_endpoint_registry_accepts_utf8_bom_json(tmp_path):
@@ -67,3 +72,17 @@ def test_relative_env_overrides_are_cwd_anchored(monkeypatch):
     assert settings.endpoints_path == Path("my_endpoints.json")
     assert settings.preprocessing_config_path == Path("my_preprocessing.json")
     assert settings.baseline_path == Path("my_baseline.json")
+
+
+def test_baseline_includes_calibration_policy():
+    baseline = json.loads(
+        (PACKAGE_ROOT / "config/baselines/baseline_v1_5_default.json").read_text(encoding="utf-8")
+    )
+    policy = baseline["calibration_policy"]
+    assert policy["calibration_policy_id"] == "calibration_policy_v1_0_default"
+    assert policy["review_coverage_minimum_rate"] == 0.20
+    assert policy["top20_review_coverage_minimum_rate"] == 0.50
+    assert policy["requires_export_audit_manifest"] is True
+    assert policy["requires_reproducibility_comparison"] is True
+    assert policy["minimum_candidate_count"] == 1
+    assert policy["paid_escalation_required"] is False

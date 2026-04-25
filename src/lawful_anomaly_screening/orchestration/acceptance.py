@@ -21,6 +21,16 @@ REJECTED_REVIEW_STATE = "rejected"
 CALIBRATION_REVIEW_COVERAGE_MINIMUM_RATE = 0.20
 CALIBRATION_TOP20_REVIEW_COVERAGE_MINIMUM_RATE = 0.50
 
+DEFAULT_CALIBRATION_POLICY = {
+    "calibration_policy_id": "calibration_policy_v1_0_default",
+    "review_coverage_minimum_rate": 0.20,
+    "top20_review_coverage_minimum_rate": 0.50,
+    "requires_export_audit_manifest": True,
+    "requires_reproducibility_comparison": True,
+    "minimum_candidate_count": 1,
+    "paid_escalation_required": False,
+}
+
 
 @dataclass(frozen=True)
 class AcceptanceCheck:
@@ -75,7 +85,9 @@ def review_coverage_rate(candidate_rows: list[dict], top_n: int | None = None) -
     if not ranked_candidates:
         return 0.0
     reviewed_count = sum(
-        1 for candidate in ranked_candidates if candidate.get("review_state") != PENDING_REVIEW_STATE
+        1
+        for candidate in ranked_candidates
+        if candidate.get("review_state") != PENDING_REVIEW_STATE
     )
     return round(reviewed_count / len(ranked_candidates), 6)
 
@@ -138,12 +150,13 @@ def _normalize_reproducibility_run(run: dict) -> dict:
     }
 
 
-def _ranked_candidates_by_key(candidate_rows: list[dict]) -> tuple[list[dict], dict[str, dict], dict[str, int]]:
+def _ranked_candidates_by_key(
+    candidate_rows: list[dict],
+) -> tuple[list[dict], dict[str, dict], dict[str, int]]:
     ranked_candidates = rank_candidates(candidate_rows)
     candidates_by_key = {candidate_identity(row): row for row in ranked_candidates}
     ranks_by_key = {
-        candidate_identity(row): index
-        for index, row in enumerate(ranked_candidates, start=1)
+        candidate_identity(row): index for index, row in enumerate(ranked_candidates, start=1)
     }
     return ranked_candidates, candidates_by_key, ranks_by_key
 
@@ -156,21 +169,23 @@ def reproducibility_check(
     comparison_candidates: list[dict],
     top10_threshold: float = REPRODUCIBILITY_TOP10_MINIMUM_RATE,
 ) -> dict:
-    same_processing_baseline = (
-        baseline_run.get("processing_baseline_id") == comparison_run.get("processing_baseline_id")
+    same_processing_baseline = baseline_run.get("processing_baseline_id") == comparison_run.get(
+        "processing_baseline_id"
     )
     same_aoi_hash = baseline_run.get("aoi_hash") == comparison_run.get("aoi_hash")
-    same_date_window = (
-        baseline_run.get("start_date") == comparison_run.get("start_date")
-        and baseline_run.get("end_date") == comparison_run.get("end_date")
-    )
-    same_source_scene_manifest_hash = (
-        baseline_run.get("source_scene_manifest_hash")
-        == comparison_run.get("source_scene_manifest_hash")
-    )
+    same_date_window = baseline_run.get("start_date") == comparison_run.get(
+        "start_date"
+    ) and baseline_run.get("end_date") == comparison_run.get("end_date")
+    same_source_scene_manifest_hash = baseline_run.get(
+        "source_scene_manifest_hash"
+    ) == comparison_run.get("source_scene_manifest_hash")
 
-    baseline_ranked, baseline_by_key, baseline_ranks = _ranked_candidates_by_key(baseline_candidates)
-    comparison_ranked, comparison_by_key, comparison_ranks = _ranked_candidates_by_key(comparison_candidates)
+    baseline_ranked, baseline_by_key, baseline_ranks = _ranked_candidates_by_key(
+        baseline_candidates
+    )
+    comparison_ranked, comparison_by_key, comparison_ranks = _ranked_candidates_by_key(
+        comparison_candidates
+    )
     common_keys = [
         candidate_identity(row)
         for row in baseline_ranked
@@ -187,7 +202,8 @@ def reproducibility_check(
             "comparison_candidate_id": comparison_by_key[stable_candidate_key]["candidate_id"],
             "baseline_rank": baseline_ranks[stable_candidate_key],
             "comparison_rank": comparison_ranks[stable_candidate_key],
-            "rank_delta": comparison_ranks[stable_candidate_key] - baseline_ranks[stable_candidate_key],
+            "rank_delta": comparison_ranks[stable_candidate_key]
+            - baseline_ranks[stable_candidate_key],
         }
         for stable_candidate_key in common_keys
     ]
@@ -323,6 +339,7 @@ def build_acceptance_summary(
     review_state_counts: dict[str, int] | None = None,
     export_audit_manifest: dict | None = None,
     reproducibility_summary: dict | None = None,
+    calibration_policy_id: str | None = None,
 ) -> dict:
     checks = [
         {
@@ -430,7 +447,9 @@ def build_acceptance_summary(
             "top10_stability_rate": reproducibility_summary["top10_stability_rate"],
             "same_aoi_hash": reproducibility_summary["same_aoi_hash"],
             "same_date_window": reproducibility_summary["same_date_window"],
-            "same_source_scene_manifest_hash": reproducibility_summary["same_source_scene_manifest_hash"],
+            "same_source_scene_manifest_hash": reproducibility_summary[
+                "same_source_scene_manifest_hash"
+            ],
             "reasons": list(reproducibility_summary["reasons"]),
         }
         checks.append(
@@ -441,7 +460,9 @@ def build_acceptance_summary(
                     "top10_stability_rate": reproducibility_summary["top10_stability_rate"],
                     "same_aoi_hash": reproducibility_summary["same_aoi_hash"],
                     "same_date_window": reproducibility_summary["same_date_window"],
-                    "same_source_scene_manifest_hash": reproducibility_summary["same_source_scene_manifest_hash"],
+                    "same_source_scene_manifest_hash": reproducibility_summary[
+                        "same_source_scene_manifest_hash"
+                    ],
                 },
                 "target": "deterministic comparison stable",
             }
@@ -464,7 +485,10 @@ def build_acceptance_summary(
         )
     if not export_audit_ready:
         reasons.append("Export audit manifest not created yet")
-    if normalized_reproducibility_summary is not None and reproducibility_summary["status"] in {"warn", "fail"}:
+    if normalized_reproducibility_summary is not None and reproducibility_summary["status"] in {
+        "warn",
+        "fail",
+    }:
         reasons.extend(normalized_reproducibility_summary["reasons"])
 
     for check in checks:
@@ -504,7 +528,7 @@ def build_acceptance_summary(
     if not ordered_reasons:
         ordered_reasons = ["Acceptance checks passed"]
 
-    return {
+    result = {
         "run_id": kpi_summary["run_id"],
         "status": status,
         "reasons": ordered_reasons,
@@ -526,6 +550,9 @@ def build_acceptance_summary(
         ),
         "reproducibility_summary": normalized_reproducibility_summary,
     }
+    if calibration_policy_id is not None:
+        result["calibration_policy_id"] = calibration_policy_id
+    return result
 
 
 def build_calibration_pack(
@@ -536,7 +563,10 @@ def build_calibration_pack(
     export_audit_manifest: dict | None = None,
     paid_escalation_count: int = 0,
     reproducibility_summary: dict | None = None,
+    calibration_policy: dict | None = None,
+    threshold_policy_source: str | None = None,
 ) -> dict:
+    policy = calibration_policy if calibration_policy is not None else DEFAULT_CALIBRATION_POLICY
     sorted_review_state_counts = dict(sorted((review_state_counts or {}).items()))
     candidate_count = len(candidate_rows)
     reviewed_count = sum(
@@ -554,6 +584,11 @@ def build_calibration_pack(
     legal_gate = run_metadata.get("legal_gate")
     legal_gate_decision = (legal_gate or {}).get("decision")
     composite_quality = run_metadata.get("composite_quality")
+    min_candidate_count = int(policy.get("minimum_candidate_count", 1))
+    review_coverage_min = float(policy.get("review_coverage_minimum_rate", 0.20))
+    top20_review_coverage_min = float(policy.get("top20_review_coverage_minimum_rate", 0.50))
+    requires_export_audit = bool(policy.get("requires_export_audit_manifest", True))
+    requires_reproducibility = bool(policy.get("requires_reproducibility_comparison", True))
 
     acceptance_reasons = []
     acceptance_status = "pass"
@@ -588,7 +623,9 @@ def build_calibration_pack(
             "top10_stability_rate": reproducibility_summary["top10_stability_rate"],
             "same_aoi_hash": reproducibility_summary["same_aoi_hash"],
             "same_date_window": reproducibility_summary["same_date_window"],
-            "same_source_scene_manifest_hash": reproducibility_summary["same_source_scene_manifest_hash"],
+            "same_source_scene_manifest_hash": reproducibility_summary[
+                "same_source_scene_manifest_hash"
+            ],
             "reasons": list(reproducibility_summary["reasons"]),
         }
         if reproducibility_summary["status"] == "fail":
@@ -609,53 +646,63 @@ def build_calibration_pack(
         },
         {
             "name": "candidate_count",
-            "status": "pass" if candidate_count > 0 else "incomplete",
+            "status": "pass" if candidate_count >= min_candidate_count else "incomplete",
             "observed": candidate_count,
-            "target": ">= 1",
+            "target": f">= {min_candidate_count}",
         },
         {
             "name": "review_coverage_rate",
-            "status": "pass" if coverage_rate >= CALIBRATION_REVIEW_COVERAGE_MINIMUM_RATE else "incomplete",
+            "status": "pass" if coverage_rate >= review_coverage_min else "incomplete",
             "observed": coverage_rate,
-            "target": ">= 0.20",
+            "target": f">= {review_coverage_min:.2f}",
         },
         {
             "name": "top20_review_coverage_rate",
-            "status": "pass"
-            if top20_coverage_rate >= CALIBRATION_TOP20_REVIEW_COVERAGE_MINIMUM_RATE
-            else "incomplete",
+            "status": "pass" if top20_coverage_rate >= top20_review_coverage_min else "incomplete",
             "observed": top20_coverage_rate,
-            "target": ">= 0.50",
+            "target": f">= {top20_review_coverage_min:.2f}",
         },
         {
             "name": "export_audit_ready",
-            "status": "pass" if export_audit_ready else "incomplete",
+            "status": "pass"
+            if export_audit_ready
+            else ("incomplete" if requires_export_audit else "pass"),
             "observed": export_audit_ready,
-            "target": "export audit manifest available",
+            "target": "export audit manifest available"
+            if requires_export_audit
+            else "export audit manifest not required",
         },
     ]
     if reproducibility_summary is None:
         readiness_checks.append(
             {
                 "name": "reproducibility",
-                "status": "incomplete",
+                "status": "incomplete" if requires_reproducibility else "pass",
                 "observed": None,
-                "target": "comparison run supplied with pass status",
+                "target": "comparison run supplied with pass status"
+                if requires_reproducibility
+                else "reproducibility comparison not required",
             }
         )
     else:
         readiness_checks.append(
             {
                 "name": "reproducibility",
-                "status": "pass" if reproducibility_summary["status"] == "pass" else reproducibility_summary["status"],
+                "status": "pass"
+                if reproducibility_summary["status"] == "pass"
+                else reproducibility_summary["status"],
                 "observed": {
                     "status": reproducibility_summary["status"],
                     "top10_stability_rate": reproducibility_summary["top10_stability_rate"],
                     "same_aoi_hash": reproducibility_summary["same_aoi_hash"],
                     "same_date_window": reproducibility_summary["same_date_window"],
-                    "same_source_scene_manifest_hash": reproducibility_summary["same_source_scene_manifest_hash"],
+                    "same_source_scene_manifest_hash": reproducibility_summary[
+                        "same_source_scene_manifest_hash"
+                    ],
                 },
-                "target": "comparison run supplied with pass status",
+                "target": "comparison run supplied with pass status"
+                if requires_reproducibility
+                else "reproducibility comparison not required",
             }
         )
 
@@ -664,21 +711,21 @@ def build_calibration_pack(
         reasons.append(
             f"Legal gate failed: {(legal_gate or {}).get('reason') or 'legal gate did not pass'}"
         )
-    if candidate_count == 0:
+    if candidate_count < min_candidate_count:
         reasons.append("No candidates produced for run")
-    if coverage_rate < CALIBRATION_REVIEW_COVERAGE_MINIMUM_RATE:
+    if coverage_rate < review_coverage_min:
         reasons.append(
-            f"Review coverage rate {coverage_rate:.2f} is below minimum {CALIBRATION_REVIEW_COVERAGE_MINIMUM_RATE:.2f}"
+            f"Review coverage rate {coverage_rate:.2f} is below minimum {review_coverage_min:.2f}"
         )
-    if top20_coverage_rate < CALIBRATION_TOP20_REVIEW_COVERAGE_MINIMUM_RATE:
+    if top20_coverage_rate < top20_review_coverage_min:
         reasons.append(
-            f"Top-20 review coverage rate {top20_coverage_rate:.2f} is below minimum {CALIBRATION_TOP20_REVIEW_COVERAGE_MINIMUM_RATE:.2f}"
+            f"Top-20 review coverage rate {top20_coverage_rate:.2f} is below minimum {top20_review_coverage_min:.2f}"
         )
-    if not export_audit_ready:
+    if requires_export_audit and not export_audit_ready:
         reasons.append("Export audit manifest not created yet")
-    if reproducibility_summary is None:
+    if requires_reproducibility and reproducibility_summary is None:
         reasons.append("Reproducibility comparison run not supplied")
-    elif reproducibility_summary["status"] != "pass":
+    elif reproducibility_summary is not None and reproducibility_summary["status"] != "pass":
         reasons.extend(reproducibility_summary["reasons"])
 
     check_statuses = {check["status"] for check in readiness_checks}
@@ -736,6 +783,9 @@ def build_calibration_pack(
         ),
         "paid_escalation_count": paid_escalation_count,
         "calibration_readiness_checks": readiness_checks,
+        "calibration_policy_id": policy.get("calibration_policy_id"),
+        "calibration_policy": dict(policy),
+        "threshold_policy_source": threshold_policy_source,
     }
     if normalized_reproducibility_summary is not None:
         payload["reproducibility_summary"] = normalized_reproducibility_summary
@@ -768,9 +818,9 @@ def render_acceptance_summary_markdown(summary: dict) -> str:
         lines.extend(f"- {reason}" for reason in summary["reasons"])
     lines.extend(
         [
-        "",
-        "| Check | Status | Observed | Target |",
-        "| --- | --- | ---: | --- |",
+            "",
+            "| Check | Status | Observed | Target |",
+            "| --- | --- | ---: | --- |",
         ]
     )
     for check in summary["checks"]:

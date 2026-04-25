@@ -82,16 +82,16 @@ def _build_legal_gate_for_aoi(
 def _validate_date_window(start_str: str | None, end_str: str | None) -> tuple[str, str]:
     if not start_str or not end_str:
         raise ValueError("--start-date and --end-date are required")
-    
+
     try:
         start_date = datetime.strptime(start_str, "%Y-%m-%d")
         end_date = datetime.strptime(end_str, "%Y-%m-%d")
     except ValueError:
         raise ValueError("dates must be in YYYY-MM-DD format")
-        
+
     if end_date < start_date:
         raise ValueError("end-date cannot be before start-date")
-        
+
     return start_str, end_str
 
 
@@ -109,18 +109,20 @@ def cmd_version(_: argparse.Namespace) -> int:
 
 def cmd_show_config(_: argparse.Namespace) -> int:
     settings = load_settings()
-    print(json.dumps(
-        {
-            "db_path": str(settings.db_path),
-            "baseline_path": str(settings.baseline_path),
-            "logging_config_path": str(settings.logging_config_path),
-            "export_precision_path": str(settings.export_precision_path),
-            "endpoints_path": str(settings.endpoints_path),
-            "geofence_policy_path": str(settings.geofence_policy_path),
-            "preprocessing_config_path": str(settings.preprocessing_config_path),
-        },
-        indent=2,
-    ))
+    print(
+        json.dumps(
+            {
+                "db_path": str(settings.db_path),
+                "baseline_path": str(settings.baseline_path),
+                "logging_config_path": str(settings.logging_config_path),
+                "export_precision_path": str(settings.export_precision_path),
+                "endpoints_path": str(settings.endpoints_path),
+                "geofence_policy_path": str(settings.geofence_policy_path),
+                "preprocessing_config_path": str(settings.preprocessing_config_path),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
@@ -232,7 +234,7 @@ def cmd_execute_run(args: argparse.Namespace) -> int:
     settings = load_settings()
     run_repository = RunRepository(settings.db_path)
     run_metadata = run_repository.fetch_run(args.run_id)
-    
+
     if run_metadata is None:
         print(f"run not found: {args.run_id}", file=sys.stderr)
         return 1
@@ -243,7 +245,7 @@ def cmd_execute_run(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-        
+
     if not run_metadata.get("aoi_hash") or not run_metadata.get("start_date"):
         print(f"run {args.run_id} is missing AOI or date window metadata", file=sys.stderr)
         return 1
@@ -421,6 +423,8 @@ def cmd_kpi_summary(args: argparse.Namespace) -> int:
 
 
 def cmd_acceptance_check(args: argparse.Namespace) -> int:
+    baseline = _load_baseline()
+    calibration_policy_id = (baseline.get("calibration_policy") or {}).get("calibration_policy_id")
     repository = AcceptanceRepository(load_settings().db_path)
     run = repository.fetch_run(args.run_id)
     if run is None:
@@ -449,6 +453,7 @@ def cmd_acceptance_check(args: argparse.Namespace) -> int:
         review_state_counts=repository.fetch_review_state_counts(args.run_id),
         export_audit_manifest=repository.fetch_latest_export_audit_manifest(args.run_id),
         reproducibility_summary=reproducibility_summary,
+        calibration_policy_id=calibration_policy_id,
     )
     if args.output == "markdown":
         print(render_acceptance_summary_markdown(summary), end="")
@@ -458,7 +463,10 @@ def cmd_acceptance_check(args: argparse.Namespace) -> int:
 
 
 def cmd_calibration_pack(args: argparse.Namespace) -> int:
-    repository = AcceptanceRepository(load_settings().db_path)
+    settings = load_settings()
+    baseline = _load_baseline()
+    calibration_policy = baseline.get("calibration_policy")
+    repository = AcceptanceRepository(settings.db_path)
     run = repository.fetch_run(args.run_id)
     if run is None:
         print(f"run not found: {args.run_id}", file=sys.stderr)
@@ -482,6 +490,8 @@ def cmd_calibration_pack(args: argparse.Namespace) -> int:
         export_audit_manifest=repository.fetch_latest_export_audit_manifest(args.run_id),
         paid_escalation_count=repository.count_paid_escalations(args.run_id),
         reproducibility_summary=reproducibility_summary,
+        calibration_policy=calibration_policy,
+        threshold_policy_source=str(settings.baseline_path),
     )
     if args.output == "markdown":
         print(render_calibration_pack_markdown(pack), end="")

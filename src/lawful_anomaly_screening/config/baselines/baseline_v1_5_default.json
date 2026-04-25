@@ -33,5 +33,14 @@
   },
   "legal": {
     "gate_required_before_analysis": true
+  },
+  "calibration_policy": {
+    "calibration_policy_id": "calibration_policy_v1_0_default",
+    "review_coverage_minimum_rate": 0.20,
+    "top20_review_coverage_minimum_rate": 0.50,
+    "requires_export_audit_manifest": true,
+    "requires_reproducibility_comparison": true,
+    "minimum_candidate_count": 1,
+    "paid_escalation_required": false
   }
 }

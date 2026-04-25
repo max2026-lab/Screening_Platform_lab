@@ -267,11 +267,15 @@ def test_reproducibility_identical_deterministic_reruns_return_pass():
     baseline_run = _run("run-001")
     comparison_run = _run("run-002")
     baseline = [
-        _candidate(f"baseline-{index:03d}", 100.0 - index, stable_candidate_key=f"stable-{index:03d}")
+        _candidate(
+            f"baseline-{index:03d}", 100.0 - index, stable_candidate_key=f"stable-{index:03d}"
+        )
         for index in range(1, 12)
     ]
     comparison = [
-        _candidate(f"comparison-{index:03d}", 100.0 - index, stable_candidate_key=f"stable-{index:03d}")
+        _candidate(
+            f"comparison-{index:03d}", 100.0 - index, stable_candidate_key=f"stable-{index:03d}"
+        )
         for index in range(1, 12)
     ]
 
@@ -300,7 +304,9 @@ def test_reproducibility_fails_for_aoi_mismatch_with_clear_reason():
         baseline_run=_run("run-001", aoi_hash="aoi-hash-001"),
         comparison_run=_run("run-002", aoi_hash="aoi-hash-002"),
         baseline_candidates=[_candidate("baseline-001", 99.0, stable_candidate_key="stable-001")],
-        comparison_candidates=[_candidate("comparison-001", 99.0, stable_candidate_key="stable-001")],
+        comparison_candidates=[
+            _candidate("comparison-001", 99.0, stable_candidate_key="stable-001")
+        ],
     )
 
     assert result["status"] == "fail"
@@ -313,12 +319,16 @@ def test_reproducibility_fails_for_date_window_mismatch_with_clear_reason():
         baseline_run=_run("run-001", start_date="2024-01-01", end_date="2024-03-31"),
         comparison_run=_run("run-002", start_date="2024-02-01", end_date="2024-03-31"),
         baseline_candidates=[_candidate("baseline-001", 99.0, stable_candidate_key="stable-001")],
-        comparison_candidates=[_candidate("comparison-001", 99.0, stable_candidate_key="stable-001")],
+        comparison_candidates=[
+            _candidate("comparison-001", 99.0, stable_candidate_key="stable-001")
+        ],
     )
 
     assert result["status"] == "fail"
     assert result["same_date_window"] is False
-    assert any(reason.startswith("Date window differs between runs:") for reason in result["reasons"])
+    assert any(
+        reason.startswith("Date window differs between runs:") for reason in result["reasons"]
+    )
 
 
 def test_reproducibility_warns_for_manifest_mismatch_with_clear_reason():
@@ -326,7 +336,9 @@ def test_reproducibility_warns_for_manifest_mismatch_with_clear_reason():
         baseline_run=_run("run-001", source_scene_manifest_hash="manifest-hash-001"),
         comparison_run=_run("run-002", source_scene_manifest_hash="manifest-hash-002"),
         baseline_candidates=[_candidate("baseline-001", 99.0, stable_candidate_key="stable-001")],
-        comparison_candidates=[_candidate("comparison-001", 99.0, stable_candidate_key="stable-001")],
+        comparison_candidates=[
+            _candidate("comparison-001", 99.0, stable_candidate_key="stable-001")
+        ],
     )
 
     assert result["status"] == "warn"
@@ -409,7 +421,9 @@ def test_rank_deltas_and_score_deltas_are_deterministic():
 
 def test_top10_stability_threshold_warning_works():
     baseline = [
-        _candidate(f"baseline-{index:03d}", 100.0 - index, stable_candidate_key=f"stable-{index:03d}")
+        _candidate(
+            f"baseline-{index:03d}", 100.0 - index, stable_candidate_key=f"stable-{index:03d}"
+        )
         for index in range(1, 12)
     ]
     comparison = [
@@ -537,6 +551,86 @@ def test_calibration_pack_includes_required_fields_and_ready_status():
         "reproducibility",
     }
     assert pack["reasons"] == ["Calibration readiness checks passed"]
+    assert pack["calibration_policy_id"] == "calibration_policy_v1_0_default"
+    assert pack["calibration_policy"]["review_coverage_minimum_rate"] == 0.20
+    assert pack["threshold_policy_source"] is None
+
+
+def test_calibration_pack_uses_custom_policy_thresholds_without_code_changes():
+    candidates = [_candidate(f"candidate-{index:03d}", 100.0 - index) for index in range(1, 21)]
+
+    custom_policy = {
+        "calibration_policy_id": "calibration_policy_custom_test",
+        "review_coverage_minimum_rate": 0.50,
+        "top20_review_coverage_minimum_rate": 0.90,
+        "requires_export_audit_manifest": False,
+        "requires_reproducibility_comparison": False,
+        "minimum_candidate_count": 25,
+        "paid_escalation_required": False,
+    }
+
+    pack = build_calibration_pack(
+        run_metadata={
+            "run_id": "run-001",
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {
+                "decision": "pass",
+                "reason": "legal gate passed",
+                "evaluated_at": "2026-01-01T00:00:00Z",
+            },
+            "composite_quality": {
+                "cloud_policy_decision": "pass",
+                "cloud_policy_reason": "cloud policy passed",
+            },
+        },
+        candidate_rows=candidates,
+        review_state_counts={"pending_review": 20},
+        export_audit_manifest=None,
+        paid_escalation_count=0,
+        reproducibility_summary=None,
+        calibration_policy=custom_policy,
+        threshold_policy_source="test_policy.json",
+    )
+
+    assert pack["calibration_policy_id"] == "calibration_policy_custom_test"
+    assert pack["threshold_policy_source"] == "test_policy.json"
+
+    candidate_check = next(
+        c for c in pack["calibration_readiness_checks"] if c["name"] == "candidate_count"
+    )
+    assert candidate_check["target"] == ">= 25"
+    assert candidate_check["status"] == "incomplete"
+
+    coverage_check = next(
+        c for c in pack["calibration_readiness_checks"] if c["name"] == "review_coverage_rate"
+    )
+    assert coverage_check["target"] == ">= 0.50"
+    assert coverage_check["status"] == "incomplete"
+
+    top20_check = next(
+        c for c in pack["calibration_readiness_checks"] if c["name"] == "top20_review_coverage_rate"
+    )
+    assert top20_check["target"] == ">= 0.90"
+    assert top20_check["status"] == "incomplete"
+
+    export_check = next(
+        c for c in pack["calibration_readiness_checks"] if c["name"] == "export_audit_ready"
+    )
+    assert export_check["status"] == "pass"
+    assert export_check["target"] == "export audit manifest not required"
+
+    repro_check = next(
+        c for c in pack["calibration_readiness_checks"] if c["name"] == "reproducibility"
+    )
+    assert repro_check["status"] == "pass"
+    assert repro_check["target"] == "reproducibility comparison not required"
+
+    assert "Review coverage rate 0.00 is below minimum 0.50" in pack["reasons"]
+    assert "Top-20 review coverage rate 0.00 is below minimum 0.90" in pack["reasons"]
+    assert "Export audit manifest not created yet" not in pack["reasons"]
+    assert "Reproducibility comparison run not supplied" not in pack["reasons"]
 
 
 def test_calibration_pack_without_reviews_is_incomplete_with_clear_reasons():
