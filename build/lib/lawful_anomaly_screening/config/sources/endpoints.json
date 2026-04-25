@@ -1,0 +1,22 @@
+{
+  "primary": "earth_search",
+  "fallbacks": [
+    "cdse",
+    "landsatlook"
+  ],
+  "earth_search": {
+    "provider": "earth-search",
+    "role": "primary",
+    "synchronous_only": true
+  },
+  "cdse": {
+    "provider": "cdse",
+    "role": "fallback",
+    "synchronous_only": true
+  },
+  "landsatlook": {
+    "provider": "landsatlook",
+    "role": "fallback",
+    "synchronous_only": true
+  }
+}

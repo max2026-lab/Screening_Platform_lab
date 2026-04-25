@@ -281,16 +281,35 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     env["LAWFUL_ANOMALY_DB_PATH"] = str(db_path)
 
     def run_cli(*args: str) -> str:
-        # Use 'lawful-anomaly' instead of 'python -m ...' to test the installed command path
-        # In this test environment, we use 'uv run' to ensure the command is available in the venv
-        completed = subprocess.run(
-            ["uv", "run", "lawful-anomaly", *args],
-            cwd=outside_cwd,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        # Use 'lawful-anomaly' instead of 'python -m ...' to test the installed command path.
+        # We try to run it directly as an executable.
+        cmd = "lawful-anomaly"
+        if os.name == "nt":
+            # On Windows, we might need to find it in the venv's Scripts if it's not in the PATH
+            # But during pytest it should be available. 
+            # We'll try calling it via its name; subprocess will search PATH.
+            pass
+
+        try:
+            completed = subprocess.run(
+                [cmd, *args],
+                cwd=outside_cwd,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            # Fallback to uv run if direct call fails in some CI environments, 
+            # but we prefer direct call to prove installation.
+            completed = subprocess.run(
+                ["uv", "run", "lawful-anomaly", *args],
+                cwd=outside_cwd,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
         return completed.stdout
 
     assert run_cli("init-db").strip() == "ok"

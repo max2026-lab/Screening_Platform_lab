@@ -12,6 +12,7 @@ dependencies = ["pytest>=8.0"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]

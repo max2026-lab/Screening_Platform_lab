@@ -1,0 +1,49 @@
+{
+  "public": {
+    "precision": "coarse",
+    "allow_exact_coordinates": false,
+    "coordinate_resolution_m": 1000,
+    "artifact_name_resolution_m": 1000
+  },
+  "shared": {
+    "precision": "coarse",
+    "allow_exact_coordinates": false,
+    "coordinate_resolution_m": 1000,
+    "artifact_name_resolution_m": 1000
+  },
+  "reviewer": {
+    "precision": "exact",
+    "allow_exact_coordinates": true,
+    "coordinate_resolution_m": 0,
+    "artifact_name_resolution_m": 0
+  },
+  "internal": {
+    "precision": "exact",
+    "allow_exact_coordinates": true,
+    "coordinate_resolution_m": 0,
+    "artifact_name_resolution_m": 0
+  },
+  "field": {
+    "precision": "exact",
+    "allow_exact_coordinates": true,
+    "coordinate_resolution_m": 0,
+    "artifact_name_resolution_m": 100
+  },
+  "report_pdf": {
+    "precision": "configurable",
+    "allow_exact_coordinates": true,
+    "default_precision": "restricted",
+    "coordinate_resolution_m_by_precision": {
+      "restricted": 100,
+      "exact": 0
+    },
+    "artifact_name_resolution_m_by_precision": {
+      "restricted": 100,
+      "exact": 100
+    },
+    "allowed_precision_values": [
+      "restricted",
+      "exact"
+    ]
+  }
+}

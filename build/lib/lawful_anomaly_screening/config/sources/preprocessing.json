@@ -1,0 +1,26 @@
+{
+  "season_windows": {
+    "leaf_on": {
+      "start_month": 4,
+      "end_month": 9
+    },
+    "leaf_off": {
+      "start_month": 10,
+      "end_month": 3
+    },
+    "dry": {
+      "start_month": 6,
+      "end_month": 9
+    },
+    "wet": {
+      "start_month": 10,
+      "end_month": 5
+    }
+  },
+  "cloud_mask": {
+    "provider": "stubbed-cloud-mask",
+    "apply_shadow_mask": true,
+    "apply_snow_mask": true,
+    "max_cloud_probability": 0.2
+  }
+}

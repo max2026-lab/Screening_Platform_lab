@@ -1,0 +1,3 @@
+recursive-include src/lawful_anomaly_screening/config *.json *.yaml
+recursive-include src/lawful_anomaly_screening/db *.sql
+include README.md
