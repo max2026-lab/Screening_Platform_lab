@@ -110,3 +110,11 @@ Prerequisite: `lawful-anomaly` is already installed and available on `PATH`.
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase6_legal_release.ps1
 ```
+
+## Phase 7 Composite Verification
+
+Prerequisite: `lawful-anomaly` is already installed and available on `PATH`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase7_composite_release.ps1
+```
