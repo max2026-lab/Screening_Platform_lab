@@ -315,6 +315,7 @@ def cmd_export_create(args: argparse.Namespace) -> int:
 def _build_quote_service() -> QuoteService:
     db_path = load_settings().db_path
     return QuoteService(
+        acceptance_repository=AcceptanceRepository(db_path),
         paid_repository=PaidRepository(db_path),
         review_repository=ReviewRepository(db_path),
         archive_client=Up42ArchiveClient(),
@@ -324,6 +325,7 @@ def _build_quote_service() -> QuoteService:
 def _build_order_service() -> OrderService:
     db_path = load_settings().db_path
     return OrderService(
+        acceptance_repository=AcceptanceRepository(db_path),
         paid_repository=PaidRepository(db_path),
         review_repository=ReviewRepository(db_path),
         archive_client=Up42ArchiveClient(),

@@ -4,7 +4,7 @@ from lawful_anomaly_screening.orchestration.scaffold_run import scaffold_run_for
 import sqlite3
 
 
-def seed_reviewable_candidates(db_path, cache_root):
+def seed_reviewable_candidates(db_path, cache_root, *, legal_gate=None):
     bootstrap_minimal_run(
         db_path,
         processing_baseline_id="baseline_v1_5_default",
@@ -13,6 +13,7 @@ def seed_reviewable_candidates(db_path, cache_root):
         source_endpoint_id="earth_search",
         run_id="run-001",
         manifest_path="data/manifests/manifest-hash-001.json",
+        legal_gate=legal_gate,
     )
     summary = scaffold_run_for_run_id(
         db_path,
