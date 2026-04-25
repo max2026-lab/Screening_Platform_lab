@@ -137,9 +137,8 @@ def cmd_create_run(_: argparse.Namespace) -> int:
     start_date, end_date = _validate_date_window(_.start_date, _.end_date)
 
     registry = load_endpoint_registry()
-    source_endpoint_id = _.source_endpoint_id or registry.primary_endpoint_id
     manifest = build_manifest(
-        source_endpoint_id=source_endpoint_id,
+        source_endpoint_id=_.source_endpoint_id,
         aoi_hash=aoi_metadata.get("aoi_hash"),
         start_date=start_date,
         end_date=end_date,

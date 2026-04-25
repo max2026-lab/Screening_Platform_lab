@@ -61,3 +61,31 @@ def test_all_endpoints_failing_with_fallback(monkeypatch):
             end_date="2024-01-02",
             aoi_hash="all_fail_discovery_trigger"
         )
+
+def test_fallback_via_simulator_config(tmp_path, monkeypatch):
+    config_file = tmp_path / "simulator_endpoints.json"
+    config_file.write_text(json.dumps({
+        "primary": "sim_empty",
+        "fallbacks": ["cdse"],
+        "sim_empty": {
+            "provider": "simulator-empty",
+            "role": "primary",
+            "synchronous_only": True
+        },
+        "cdse": {
+            "provider": "cdse",
+            "role": "fallback",
+            "synchronous_only": True
+        }
+    }))
+    monkeypatch.setenv("LAWFUL_ANOMALY_ENDPOINTS_PATH", str(config_file))
+    
+    manifest = build_manifest(
+        start_date="2024-01-01",
+        end_date="2024-01-02",
+        aoi_hash="normal_trigger"
+    )
+    assert manifest["source_endpoint_id"] == "cdse"
+    assert manifest["fallback_diagnostics"]["fallback_used"] is True
+    assert manifest["fallback_diagnostics"]["selected_endpoint_id"] == "cdse"
+    assert "sim_empty" in manifest["fallback_diagnostics"]["attempted_endpoint_ids"]

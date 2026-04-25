@@ -80,10 +80,14 @@ def discover_scenes(
     if endpoint_id not in active_registry.endpoints:
         raise SourceError(f"unknown source endpoint: {endpoint_id}")
 
+    endpoint = active_registry.endpoints[endpoint_id]
+
     # Simulation hook for empty results
     if aoi_hash == "all_fail_discovery_trigger":
         return []
     if aoi_hash == "empty_discovery_trigger" and endpoint_id == "earth_search":
+        return []
+    if endpoint.provider == "simulator-empty":
         return []
 
     discovery_seed = sha256(
@@ -114,7 +118,7 @@ def discover_scenes(
         token = discovery_seed[index * 16:(index + 1) * 16]
         
         # Simulation hook for malformed records
-        if aoi_hash == "malformed_discovery_trigger" and index == 1 and endpoint_id == "earth_search":
+        if endpoint.provider == "simulator-malformed" or (aoi_hash == "malformed_discovery_trigger" and index == 1 and endpoint_id == "earth_search"):
             scenes.append({"scene_id": f"{endpoint_id}-malformed-{token}"}) # missing fields
             continue
 
