@@ -142,3 +142,12 @@ The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase9_scoring_explainability_release.ps1
 ```
+
+## Phase 10 Export Audit Verification
+
+From repo root, run `uv sync` and `uv pip install -e C:\Dev\Screening_Platform_lab` first.
+The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase10_export_audit_release.ps1
+```
