@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS runs (
     legal_geofence_status TEXT NOT NULL DEFAULT 'missing',
     legal_gate_decision TEXT NOT NULL DEFAULT 'fail',
     legal_gate_reason TEXT NOT NULL DEFAULT '',
-    legal_gate_evaluated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    legal_gate_evaluated_at TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

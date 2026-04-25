@@ -5,9 +5,11 @@ import json
 import sqlite3
 from typing import Any
 from hashlib import sha256
+from datetime import datetime, timezone
 
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
+LEGAL_GATE_MIGRATION_TIMESTAMP = "1970-01-01T00:00:00Z"
 
 
 def connect(db_path: Path | str) -> sqlite3.Connection:
@@ -22,6 +24,10 @@ def init_db(db_path: Path | str) -> None:
     with connect(path) as conn:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
         _ensure_runs_legal_gate_columns(conn)
+
+
+def current_utc_timestamp() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _ensure_runs_legal_gate_columns(conn: sqlite3.Connection) -> None:
@@ -47,8 +53,16 @@ def _ensure_runs_legal_gate_columns(conn: sqlite3.Connection) -> None:
         )
     if "legal_gate_evaluated_at" not in run_columns:
         conn.execute(
-            "ALTER TABLE runs ADD COLUMN legal_gate_evaluated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"
+            f"ALTER TABLE runs ADD COLUMN legal_gate_evaluated_at TEXT NOT NULL DEFAULT '{LEGAL_GATE_MIGRATION_TIMESTAMP}'"
         )
+    conn.execute(
+        """
+        UPDATE runs
+        SET legal_gate_evaluated_at = ?
+        WHERE legal_gate_evaluated_at IS NULL OR legal_gate_evaluated_at = ''
+        """,
+        (LEGAL_GATE_MIGRATION_TIMESTAMP,),
+    )
     conn.commit()
 
 
@@ -144,6 +158,7 @@ def insert_run(
     legal_gate_reason: str = "",
     legal_gate_evaluated_at: str | None = None,
 ) -> None:
+    resolved_legal_gate_evaluated_at = legal_gate_evaluated_at or current_utc_timestamp()
     conn.execute(
         """
         INSERT OR REPLACE INTO runs (
@@ -189,7 +204,7 @@ def insert_run(
             legal_geofence_status,
             legal_gate_decision,
             legal_gate_reason,
-            legal_gate_evaluated_at,
+            resolved_legal_gate_evaluated_at,
         ),
     )
 
@@ -806,7 +821,7 @@ def bootstrap_minimal_run(
         "geofence_status": "missing",
         "decision": "fail",
         "reason": "",
-        "evaluated_at": None,
+        "evaluated_at": current_utc_timestamp(),
     }
     with connect(db_path) as conn:
         insert_processing_baseline(

@@ -131,7 +131,7 @@ def test_create_run_fails_when_geofence_policy_blocks_aoi(monkeypatch, tmp_path)
 
 
 def test_create_run_passes_for_valid_attestation_and_allowed_geofence(monkeypatch, tmp_path):
-    _set_test_settings(monkeypatch, tmp_path)
+    db_path = _set_test_settings(monkeypatch, tmp_path)
     aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
 
     result, stdout, stderr = _capture_main(
@@ -152,10 +152,15 @@ def test_create_run_passes_for_valid_attestation_and_allowed_geofence(monkeypatc
     assert payload["legal_gate"]["decision"] == "pass"
     assert payload["legal_gate"]["attestation_status"] == "present"
     assert payload["legal_gate"]["geofence_status"] == "clear"
+    assert payload["legal_gate"]["evaluated_at"]
+
+    run = RunRepository(db_path).fetch_run("run-gate-pass")
+    assert run is not None
+    assert run["legal_gate"] == payload["legal_gate"]
 
 
 def test_execute_run_refuses_failed_persisted_gate(monkeypatch, tmp_path):
-    _set_test_settings(monkeypatch, tmp_path)
+    db_path = _set_test_settings(monkeypatch, tmp_path)
     blocked_aoi = REPO_ROOT / "tests" / "fixtures" / "blocked_aoi.geojson"
 
     create_result, _, _ = _capture_main(
@@ -174,6 +179,11 @@ def test_execute_run_refuses_failed_persisted_gate(monkeypatch, tmp_path):
     execute_result, _, execute_stderr = _capture_main(["execute-run", "--run-id", "run-blocked-execute"])
     assert execute_result == 1
     assert "blocked by legal gate" in execute_stderr
+
+    run = RunRepository(db_path).fetch_run("run-blocked-execute")
+    assert run is not None
+    assert run["status"] == "legal_gate_failed"
+    assert run["legal_gate"]["evaluated_at"]
 
 
 def test_execute_run_output_surfaces_persisted_legal_gate(monkeypatch, tmp_path):
@@ -200,3 +210,26 @@ def test_execute_run_output_surfaces_persisted_legal_gate(monkeypatch, tmp_path)
     assert create_payload["legal_gate"]["decision"] == "pass"
     assert execute_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
     assert execute_payload["run_metadata"]["legal_gate"]["reason"] == "legal gate passed"
+
+
+def test_bootstrap_minimal_run_without_explicit_legal_gate_does_not_crash(tmp_path):
+    from lawful_anomaly_screening.db.sqlite import bootstrap_minimal_run, init_db
+
+    db_path = tmp_path / "bootstrap.sqlite3"
+    init_db(db_path)
+
+    result = bootstrap_minimal_run(
+        db_path,
+        processing_baseline_id="baseline-001",
+        score_formula_version="v1",
+        source_scene_manifest_hash="manifest-001",
+        source_endpoint_id="earth_search",
+        run_id="run-bootstrap-001",
+        manifest_path="data/manifests/manifest-001.json",
+    )
+
+    assert result["legal_gate"]["evaluated_at"]
+
+    run = RunRepository(db_path).fetch_run("run-bootstrap-001")
+    assert run is not None
+    assert run["legal_gate"]["evaluated_at"] == result["legal_gate"]["evaluated_at"]
