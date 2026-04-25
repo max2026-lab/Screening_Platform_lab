@@ -21,6 +21,7 @@ from .exceptions import (
     PaidFlowError,
     ReviewDecisionError,
     ReviewStateError,
+    SourceError,
 )
 from .orchestration.scaffold_run import scaffold_run_for_run_id
 from .orchestration.run_pipeline import execute_run
@@ -588,9 +589,13 @@ def main(argv: list[str] | None = None) -> int:
         PaidFlowError,
         ReviewDecisionError,
         ReviewStateError,
+        SourceError,
         ValueError,
     ) as exc:
-        print(str(exc), file=sys.stderr)
+        prefix = "Error"
+        if isinstance(exc, SourceError):
+            prefix = "Source Error"
+        print(f"{prefix}: {exc}", file=sys.stderr)
         return 1
 
 

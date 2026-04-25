@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from lawful_anomaly_screening.settings import load_settings
+from lawful_anomaly_screening.exceptions import SourceError
 
 
 @dataclass(frozen=True)
@@ -34,17 +35,31 @@ class EndpointRegistry:
 
 def load_endpoint_registry(path: Path | str | None = None) -> EndpointRegistry:
     resolved_path = Path(path) if path is not None else load_settings().endpoints_path
-    data = json.loads(resolved_path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(resolved_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise SourceError(f"failed to load endpoint config: {exc}")
+
+    if "primary" not in data or "fallbacks" not in data:
+        raise SourceError("invalid endpoint config: missing 'primary' or 'fallbacks' key")
+
     endpoint_ids = [data["primary"], *data["fallbacks"]]
-    endpoints = {
-        endpoint_id: SourceEndpoint(
-            endpoint_id=endpoint_id,
-            provider=data[endpoint_id]["provider"],
-            role=data[endpoint_id]["role"],
-            synchronous_only=bool(data[endpoint_id]["synchronous_only"]),
-        )
-        for endpoint_id in endpoint_ids
-    }
+    endpoints = {}
+    for endpoint_id in endpoint_ids:
+        if endpoint_id not in data:
+            raise SourceError(f"invalid endpoint config: definition for '{endpoint_id}' missing")
+        
+        config = data[endpoint_id]
+        try:
+            endpoints[endpoint_id] = SourceEndpoint(
+                endpoint_id=endpoint_id,
+                provider=config["provider"],
+                role=config["role"],
+                synchronous_only=bool(config["synchronous_only"]),
+            )
+        except KeyError as exc:
+            raise SourceError(f"invalid endpoint config for '{endpoint_id}': missing {exc}")
+
     return EndpointRegistry(
         primary_endpoint_id=data["primary"],
         fallback_endpoint_ids=tuple(data["fallbacks"]),
@@ -63,7 +78,11 @@ def discover_scenes(
     active_registry = registry or load_endpoint_registry()
     endpoint_id = source_endpoint_id or active_registry.primary_endpoint_id
     if endpoint_id not in active_registry.endpoints:
-        raise ValueError(f"unknown endpoint: {endpoint_id}")
+        raise SourceError(f"unknown source endpoint: {endpoint_id}")
+
+    # Simulation hook for empty results
+    if aoi_hash == "empty_discovery_trigger":
+        return []
 
     discovery_seed = sha256(
         json.dumps(
@@ -78,15 +97,25 @@ def discover_scenes(
         ).encode("utf-8")
         ).hexdigest()
     if start_date and end_date:
-        window_start = datetime.strptime(start_date, "%Y-%m-%d").date()
-        window_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        try:
+            window_start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            window_end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise SourceError(f"invalid date format: {exc}")
     else:
         window_start = date(2024, 1, 1)
         window_end = date(2024, 1, 31)
+    
     window_span_days = max(0, (window_end - window_start).days)
     scenes = []
     for index in range(3):
         token = discovery_seed[index * 16:(index + 1) * 16]
+        
+        # Simulation hook for malformed records
+        if aoi_hash == "malformed_discovery_trigger" and index == 1:
+            scenes.append({"scene_id": f"{endpoint_id}-malformed-{token}"}) # missing fields
+            continue
+
         acquired_offset = 0 if window_span_days == 0 else int(token[:2], 16) % (window_span_days + 1)
         acquired_on = window_start + timedelta(days=acquired_offset)
         cloud_cover = round((int(token[2:6], 16) % 300) / 10.0, 1)

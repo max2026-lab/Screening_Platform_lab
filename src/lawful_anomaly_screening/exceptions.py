@@ -6,6 +6,10 @@ class LegalGateError(LawfulAnomalyScreeningError):
     """Raised when analysis is blocked by the legal gate."""
 
 
+class SourceError(LawfulAnomalyScreeningError):
+    """Raised when a source endpoint or provider operation fails."""
+
+
 class ReviewDecisionError(LawfulAnomalyScreeningError):
     """Raised when a review decision is invalid."""
 

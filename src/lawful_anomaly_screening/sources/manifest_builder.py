@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lawful_anomaly_screening.settings import load_settings
 from lawful_anomaly_screening.sources.earth_search import discover_scenes, load_endpoint_registry
+from lawful_anomaly_screening.exceptions import SourceError
 
 RETAINED_TILE_SCORE_FIELDS = (
     "optical_anomaly",
@@ -29,7 +30,11 @@ def build_manifest(
     end_date: str | None = None,
 ) -> dict:
     registry = load_endpoint_registry()
-    endpoint = registry.endpoints[source_endpoint_id or registry.primary_endpoint_id]
+    endpoint_id = source_endpoint_id or registry.primary_endpoint_id
+    if endpoint_id not in registry.endpoints:
+        raise SourceError(f"unknown source endpoint: {endpoint_id}")
+    
+    endpoint = registry.endpoints[endpoint_id]
     manifest_scenes = scenes if scenes is not None else discover_scenes(
         endpoint.endpoint_id,
         registry=registry,
@@ -37,17 +42,31 @@ def build_manifest(
         start_date=start_date,
         end_date=end_date,
     )
-    normalized_scenes = sorted(
-        [
-            {
-                "scene_id": scene["scene_id"],
-                "acquired_at": scene["acquired_at"],
-                "cloud_cover": scene["cloud_cover"],
-            }
-            for scene in manifest_scenes
-        ],
-        key=lambda scene: scene["scene_id"],
-    )
+
+    if not manifest_scenes:
+        raise SourceError(
+            f"no scenes discovered for endpoint '{endpoint.endpoint_id}' "
+            f"({endpoint.provider}) in window {start_date} to {end_date}"
+        )
+
+    normalized_scenes = []
+    for index, scene in enumerate(manifest_scenes):
+        try:
+            normalized_scenes.append(
+                {
+                    "scene_id": scene["scene_id"],
+                    "acquired_at": scene["acquired_at"],
+                    "cloud_cover": scene["cloud_cover"],
+                }
+            )
+        except KeyError as exc:
+            raise SourceError(
+                f"malformed scene record at index {index} from endpoint '{endpoint.endpoint_id}': "
+                f"missing expected field {exc}"
+            )
+
+    normalized_scenes.sort(key=lambda scene: scene["scene_id"])
+
     return {
         "manifest_version": "phase4-aoi-manifest-v1",
         "execution_mode": "synchronous",
