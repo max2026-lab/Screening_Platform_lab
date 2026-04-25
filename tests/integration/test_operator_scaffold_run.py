@@ -10,6 +10,10 @@ from lawful_anomaly_screening.cli import main
 from lawful_anomaly_screening.settings import REPO_ROOT, PACKAGE_ROOT
 
 
+def _installed_cli_command() -> str:
+    return "lawful-anomaly.exe" if os.name == "nt" else "lawful-anomaly"
+
+
 def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows(
     monkeypatch,
     tmp_path,
@@ -279,16 +283,11 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
 
     env = os.environ.copy()
     env["LAWFUL_ANOMALY_DB_PATH"] = str(db_path)
+    env.pop("PYTHONPATH", None)
 
     def run_cli(*args: str) -> str:
-        # Use 'lawful-anomaly' instead of 'python -m ...' or 'uv run' to strictly test the installed command path.
-        cmd = "lawful-anomaly"
-        if os.name == "nt":
-            # On Windows, ensures we find the .exe if it's in the PATH.
-            cmd = "lawful-anomaly.exe"
-
         completed = subprocess.run(
-            [cmd, *args],
+            [_installed_cli_command(), *args],
             cwd=outside_cwd,
             env=env,
             capture_output=True,
@@ -387,4 +386,84 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert isinstance(export_payload["candidates"][0]["boundary_touching"], bool)
     assert (outside_cwd / export_payload["artifact_path"]).is_file()
     assert not (outside_cwd / "config").exists()
+    assert not (outside_cwd / "sitecustomize.py").exists()
     assert (PACKAGE_ROOT / "config" / "sources" / "endpoints.json").is_file()
+
+
+def test_installed_operator_cli_proves_provider_fallback_via_endpoint_override(tmp_path):
+    db_path = tmp_path / "operator-fallback.sqlite3"
+    outside_cwd = tmp_path / "outside-cwd"
+    outside_cwd.mkdir()
+    endpoint_config_path = tmp_path / "fallback-endpoints.json"
+    endpoint_config_path.write_text(
+        json.dumps(
+            {
+                "primary": "sim_empty",
+                "fallbacks": ["cdse"],
+                "sim_empty": {
+                    "provider": "simulator-empty",
+                    "role": "primary",
+                    "synchronous_only": True,
+                },
+                "cdse": {
+                    "provider": "cdse",
+                    "role": "fallback",
+                    "synchronous_only": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["LAWFUL_ANOMALY_DB_PATH"] = str(db_path)
+    env["LAWFUL_ANOMALY_ENDPOINTS_PATH"] = str(endpoint_config_path)
+    env.pop("PYTHONPATH", None)
+
+    def run_cli(*args: str) -> str:
+        completed = subprocess.run(
+            [_installed_cli_command(), *args],
+            cwd=outside_cwd,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return completed.stdout
+
+    assert run_cli("init-db").strip() == "ok"
+
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    create_run_payload = json.loads(
+        run_cli(
+            "create-run",
+            "--attestation",
+            "present",
+            "--geofence",
+            "clear",
+            "--run-id",
+            "run-001",
+            "--aoi-path",
+            str(aoi_path),
+            "--start-date",
+            "2024-01-01",
+            "--end-date",
+            "2024-03-31",
+        )
+    )
+    execute_run_payload = json.loads(run_cli("execute-run", "--run-id", "run-001"))
+
+    assert create_run_payload["run_id"] == "run-001"
+    assert create_run_payload["source_endpoint_id"] == "cdse"
+    assert create_run_payload["fallback_diagnostics"]["fallback_used"] is True
+    assert create_run_payload["fallback_diagnostics"]["attempted_endpoint_ids"] == [
+        "sim_empty",
+        "cdse",
+    ]
+    assert create_run_payload["fallback_diagnostics"]["selected_endpoint_id"] == "cdse"
+    assert execute_run_payload["source_endpoint_id"] == "cdse"
+    assert execute_run_payload["run_metadata"]["source_endpoint_id"] == "cdse"
+    assert execute_run_payload["scene_summary"]["scene_ids"]
+    assert all(scene_id.startswith("cdse-scene-") for scene_id in execute_run_payload["scene_summary"]["scene_ids"])
+    assert not (outside_cwd / "config").exists()
+    assert not (outside_cwd / "sitecustomize.py").exists()
