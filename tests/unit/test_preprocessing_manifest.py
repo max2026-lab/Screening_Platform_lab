@@ -9,6 +9,7 @@ def test_preprocessing_config_loads_season_windows_and_cloud_mask():
     config = load_preprocessing_config()
     assert set(config["season_windows"]) == {"leaf_on", "leaf_off", "dry", "wet"}
     assert config["cloud_mask"]["provider"] == "stubbed-cloud-mask"
+    assert config["cloud_policy"]["clear_scene_cloud_cover_max"] == 20.0
 
 
 def test_cache_key_is_deterministic_for_same_preprocessing_manifest():

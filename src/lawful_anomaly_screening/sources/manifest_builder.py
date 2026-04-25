@@ -15,6 +15,11 @@ RETAINED_TILE_SCORE_FIELDS = (
     "cloud_penalty",
     "noise_penalty",
 )
+DEFAULT_CLOUD_POLICY_THRESHOLDS = {
+    "clear_scene_cloud_cover_max": 20.0,
+    "warning_mean_cloud_cover_max": 35.0,
+    "fail_mean_cloud_cover_max": 60.0,
+}
 
 
 def _stable_manifest_json(payload: dict) -> str:
@@ -176,6 +181,81 @@ def load_preprocessing_config(path: Path | str | None = None) -> dict:
     return json.loads(resolved_path.read_text(encoding="utf-8"))
 
 
+def resolve_cloud_policy_thresholds(preprocessing_config: dict | None = None) -> dict:
+    config = preprocessing_config or load_preprocessing_config()
+    thresholds = dict(DEFAULT_CLOUD_POLICY_THRESHOLDS)
+    thresholds.update(config.get("cloud_policy", {}))
+    return thresholds
+
+
+def build_composite_quality_metadata(
+    scenes: list[dict],
+    *,
+    cloud_policy_thresholds: dict | None = None,
+) -> dict:
+    thresholds = dict(DEFAULT_CLOUD_POLICY_THRESHOLDS)
+    if cloud_policy_thresholds is not None:
+        thresholds.update(cloud_policy_thresholds)
+
+    ordered_scenes = sorted(
+        (
+            {
+                "scene_id": scene["scene_id"],
+                "cloud_cover": float(scene["cloud_cover"]),
+            }
+            for scene in scenes
+        ),
+        key=lambda scene: scene["scene_id"],
+    )
+    scene_count = len(ordered_scenes)
+    cloud_cover_values = [scene["cloud_cover"] for scene in ordered_scenes]
+    mean_cloud_cover = (
+        round(sum(cloud_cover_values) / scene_count, 6)
+        if scene_count
+        else 100.0
+    )
+    max_cloud_cover = round(max(cloud_cover_values), 6) if cloud_cover_values else 100.0
+    clear_scene_count = sum(
+        1
+        for cloud_cover in cloud_cover_values
+        if cloud_cover <= thresholds["clear_scene_cloud_cover_max"]
+    )
+    cloudy_scene_count = scene_count - clear_scene_count
+
+    if scene_count == 0:
+        decision = "fail"
+        reason = "no discovered scenes available"
+    elif mean_cloud_cover > thresholds["fail_mean_cloud_cover_max"]:
+        decision = "fail"
+        reason = (
+            f"mean_cloud_cover {mean_cloud_cover:.1f} exceeds fail threshold "
+            f"{thresholds['fail_mean_cloud_cover_max']:.1f}"
+        )
+    elif mean_cloud_cover > thresholds["warning_mean_cloud_cover_max"]:
+        decision = "warn"
+        reason = (
+            f"mean_cloud_cover {mean_cloud_cover:.1f} exceeds warning threshold "
+            f"{thresholds['warning_mean_cloud_cover_max']:.1f}"
+        )
+    else:
+        decision = "pass"
+        reason = (
+            f"mean_cloud_cover {mean_cloud_cover:.1f} within warning threshold "
+            f"{thresholds['warning_mean_cloud_cover_max']:.1f}"
+        )
+
+    return {
+        "scene_count": scene_count,
+        "contributing_scene_ids": [scene["scene_id"] for scene in ordered_scenes],
+        "mean_cloud_cover": mean_cloud_cover,
+        "max_cloud_cover": max_cloud_cover,
+        "clear_scene_count": clear_scene_count,
+        "cloudy_scene_count": cloudy_scene_count,
+        "cloud_policy_decision": decision,
+        "cloud_policy_reason": reason,
+    }
+
+
 def build_preprocessing_manifest(
     source_scene_manifest_hash: str,
     source_endpoint_id: str,
@@ -213,6 +293,7 @@ def build_composite_metadata_manifest(
     preprocessing_manifest_cache_key: str,
     *,
     composite_season_window_name: str,
+    scenes: list[dict] | None = None,
     preprocessing_config: dict | None = None,
 ) -> dict:
     config = preprocessing_config or load_preprocessing_config()
@@ -222,6 +303,11 @@ def build_composite_metadata_manifest(
         preprocessing_config=config,
     ):
         raise ValueError(f"invalid composite season: {composite_season_window_name}")
+    cloud_policy_thresholds = resolve_cloud_policy_thresholds(config)
+    composite_quality = build_composite_quality_metadata(
+        scenes or [],
+        cloud_policy_thresholds=cloud_policy_thresholds,
+    )
 
     return {
         "manifest_version": "phase1-composite-metadata-v1",
@@ -233,6 +319,8 @@ def build_composite_metadata_manifest(
         "composite_season_window_name": composite_season_window_name,
         "season_window": config["season_windows"][composite_season_window_name],
         "cloud_mask": preprocessing_manifest["cloud_mask"],
+        "cloud_policy_thresholds": cloud_policy_thresholds,
+        "composite_quality": composite_quality,
     }
 
 

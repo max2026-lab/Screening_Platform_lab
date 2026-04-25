@@ -74,10 +74,14 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert summary["run_metadata"]["legal_gate"]["attestation_status"] == "present"
     assert summary["run_metadata"]["legal_gate"]["geofence_status"] == "clear"
     assert summary["run_metadata"]["aoi_geometry"] == aoi_data
+    assert summary["run_metadata"]["composite_quality"]["cloud_policy_decision"] in {"pass", "warn"}
+    assert summary["run_metadata"]["composite_quality"]["scene_count"] == summary["scene_summary"]["scene_count"]
     assert summary["scene_summary"]["scene_count"] == 3
     assert len(summary["scene_summary"]["scene_ids"]) == 3
     assert summary["scene_summary"]["start_date"] == "2024-01-01"
     assert summary["scene_summary"]["end_date"] == "2024-03-31"
+    assert summary["scene_summary"]["composite_quality"] == summary["run_metadata"]["composite_quality"]
+    assert summary["composite_quality"] == summary["run_metadata"]["composite_quality"]
     assert summary["aoi_execution_geometry"]["aoi_bbox"] == [3000.0, 1000.0, 4000.0, 2000.0]
     assert summary["aoi_execution_geometry"]["tile_count"] == summary["tile_count"]
     assert summary["aoi_execution_geometry"]["selected_tile_count"] == summary["selected_tile_count"]
@@ -113,6 +117,7 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
         ]) == 0
     export_payload = json.loads(export_output.getvalue())
     assert export_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
+    assert export_payload["run_metadata"]["composite_quality"] == summary["run_metadata"]["composite_quality"]
     top_export_candidate = _candidate_by_id(export_payload, summary["top_candidate_id"])
     run_scene_ids = set(summary["scene_summary"]["scene_ids"])
     assert top_export_candidate["source_scene_ids"] == review_payload["candidate"]["source_scene_ids"]

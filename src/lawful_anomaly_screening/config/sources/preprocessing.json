@@ -22,5 +22,10 @@
     "apply_shadow_mask": true,
     "apply_snow_mask": true,
     "max_cloud_probability": 0.2
+  },
+  "cloud_policy": {
+    "clear_scene_cloud_cover_max": 20.0,
+    "warning_mean_cloud_cover_max": 35.0,
+    "fail_mean_cloud_cover_max": 60.0
   }
 }

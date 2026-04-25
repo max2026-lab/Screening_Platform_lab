@@ -339,7 +339,9 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert execute_run_payload["run_metadata"]["status"] == "review_ready"
     assert execute_run_payload["run_metadata"]["cache_status"] == "warm"
     assert execute_run_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
+    assert execute_run_payload["run_metadata"]["composite_quality"]["cloud_policy_decision"] in {"pass", "warn"}
     assert execute_run_payload["scene_summary"]["scene_count"] > 0
+    assert execute_run_payload["scene_summary"]["composite_quality"] == execute_run_payload["run_metadata"]["composite_quality"]
     assert execute_run_payload["scene_summary"]["start_date"] == "2024-01-01"
     assert execute_run_payload["scene_summary"]["end_date"] == "2024-03-31"
     assert review_show_payload["candidate"]["source_scene_ids"]
@@ -357,6 +359,7 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert isinstance(review_show_payload["candidate"]["boundary_touching"], int)
     assert export_payload["run_id"] == "run-001"
     assert export_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
+    assert export_payload["run_metadata"]["composite_quality"] == execute_run_payload["run_metadata"]["composite_quality"]
     assert export_payload["precision_tier"] == "restricted"
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2

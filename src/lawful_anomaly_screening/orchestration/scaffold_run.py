@@ -117,18 +117,19 @@ def scaffold_run_for_run_id(
         season_window_name="leaf_on",
     )
     preprocessing_record = cache_repository.persist_preprocessing_manifest(preprocessing_manifest)
+    discovered_scenes = ManifestRepository(db_path).list_scenes(
+        run_context["source_scene_manifest_hash"]
+    )
     composite_manifest = build_composite_metadata_manifest(
         preprocessing_manifest,
         preprocessing_record["cache_key"],
         composite_season_window_name="leaf_on",
+        scenes=discovered_scenes,
     )
     composite_record = cache_repository.persist_composite_metadata(composite_manifest)
     execution_geometry = derive_execution_geometry_summary(
         run_context.get("aoi_geometry"),
         run_context.get("aoi_bbox"),
-    )
-    discovered_scenes = ManifestRepository(db_path).list_scenes(
-        run_context["source_scene_manifest_hash"]
     )
     source_scene_ids = [scene["scene_id"] for scene in discovered_scenes]
 
@@ -309,6 +310,7 @@ def scaffold_run_for_run_id(
         "source_scene_manifest_hash": run_context["source_scene_manifest_hash"],
         "source_endpoint_id": run_context["source_endpoint_id"],
         "execution_geometry": execution_geometry,
+        "composite_quality": composite_manifest["composite_quality"],
         "preprocessing_manifest_cache_key": preprocessing_record["cache_key"],
         "composite_metadata_cache_key": composite_record["cache_key"],
         "full_aoi_anomaly_raster_cache_key": full_aoi_record["cache_key"],

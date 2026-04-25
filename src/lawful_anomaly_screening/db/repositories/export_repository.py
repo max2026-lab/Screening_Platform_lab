@@ -17,6 +17,10 @@ from lawful_anomaly_screening.exports.precision_policy import (
     sanitize_candidates_for_export,
 )
 from lawful_anomaly_screening.exports.reporting import render_markdown_report
+from lawful_anomaly_screening.sources.manifest_builder import (
+    build_composite_quality_metadata,
+    resolve_cloud_policy_thresholds,
+)
 
 
 class ExportRepository:
@@ -33,6 +37,15 @@ class ExportRepository:
         requested_precision: str | None = None,
     ) -> dict:
         run_metadata = RunRepository(self.db_path).fetch_run(run_id)
+        if run_metadata is not None:
+            run_metadata = dict(run_metadata)
+            scenes = ManifestRepository(self.db_path).list_scenes(
+                run_metadata["source_scene_manifest_hash"]
+            )
+            run_metadata["composite_quality"] = build_composite_quality_metadata(
+                scenes,
+                cloud_policy_thresholds=resolve_cloud_policy_thresholds(),
+            )
         normalized_audience = normalize_export_tier(audience)
         policy = resolve_export_policy(normalized_audience, requested_precision)
         sanitized_candidates = sanitize_candidates_for_export(
