@@ -39,6 +39,17 @@ def test_acceptance_cli_commands_are_registered():
             "run-002",
         ]
     )
+    calibration_args = parser.parse_args(
+        [
+            "calibration-pack",
+            "--run-id",
+            "run-001",
+            "--comparison-run-id",
+            "run-002",
+            "--output",
+            "markdown",
+        ]
+    )
 
     assert kpi_args.command == "kpi-summary"
     assert kpi_args.aoi_area_km2 == 100.0
@@ -47,5 +58,8 @@ def test_acceptance_cli_commands_are_registered():
     assert acceptance_args.retuned_run_id == "run-002"
     assert acceptance_args.comparison_run_id == "run-003"
     assert acceptance_args.output == "markdown"
+    assert calibration_args.command == "calibration-pack"
+    assert calibration_args.comparison_run_id == "run-002"
+    assert calibration_args.output == "markdown"
     assert reproducibility_args.command == "reproducibility-check"
     assert reproducibility_args.comparison_run_id == "run-002"

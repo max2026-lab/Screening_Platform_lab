@@ -1,9 +1,11 @@
 from lawful_anomaly_screening.orchestration.acceptance import (
     REPRODUCIBILITY_TOP10_MINIMUM_RATE,
     build_acceptance_summary,
+    build_calibration_pack,
     build_kpi_summary,
     candidate_count_per_100_km2,
     paid_escalations_per_100_km2,
+    render_calibration_pack_markdown,
     reproducibility_check,
     top10_stability_rate,
 )
@@ -455,3 +457,181 @@ def test_top10_stability_after_small_retune():
     ]
 
     assert top10_stability_rate(baseline, retuned) == 0.7
+
+
+def test_calibration_pack_includes_required_fields_and_ready_status():
+    candidates = [
+        _candidate(f"candidate-{index:03d}", 100.0 - index, "approved_for_archive_quote")
+        if index <= 10
+        else _candidate(f"candidate-{index:03d}", 100.0 - index, "watch")
+        if index <= 15
+        else _candidate(f"candidate-{index:03d}", 100.0 - index)
+        for index in range(1, 21)
+    ]
+
+    pack = build_calibration_pack(
+        run_metadata={
+            "run_id": "run-001",
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {
+                "decision": "pass",
+                "reason": "legal gate passed",
+                "evaluated_at": "2026-01-01T00:00:00Z",
+            },
+            "composite_quality": {
+                "cloud_policy_decision": "pass",
+                "cloud_policy_reason": "cloud policy passed",
+            },
+        },
+        candidate_rows=candidates,
+        review_state_counts={
+            "approved_for_archive_quote": 10,
+            "watch": 5,
+            "pending_review": 5,
+        },
+        export_audit_manifest={"audit_manifest_hash": "audit-hash-001"},
+        paid_escalation_count=0,
+        reproducibility_summary={
+            "status": "pass",
+            "top10_stability_rate": 1.0,
+            "same_aoi_hash": True,
+            "same_date_window": True,
+            "same_source_scene_manifest_hash": True,
+            "reasons": ["Deterministic checks stable"],
+        },
+    )
+
+    assert pack["run_id"] == "run-001"
+    assert pack["status"] == "ready"
+    assert pack["processing_baseline_id"] == "baseline_v1_5_default"
+    assert pack["score_formula_version"] == "v1.5.1-phase0"
+    assert pack["source_scene_manifest_hash"] == "manifest-hash-001"
+    assert pack["legal_gate"]["decision"] == "pass"
+    assert pack["composite_quality"]["cloud_policy_decision"] == "pass"
+    assert pack["candidate_count"] == 20
+    assert pack["review_state_counts"] == {
+        "approved_for_archive_quote": 10,
+        "pending_review": 5,
+        "watch": 5,
+    }
+    assert pack["reviewed_candidate_count"] == 15
+    assert pack["approved_candidate_count"] == 10
+    assert pack["rejected_candidate_count"] == 0
+    assert pack["watched_candidate_count"] == 5
+    assert pack["review_coverage_rate"] == 0.75
+    assert pack["top20_review_coverage_rate"] == 0.75
+    assert pack["top20_approval_rate"] == 0.5
+    assert pack["acceptance_summary"]["status"] == "pass"
+    assert pack["export_audit_ready"] is True
+    assert pack["latest_export_audit_manifest_hash"] == "audit-hash-001"
+    assert pack["paid_escalation_count"] == 0
+    assert pack["reproducibility_summary"]["status"] == "pass"
+    assert {check["name"] for check in pack["calibration_readiness_checks"]} == {
+        "legal_gate",
+        "candidate_count",
+        "review_coverage_rate",
+        "top20_review_coverage_rate",
+        "export_audit_ready",
+        "reproducibility",
+    }
+    assert pack["reasons"] == ["Calibration readiness checks passed"]
+
+
+def test_calibration_pack_without_reviews_is_incomplete_with_clear_reasons():
+    candidates = [_candidate(f"candidate-{index:03d}", 100.0 - index) for index in range(1, 21)]
+
+    pack = build_calibration_pack(
+        run_metadata={
+            "run_id": "run-001",
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {
+                "decision": "pass",
+                "reason": "legal gate passed",
+                "evaluated_at": "2026-01-01T00:00:00Z",
+            },
+            "composite_quality": {
+                "cloud_policy_decision": "pass",
+                "cloud_policy_reason": "cloud policy passed",
+            },
+        },
+        candidate_rows=candidates,
+        review_state_counts={"pending_review": 20},
+        export_audit_manifest=None,
+        paid_escalation_count=0,
+        reproducibility_summary=None,
+    )
+
+    assert pack["status"] == "incomplete"
+    assert pack["export_audit_ready"] is False
+    assert "Review coverage rate 0.00 is below minimum 0.20" in pack["reasons"]
+    assert "Top-20 review coverage rate 0.00 is below minimum 0.50" in pack["reasons"]
+    assert "Export audit manifest not created yet" in pack["reasons"]
+    assert "Reproducibility comparison run not supplied" in pack["reasons"]
+
+
+def test_calibration_pack_fails_clearly_for_legal_denied_run():
+    pack = build_calibration_pack(
+        run_metadata={
+            "run_id": "run-denied",
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {
+                "decision": "fail",
+                "reason": "attestation missing",
+                "evaluated_at": "2026-01-01T00:00:00Z",
+            },
+            "composite_quality": {
+                "cloud_policy_decision": "pass",
+                "cloud_policy_reason": "cloud policy passed",
+            },
+        },
+        candidate_rows=[],
+        review_state_counts={},
+        export_audit_manifest=None,
+        paid_escalation_count=0,
+        reproducibility_summary=None,
+    )
+
+    assert pack["status"] == "fail"
+    assert pack["legal_gate"]["decision"] == "fail"
+    assert "Legal gate failed: attestation missing" in pack["reasons"]
+    assert "No candidates produced for run" in pack["reasons"]
+
+
+def test_calibration_pack_markdown_contains_status_checks_and_reasons():
+    markdown = render_calibration_pack_markdown(
+        {
+            "run_id": "run-001",
+            "status": "incomplete",
+            "candidate_count": 20,
+            "reviewed_candidate_count": 4,
+            "review_coverage_rate": 0.2,
+            "top20_review_coverage_rate": 0.2,
+            "top20_approval_rate": 0.1,
+            "export_audit_ready": False,
+            "paid_escalation_count": 0,
+            "legal_gate": {"decision": "pass"},
+            "composite_quality": {"cloud_policy_decision": "warn"},
+            "reasons": ["Export audit manifest not created yet"],
+            "calibration_readiness_checks": [
+                {
+                    "name": "export_audit_ready",
+                    "status": "incomplete",
+                    "observed": False,
+                    "target": "export audit manifest available",
+                }
+            ],
+        }
+    )
+
+    assert "# Calibration Evidence Pack" in markdown
+    assert "Status: `incomplete`" in markdown
+    assert "## Readiness Checks" in markdown
+    assert "`export_audit_ready`" in markdown
+    assert "## Reasons" in markdown
+    assert "Export audit manifest not created yet" in markdown
