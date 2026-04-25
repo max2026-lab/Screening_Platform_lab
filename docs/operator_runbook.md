@@ -102,3 +102,11 @@ powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\v
 ```
 
 The script is launched from repo root, but executes operator commands from temporary directories outside the repository.
+
+## Phase 6 Legal Verification
+
+Prerequisite: `lawful-anomaly` is already installed and available on `PATH`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase6_legal_release.ps1
+```
