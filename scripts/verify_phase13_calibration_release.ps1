@@ -179,7 +179,7 @@ function Assert-TextIncludes {
         [string] $Context
     )
 
-    if ($Text -notlike "*$Expected*") {
+    if (-not $Text.Contains($Expected)) {
         throw "$Context expected text to include '$Expected'"
     }
 }
