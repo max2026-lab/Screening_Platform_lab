@@ -36,7 +36,7 @@ class EndpointRegistry:
 def load_endpoint_registry(path: Path | str | None = None) -> EndpointRegistry:
     resolved_path = Path(path) if path is not None else load_settings().endpoints_path
     try:
-        data = json.loads(resolved_path.read_text(encoding="utf-8"))
+        data = json.loads(resolved_path.read_text(encoding="utf-8-sig"))
     except (json.JSONDecodeError, OSError) as exc:
         raise SourceError(f"failed to load endpoint config: {exc}")
 

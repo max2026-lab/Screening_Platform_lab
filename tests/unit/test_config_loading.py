@@ -27,6 +27,35 @@ def test_endpoint_registry_exposes_primary_and_fallbacks():
     assert [endpoint.endpoint_id for endpoint in registry.fallback_endpoints] == ["cdse", "landsatlook"]
 
 
+def test_endpoint_registry_accepts_utf8_bom_json(tmp_path):
+    config_path = tmp_path / "endpoints-bom.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "primary": "sim_empty",
+                "fallbacks": ["cdse"],
+                "sim_empty": {
+                    "provider": "simulator-empty",
+                    "role": "primary",
+                    "synchronous_only": True,
+                },
+                "cdse": {
+                    "provider": "cdse",
+                    "role": "fallback",
+                    "synchronous_only": True,
+                },
+            }
+        ),
+        encoding="utf-8-sig",
+    )
+
+    registry = load_endpoint_registry(path=config_path)
+
+    assert registry.primary_endpoint_id == "sim_empty"
+    assert registry.primary_endpoint.provider == "simulator-empty"
+    assert [endpoint.endpoint_id for endpoint in registry.fallback_endpoints] == ["cdse"]
+
+
 def test_relative_env_overrides_are_cwd_anchored(monkeypatch):
     monkeypatch.setenv("LAWFUL_ANOMALY_ENDPOINTS_PATH", "my_endpoints.json")
     monkeypatch.setenv("LAWFUL_ANOMALY_PREPROCESSING_CONFIG_PATH", "my_preprocessing.json")
