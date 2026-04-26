@@ -31,6 +31,8 @@ DEFAULT_CALIBRATION_POLICY = {
     "minimum_candidate_count": 1,
     "paid_escalation_required": False,
 }
+CALIBRATION_LABEL_MANIFEST_TYPE = "calibration_label_pack_manifest"
+CALIBRATION_LABEL_MANIFEST_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -303,6 +305,12 @@ def acceptance_status(checks: list[dict]) -> str:
     if "warn" in statuses:
         return "warn"
     return "pass"
+
+
+def _stable_hash(payload: dict) -> str:
+    return sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def build_kpi_summary(
@@ -992,20 +1000,16 @@ def build_calibration_label_pack(
             key=lambda row: (int(row.get("rank") or 0), str(row["candidate_id"])),
         )
     ]
-    label_pack_hash = sha256(
-        json.dumps(
-            {
-                "run_id": run_metadata["run_id"],
-                "calibration_policy_id": policy.get("calibration_policy_id"),
-                "latest_export_audit_manifest_hash": (
-                    export_audit_manifest.get("audit_manifest_hash") if export_audit_manifest else None
-                ),
-                "labels": ordered_labels,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
+    label_pack_hash = _stable_hash(
+        {
+            "run_id": run_metadata["run_id"],
+            "calibration_policy_id": policy.get("calibration_policy_id"),
+            "latest_export_audit_manifest_hash": (
+                export_audit_manifest.get("audit_manifest_hash") if export_audit_manifest else None
+            ),
+            "labels": ordered_labels,
+        }
+    )
 
     if not reasons:
         reasons = ["Calibration label pack ready"]
@@ -1037,6 +1041,59 @@ def build_calibration_label_pack(
         "label_pack_hash": label_pack_hash,
         "labels": ordered_labels,
     }
+
+
+def build_calibration_label_manifest(
+    *,
+    label_pack: dict,
+    include_pending: bool = False,
+) -> dict:
+    label_ids = [str(label["candidate_id"]) for label in label_pack.get("labels", [])]
+    manifest = {
+        "run_id": label_pack["run_id"],
+        "status": label_pack["status"],
+        "reasons": list(label_pack.get("reasons") or []),
+        "manifest_type": CALIBRATION_LABEL_MANIFEST_TYPE,
+        "manifest_version": CALIBRATION_LABEL_MANIFEST_VERSION,
+        "calibration_policy_id": label_pack.get("calibration_policy_id"),
+        "calibration_policy": dict(label_pack.get("calibration_policy") or {}),
+        "processing_baseline_id": label_pack.get("processing_baseline_id"),
+        "score_formula_version": label_pack.get("score_formula_version"),
+        "source_scene_manifest_hash": label_pack.get("source_scene_manifest_hash"),
+        "legal_gate": label_pack.get("legal_gate"),
+        "composite_quality": label_pack.get("composite_quality"),
+        "candidate_count": label_pack.get("candidate_count"),
+        "review_state_counts": dict(label_pack.get("review_state_counts") or {}),
+        "reviewed_candidate_count": label_pack.get("reviewed_candidate_count"),
+        "approved_candidate_count": label_pack.get("approved_candidate_count"),
+        "rejected_candidate_count": label_pack.get("rejected_candidate_count"),
+        "watched_candidate_count": label_pack.get("watched_candidate_count"),
+        "pending_candidate_count": label_pack.get("pending_candidate_count"),
+        "review_coverage_rate": label_pack.get("review_coverage_rate"),
+        "top20_review_coverage_rate": label_pack.get("top20_review_coverage_rate"),
+        "include_pending": bool(include_pending),
+        "label_count": len(label_ids),
+        "label_pack_hash": label_pack.get("label_pack_hash"),
+        "export_audit_ready": bool(label_pack.get("export_audit_ready")),
+        "latest_export_audit_manifest_hash": label_pack.get("latest_export_audit_manifest_hash"),
+        "label_ids": label_ids,
+    }
+    manifest["label_manifest_hash"] = _stable_hash(
+        {
+            "manifest_type": manifest["manifest_type"],
+            "manifest_version": manifest["manifest_version"],
+            "run_id": manifest["run_id"],
+            "calibration_policy_id": manifest["calibration_policy_id"],
+            "processing_baseline_id": manifest["processing_baseline_id"],
+            "score_formula_version": manifest["score_formula_version"],
+            "source_scene_manifest_hash": manifest["source_scene_manifest_hash"],
+            "latest_export_audit_manifest_hash": manifest["latest_export_audit_manifest_hash"],
+            "include_pending": manifest["include_pending"],
+            "label_pack_hash": manifest["label_pack_hash"],
+            "label_ids": manifest["label_ids"],
+        }
+    )
+    return manifest
 
 
 def render_calibration_label_pack_markdown(pack: dict) -> str:
@@ -1082,4 +1139,21 @@ def render_calibration_label_pack_markdown(pack: dict) -> str:
     if len(pack["labels"]) > 10:
         lines.append("")
         lines.append(f"- Showing top 10 of {len(pack['labels'])} labels")
+    return "\n".join(lines) + "\n"
+
+
+def render_calibration_label_manifest_markdown(manifest: dict) -> str:
+    lines = [
+        "# Calibration Label Manifest",
+        "",
+        f"- Run ID: `{manifest['run_id']}`",
+        f"- Status: `{manifest['status']}`",
+        f"- Include pending: `{manifest['include_pending']}`",
+        f"- Label count: `{manifest['label_count']}`",
+        f"- Export audit ready: `{manifest['export_audit_ready']}`",
+        f"- Label pack hash: `{manifest['label_pack_hash']}`",
+        f"- Label manifest hash: `{manifest['label_manifest_hash']}`",
+    ]
+    lines.extend(["", "## Reasons", ""])
+    lines.extend(f"- {reason}" for reason in manifest["reasons"])
     return "\n".join(lines) + "\n"

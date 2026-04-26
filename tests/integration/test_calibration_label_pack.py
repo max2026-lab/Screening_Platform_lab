@@ -198,3 +198,129 @@ def test_calibration_label_pack_fails_for_legal_denied_run(monkeypatch, tmp_path
     assert pack["status"] == "fail"
     assert pack["legal_gate"]["decision"] == "fail"
     assert "Legal gate failed: attestation missing" in pack["reasons"]
+
+
+def test_calibration_label_manifest_ready_hash_and_markdown(monkeypatch, tmp_path):
+    db_path = tmp_path / "calibration-label-manifest.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    run_summary = _bootstrap_scaffolded_run(db_path, cache_root, "run-001")
+    review_repository = ReviewRepository(db_path)
+    approved_id = run_summary["candidate_ids"][0]
+    watched_id = run_summary["candidate_ids"][1]
+    review_repository.decide(
+        candidate_id=approved_id,
+        run_id="run-001",
+        reviewer_id="reviewer-001",
+        decision="approve_for_archive_quote",
+        note="approved for manifest",
+    )
+    review_repository.decide(
+        candidate_id=watched_id,
+        run_id="run-001",
+        reviewer_id="reviewer-001",
+        decision="watch",
+        note="watch for manifest",
+    )
+
+    export_repository = ExportRepository(db_path, export_root=tmp_path)
+    export_repository.persist_export(
+        run_id="run-001",
+        audience="report_pdf",
+        requested_precision="restricted",
+        candidates=export_repository.fetch_export_candidates("run-001"),
+    )
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-manifest", "--run-id", "run-001"]) == 0
+    manifest = json.loads(output.getvalue())
+
+    repeated_output = io.StringIO()
+    with redirect_stdout(repeated_output):
+        assert main(["calibration-label-manifest", "--run-id", "run-001"]) == 0
+    repeated_manifest = json.loads(repeated_output.getvalue())
+
+    pending_output = io.StringIO()
+    with redirect_stdout(pending_output):
+        assert main(["calibration-label-manifest", "--run-id", "run-001", "--include-pending"]) == 0
+    pending_manifest = json.loads(pending_output.getvalue())
+
+    markdown_output = io.StringIO()
+    with redirect_stdout(markdown_output):
+        assert main(["calibration-label-manifest", "--run-id", "run-001", "--output", "markdown"]) == 0
+    markdown = markdown_output.getvalue()
+
+    assert manifest["status"] == "ready"
+    assert set(manifest.keys()) >= {
+        "run_id",
+        "status",
+        "reasons",
+        "manifest_type",
+        "manifest_version",
+        "calibration_policy_id",
+        "calibration_policy",
+        "processing_baseline_id",
+        "score_formula_version",
+        "source_scene_manifest_hash",
+        "legal_gate",
+        "composite_quality",
+        "candidate_count",
+        "review_state_counts",
+        "reviewed_candidate_count",
+        "approved_candidate_count",
+        "rejected_candidate_count",
+        "watched_candidate_count",
+        "pending_candidate_count",
+        "review_coverage_rate",
+        "top20_review_coverage_rate",
+        "include_pending",
+        "label_count",
+        "label_pack_hash",
+        "label_manifest_hash",
+        "export_audit_ready",
+        "latest_export_audit_manifest_hash",
+        "label_ids",
+    }
+    assert manifest["manifest_type"] == "calibration_label_pack_manifest"
+    assert manifest["manifest_version"] == 1
+    assert manifest["include_pending"] is False
+    assert manifest["label_manifest_hash"] == repeated_manifest["label_manifest_hash"]
+    assert pending_manifest["include_pending"] is True
+    assert pending_manifest["label_count"] >= manifest["label_count"]
+    assert pending_manifest["label_manifest_hash"] != manifest["label_manifest_hash"]
+    assert "# Calibration Label Manifest" in markdown
+    assert "Status: `ready`" in markdown
+    assert "## Reasons" in markdown
+
+
+def test_calibration_label_manifest_incomplete_and_fail(monkeypatch, tmp_path):
+    db_path = tmp_path / "calibration-label-manifest-status.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    _bootstrap_scaffolded_run(db_path, cache_root, "run-001")
+    _bootstrap_scaffolded_run(
+        db_path,
+        cache_root,
+        "run-denied",
+        legal_gate=_legal_gate_fail(),
+    )
+
+    incomplete_output = io.StringIO()
+    with redirect_stdout(incomplete_output):
+        assert main(["calibration-label-manifest", "--run-id", "run-001"]) == 0
+    incomplete_manifest = json.loads(incomplete_output.getvalue())
+
+    fail_output = io.StringIO()
+    with redirect_stdout(fail_output):
+        assert main(["calibration-label-manifest", "--run-id", "run-denied"]) == 1
+    fail_manifest = json.loads(fail_output.getvalue())
+
+    assert incomplete_manifest["status"] == "incomplete"
+    assert "No reviewed candidates available for calibration label pack" in incomplete_manifest["reasons"]
+    assert fail_manifest["status"] == "fail"
+    assert fail_manifest["legal_gate"]["decision"] == "fail"
+    assert "Legal gate failed: attestation missing" in fail_manifest["reasons"]

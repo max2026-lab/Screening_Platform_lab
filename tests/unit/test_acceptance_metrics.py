@@ -1,4 +1,5 @@
 from lawful_anomaly_screening.orchestration.acceptance import (
+    build_calibration_label_manifest,
     REPRODUCIBILITY_TOP10_MINIMUM_RATE,
     build_acceptance_summary,
     build_calibration_label_pack,
@@ -6,6 +7,7 @@ from lawful_anomaly_screening.orchestration.acceptance import (
     build_kpi_summary,
     candidate_count_per_100_km2,
     paid_escalations_per_100_km2,
+    render_calibration_label_manifest_markdown,
     render_calibration_label_pack_markdown,
     render_calibration_pack_markdown,
     reproducibility_check,
@@ -925,4 +927,281 @@ def test_calibration_label_pack_markdown_contains_status_reasons_and_counts():
     assert "Status: `incomplete`" in markdown
     assert "## Reasons" in markdown
     assert "## Labels" in markdown
+    assert "Export audit manifest not created yet" in markdown
+
+
+def test_calibration_label_manifest_is_ready_and_hash_is_deterministic():
+    candidate_rows = [
+        _candidate("candidate-001", 100.0, "approved_for_archive_quote"),
+        _candidate("candidate-002", 99.0, "watch"),
+        _candidate("candidate-003", 98.0, "pending_review"),
+    ]
+    default_pack = build_calibration_label_pack(
+        run_metadata={
+            "run_id": "run-001",
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {"decision": "pass", "reason": "ok"},
+            "composite_quality": {"cloud_policy_decision": "pass"},
+        },
+        candidate_rows=candidate_rows,
+        label_rows=[
+            {
+                "candidate_id": "candidate-001",
+                "rank": 1,
+                "candidate_score": 100.0,
+                "review_state": "approved_for_archive_quote",
+                "reviewer_id": "reviewer-001",
+                "reviewed_at": "2026-01-01T00:00:00Z",
+                "review_note": "approved",
+                "score_formula_version": "v1.5.1-phase0",
+                "scoring_explanation": {"rank": 1, "score_formula_version": "v1.5.1-phase0"},
+            },
+            {
+                "candidate_id": "candidate-002",
+                "rank": 2,
+                "candidate_score": 99.0,
+                "review_state": "watch",
+                "reviewer_id": "reviewer-002",
+                "reviewed_at": "2026-01-01T00:05:00Z",
+                "review_note": "watch",
+                "score_formula_version": "v1.5.1-phase0",
+                "scoring_explanation": {"rank": 2, "score_formula_version": "v1.5.1-phase0"},
+            },
+        ],
+        review_state_counts={
+            "approved_for_archive_quote": 1,
+            "watch": 1,
+            "pending_review": 1,
+        },
+        export_audit_manifest={"audit_manifest_hash": "audit-hash-001"},
+        calibration_policy=None,
+    )
+    repeated_manifest = build_calibration_label_manifest(
+        label_pack=default_pack,
+        include_pending=False,
+    )
+    manifest = build_calibration_label_manifest(
+        label_pack=default_pack,
+        include_pending=False,
+    )
+
+    assert manifest["status"] == "ready"
+    assert set(manifest.keys()) >= {
+        "run_id",
+        "status",
+        "reasons",
+        "manifest_type",
+        "manifest_version",
+        "calibration_policy_id",
+        "calibration_policy",
+        "processing_baseline_id",
+        "score_formula_version",
+        "source_scene_manifest_hash",
+        "legal_gate",
+        "composite_quality",
+        "candidate_count",
+        "review_state_counts",
+        "reviewed_candidate_count",
+        "approved_candidate_count",
+        "rejected_candidate_count",
+        "watched_candidate_count",
+        "pending_candidate_count",
+        "review_coverage_rate",
+        "top20_review_coverage_rate",
+        "include_pending",
+        "label_count",
+        "label_pack_hash",
+        "label_manifest_hash",
+        "export_audit_ready",
+        "latest_export_audit_manifest_hash",
+        "label_ids",
+    }
+    assert manifest["manifest_type"] == "calibration_label_pack_manifest"
+    assert manifest["manifest_version"] == 1
+    assert manifest["include_pending"] is False
+    assert manifest["label_count"] == 2
+    assert manifest["label_ids"] == ["candidate-001", "candidate-002"]
+    assert manifest["label_manifest_hash"] == repeated_manifest["label_manifest_hash"]
+
+
+def test_calibration_label_manifest_include_pending_changes_hash_when_labels_change():
+    base_run = {
+        "run_id": "run-001",
+        "processing_baseline_id": "baseline_v1_5_default",
+        "score_formula_version": "v1.5.1-phase0",
+        "source_scene_manifest_hash": "manifest-hash-001",
+        "legal_gate": {"decision": "pass", "reason": "ok"},
+        "composite_quality": {"cloud_policy_decision": "pass"},
+    }
+    candidate_rows = [
+        _candidate("candidate-001", 100.0, "approved_for_archive_quote"),
+        _candidate("candidate-002", 99.0, "watch"),
+        _candidate("candidate-003", 98.0, "pending_review"),
+    ]
+    default_pack = build_calibration_label_pack(
+        run_metadata=base_run,
+        candidate_rows=candidate_rows,
+        label_rows=[
+            {
+                "candidate_id": "candidate-001",
+                "rank": 1,
+                "candidate_score": 100.0,
+                "review_state": "approved_for_archive_quote",
+                "reviewer_id": "reviewer-001",
+                "reviewed_at": "2026-01-01T00:00:00Z",
+                "review_note": "approved",
+                "score_formula_version": "v1.5.1-phase0",
+                "scoring_explanation": {"rank": 1},
+            },
+            {
+                "candidate_id": "candidate-002",
+                "rank": 2,
+                "candidate_score": 99.0,
+                "review_state": "watch",
+                "reviewer_id": "reviewer-002",
+                "reviewed_at": "2026-01-01T00:05:00Z",
+                "review_note": "watch",
+                "score_formula_version": "v1.5.1-phase0",
+                "scoring_explanation": {"rank": 2},
+            },
+        ],
+        review_state_counts={
+            "approved_for_archive_quote": 1,
+            "watch": 1,
+            "pending_review": 1,
+        },
+        export_audit_manifest={"audit_manifest_hash": "audit-hash-001"},
+        calibration_policy=None,
+    )
+    pending_pack = build_calibration_label_pack(
+        run_metadata=base_run,
+        candidate_rows=candidate_rows,
+        label_rows=[
+            {
+                "candidate_id": "candidate-001",
+                "rank": 1,
+                "candidate_score": 100.0,
+                "review_state": "approved_for_archive_quote",
+                "reviewer_id": "reviewer-001",
+                "reviewed_at": "2026-01-01T00:00:00Z",
+                "review_note": "approved",
+                "score_formula_version": "v1.5.1-phase0",
+                "scoring_explanation": {"rank": 1},
+            },
+            {
+                "candidate_id": "candidate-002",
+                "rank": 2,
+                "candidate_score": 99.0,
+                "review_state": "watch",
+                "reviewer_id": "reviewer-002",
+                "reviewed_at": "2026-01-01T00:05:00Z",
+                "review_note": "watch",
+                "score_formula_version": "v1.5.1-phase0",
+                "scoring_explanation": {"rank": 2},
+            },
+            {
+                "candidate_id": "candidate-003",
+                "rank": 3,
+                "candidate_score": 98.0,
+                "review_state": "pending_review",
+                "reviewer_id": None,
+                "reviewed_at": None,
+                "review_note": None,
+                "score_formula_version": "v1.5.1-phase0",
+                "scoring_explanation": {"rank": 3},
+            },
+        ],
+        review_state_counts={
+            "approved_for_archive_quote": 1,
+            "watch": 1,
+            "pending_review": 1,
+        },
+        export_audit_manifest={"audit_manifest_hash": "audit-hash-001"},
+        calibration_policy=None,
+    )
+
+    default_manifest = build_calibration_label_manifest(
+        label_pack=default_pack,
+        include_pending=False,
+    )
+    pending_manifest = build_calibration_label_manifest(
+        label_pack=pending_pack,
+        include_pending=True,
+    )
+
+    assert default_manifest["include_pending"] is False
+    assert pending_manifest["include_pending"] is True
+    assert pending_manifest["label_count"] == 3
+    assert default_manifest["label_count"] == 2
+    assert pending_manifest["label_manifest_hash"] != default_manifest["label_manifest_hash"]
+
+
+def test_calibration_label_manifest_inherits_incomplete_and_fail_status():
+    incomplete_pack = build_calibration_label_pack(
+        run_metadata={
+            "run_id": "run-001",
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {"decision": "pass", "reason": "ok"},
+            "composite_quality": {"cloud_policy_decision": "pass"},
+        },
+        candidate_rows=[_candidate(f"candidate-{index:03d}", 100.0 - index) for index in range(1, 21)],
+        label_rows=[],
+        review_state_counts={"pending_review": 20},
+        export_audit_manifest=None,
+        calibration_policy=None,
+    )
+    fail_pack = build_calibration_label_pack(
+        run_metadata={
+            "run_id": "run-denied",
+            "processing_baseline_id": "baseline_v1_5_default",
+            "score_formula_version": "v1.5.1-phase0",
+            "source_scene_manifest_hash": "manifest-hash-001",
+            "legal_gate": {"decision": "fail", "reason": "attestation missing"},
+            "composite_quality": {"cloud_policy_decision": "pass"},
+        },
+        candidate_rows=[],
+        label_rows=[],
+        review_state_counts={},
+        export_audit_manifest=None,
+        calibration_policy=None,
+    )
+
+    incomplete_manifest = build_calibration_label_manifest(
+        label_pack=incomplete_pack,
+        include_pending=False,
+    )
+    fail_manifest = build_calibration_label_manifest(
+        label_pack=fail_pack,
+        include_pending=False,
+    )
+
+    assert incomplete_manifest["status"] == "incomplete"
+    assert "No reviewed candidates available for calibration label pack" in incomplete_manifest["reasons"]
+    assert fail_manifest["status"] == "fail"
+    assert "Legal gate failed: attestation missing" in fail_manifest["reasons"]
+
+
+def test_calibration_label_manifest_markdown_contains_status_hashes_and_reasons():
+    markdown = render_calibration_label_manifest_markdown(
+        {
+            "run_id": "run-001",
+            "status": "incomplete",
+            "include_pending": False,
+            "label_count": 2,
+            "export_audit_ready": False,
+            "label_pack_hash": "pack-hash-001",
+            "label_manifest_hash": "manifest-hash-001",
+            "reasons": ["Export audit manifest not created yet"],
+        }
+    )
+
+    assert "# Calibration Label Manifest" in markdown
+    assert "Status: `incomplete`" in markdown
+    assert "Label pack hash: `pack-hash-001`" in markdown
+    assert "Label manifest hash: `manifest-hash-001`" in markdown
+    assert "## Reasons" in markdown
     assert "Export audit manifest not created yet" in markdown
