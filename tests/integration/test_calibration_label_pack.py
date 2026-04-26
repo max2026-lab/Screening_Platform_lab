@@ -1,5 +1,6 @@
 import io
 import json
+from hashlib import sha256
 from contextlib import redirect_stdout
 
 from lawful_anomaly_screening.cli import main
@@ -50,6 +51,48 @@ def _bootstrap_scaffolded_run(db_path, cache_root, run_id: str, *, legal_gate=No
         run_id=run_id,
         cache_root=cache_root,
     )
+
+
+def _file_hash(path) -> str:
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def _review_ready_run(db_path, cache_root, tmp_path, run_id: str) -> dict:
+    run_summary = _bootstrap_scaffolded_run(db_path, cache_root, run_id)
+    review_repository = ReviewRepository(db_path)
+    required_review_count = max(
+        2,
+        int(len(run_summary["candidate_ids"]) * 0.20 + 0.999999),
+        int(min(len(run_summary["candidate_ids"]), 20) * 0.50 + 0.999999),
+    )
+    approved_ids = run_summary["candidate_ids"][: max(1, required_review_count // 2)]
+    watched_ids = run_summary["candidate_ids"][max(1, required_review_count // 2) : required_review_count]
+    if not watched_ids:
+        watched_ids = [run_summary["candidate_ids"][max(1, required_review_count // 2)]]
+    for candidate_id in approved_ids:
+        review_repository.decide(
+            candidate_id=candidate_id,
+            run_id=run_id,
+            reviewer_id="reviewer-001",
+            decision="approve_for_archive_quote",
+            note="approved for calibration artifact",
+        )
+    for candidate_id in watched_ids:
+        review_repository.decide(
+            candidate_id=candidate_id,
+            run_id=run_id,
+            reviewer_id="reviewer-001",
+            decision="watch",
+            note="watchlisted for calibration artifact",
+        )
+    export_repository = ExportRepository(db_path, export_root=tmp_path)
+    export_repository.persist_export(
+        run_id=run_id,
+        audience="report_pdf",
+        requested_precision="restricted",
+        candidates=export_repository.fetch_export_candidates(run_id),
+    )
+    return run_summary
 
 
 def test_calibration_label_pack_ready_and_pending_toggle(monkeypatch, tmp_path):
@@ -324,3 +367,137 @@ def test_calibration_label_manifest_incomplete_and_fail(monkeypatch, tmp_path):
     assert fail_manifest["status"] == "fail"
     assert fail_manifest["legal_gate"]["decision"] == "fail"
     assert "Legal gate failed: attestation missing" in fail_manifest["reasons"]
+
+
+def test_calibration_label_export_writes_deterministic_artifacts(monkeypatch, tmp_path):
+    db_path = tmp_path / "calibration-label-export.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    _review_ready_run(db_path, cache_root, tmp_path, "run-001")
+
+    output_dir = tmp_path / "artifact-a"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-export", "--run-id", "run-001", "--output-dir", str(output_dir)]) == 0
+    export = json.loads(output.getvalue())
+
+    repeated_output = io.StringIO()
+    with redirect_stdout(repeated_output):
+        assert main(["calibration-label-export", "--run-id", "run-001", "--output-dir", str(output_dir)]) == 0
+    repeated_export = json.loads(repeated_output.getvalue())
+
+    other_output_dir = tmp_path / "artifact-b"
+    other_output = io.StringIO()
+    with redirect_stdout(other_output):
+        assert main(["calibration-label-export", "--run-id", "run-001", "--output-dir", str(other_output_dir)]) == 0
+    other_export = json.loads(other_output.getvalue())
+
+    pending_output = io.StringIO()
+    with redirect_stdout(pending_output):
+        assert main(
+            [
+                "calibration-label-export",
+                "--run-id",
+                "run-001",
+                "--output-dir",
+                str(tmp_path / "artifact-pending"),
+                "--include-pending",
+            ]
+        ) == 0
+    pending_export = json.loads(pending_output.getvalue())
+
+    assert export["status"] == "ready"
+    assert set(export.keys()) >= {
+        "run_id",
+        "status",
+        "reasons",
+        "output_dir",
+        "include_pending",
+        "label_pack_hash",
+        "label_manifest_hash",
+        "artifact_hash",
+        "files",
+        "file_hashes",
+    }
+    assert export["files"] == [
+        "calibration_label_pack.json",
+        "calibration_label_manifest.json",
+        "calibration_label_manifest.md",
+        "SHA256SUMS.txt",
+    ]
+    assert export["include_pending"] is False
+    assert export["artifact_hash"] == repeated_export["artifact_hash"]
+    assert export["artifact_hash"] == other_export["artifact_hash"]
+    assert pending_export["include_pending"] is True
+    assert pending_export["artifact_hash"] != export["artifact_hash"]
+
+    for file_name in export["files"]:
+        path = output_dir / file_name
+        assert path.exists()
+        assert export["file_hashes"][file_name] == _file_hash(path)
+
+    checksums = (output_dir / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    for file_name in export["files"]:
+        if file_name == "SHA256SUMS.txt":
+            continue
+        assert f"{export['file_hashes'][file_name]}  {file_name}" in checksums
+
+    pack = json.loads((output_dir / "calibration_label_pack.json").read_text(encoding="utf-8"))
+    manifest = json.loads((output_dir / "calibration_label_manifest.json").read_text(encoding="utf-8"))
+    markdown = (output_dir / "calibration_label_manifest.md").read_text(encoding="utf-8")
+    assert pack["label_pack_hash"] == export["label_pack_hash"]
+    assert manifest["label_manifest_hash"] == export["label_manifest_hash"]
+    assert "Artifact hash:" in markdown
+    assert export["artifact_hash"] in markdown
+
+
+def test_calibration_label_export_incomplete_and_fail_statuses(monkeypatch, tmp_path):
+    db_path = tmp_path / "calibration-label-export-status.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    _bootstrap_scaffolded_run(db_path, cache_root, "run-001")
+    _bootstrap_scaffolded_run(
+        db_path,
+        cache_root,
+        "run-denied",
+        legal_gate=_legal_gate_fail(),
+    )
+
+    incomplete_output_dir = tmp_path / "artifact-incomplete"
+    incomplete_output = io.StringIO()
+    with redirect_stdout(incomplete_output):
+        assert main(
+            [
+                "calibration-label-export",
+                "--run-id",
+                "run-001",
+                "--output-dir",
+                str(incomplete_output_dir),
+            ]
+        ) == 0
+    incomplete_export = json.loads(incomplete_output.getvalue())
+
+    fail_output_dir = tmp_path / "artifact-fail"
+    fail_output = io.StringIO()
+    with redirect_stdout(fail_output):
+        assert main(
+            [
+                "calibration-label-export",
+                "--run-id",
+                "run-denied",
+                "--output-dir",
+                str(fail_output_dir),
+            ]
+        ) == 1
+    fail_export = json.loads(fail_output.getvalue())
+
+    assert incomplete_export["status"] == "incomplete"
+    assert "No reviewed candidates available for calibration label pack" in incomplete_export["reasons"]
+    assert (incomplete_output_dir / "calibration_label_pack.json").exists()
+    assert (incomplete_output_dir / "calibration_label_manifest.json").exists()
+    assert fail_export["status"] == "fail"
+    assert "Legal gate failed: attestation missing" in fail_export["reasons"]
+    assert (fail_output_dir / "calibration_label_pack.json").exists()
+    assert (fail_output_dir / "calibration_label_manifest.json").exists()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from hashlib import sha256
 import json
 from pathlib import Path
 import sys
@@ -65,6 +66,20 @@ def _load_json(path: Path) -> object:
 
 def _load_baseline() -> dict:
     return _load_json(load_settings().baseline_path)
+
+
+def _stable_json_text(payload: object) -> str:
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def _sha256_text(text: str) -> str:
+    return sha256(text.encode("utf-8")).hexdigest()
+
+
+def _stable_hash(payload: dict) -> str:
+    return sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def _build_legal_gate_for_aoi(
@@ -562,6 +577,133 @@ def cmd_calibration_label_manifest(args: argparse.Namespace) -> int:
     return 0 if manifest["status"] in {"ready", "incomplete"} else 1
 
 
+def _build_calibration_label_payloads(
+    *,
+    run_id: str,
+    include_pending: bool,
+) -> tuple[dict, dict]:
+    settings = load_settings()
+    baseline = _load_baseline()
+    calibration_policy = baseline.get("calibration_policy")
+    repository = AcceptanceRepository(settings.db_path)
+    run = repository.fetch_run(run_id)
+    if run is None:
+        raise ValueError(f"run not found: {run_id}")
+    pack = build_calibration_label_pack(
+        run_metadata=run,
+        candidate_rows=repository.fetch_candidate_rows(run_id),
+        label_rows=repository.fetch_label_candidates(
+            run_id,
+            include_pending=include_pending,
+        ),
+        review_state_counts=repository.fetch_review_state_counts(run_id),
+        export_audit_manifest=repository.fetch_latest_export_audit_manifest(run_id),
+        calibration_policy=calibration_policy,
+    )
+    manifest = build_calibration_label_manifest(
+        label_pack=pack,
+        include_pending=include_pending,
+    )
+    return pack, manifest
+
+
+def _render_calibration_label_export_markdown(
+    *,
+    manifest: dict,
+    artifact_hash: str,
+    files: list[str],
+) -> str:
+    lines = [
+        "# Calibration Label Artifact Export",
+        "",
+        f"- Run ID: `{manifest['run_id']}`",
+        f"- Status: `{manifest['status']}`",
+        f"- Include pending: `{manifest['include_pending']}`",
+        f"- Label count: `{manifest['label_count']}`",
+        f"- Label pack hash: `{manifest['label_pack_hash']}`",
+        f"- Label manifest hash: `{manifest['label_manifest_hash']}`",
+        f"- Artifact hash: `{artifact_hash}`",
+        "",
+        "## Files",
+        "",
+    ]
+    lines.extend(f"- `{file_name}`" for file_name in files)
+    lines.extend(["", "## Reasons", ""])
+    lines.extend(f"- {reason}" for reason in manifest["reasons"])
+    return "\n".join(lines) + "\n"
+
+
+def _render_sha256sums(file_hashes: dict[str, str]) -> str:
+    return "".join(f"{file_hashes[file_name]}  {file_name}\n" for file_name in sorted(file_hashes))
+
+
+def cmd_calibration_label_export(args: argparse.Namespace) -> int:
+    pack, manifest = _build_calibration_label_payloads(
+        run_id=args.run_id,
+        include_pending=bool(args.include_pending),
+    )
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    files = [
+        "calibration_label_pack.json",
+        "calibration_label_manifest.json",
+        "calibration_label_manifest.md",
+        "SHA256SUMS.txt",
+    ]
+    pack_json = _stable_json_text(pack)
+    manifest_json = _stable_json_text(manifest)
+    core_hashes = {
+        "calibration_label_pack.json": _sha256_text(pack_json),
+        "calibration_label_manifest.json": _sha256_text(manifest_json),
+    }
+    artifact_hash = _stable_hash(
+        {
+            "files": [
+                {"name": file_name, "sha256": core_hashes[file_name]}
+                for file_name in sorted(core_hashes)
+            ],
+            "include_pending": bool(args.include_pending),
+            "run_id": manifest["run_id"],
+        }
+    )
+    markdown = _render_calibration_label_export_markdown(
+        manifest=manifest,
+        artifact_hash=artifact_hash,
+        files=files,
+    )
+    file_hashes = {
+        **core_hashes,
+        "calibration_label_manifest.md": _sha256_text(markdown),
+    }
+    sha256sums = _render_sha256sums(file_hashes)
+    file_hashes["SHA256SUMS.txt"] = _sha256_text(sha256sums)
+
+    file_contents = {
+        "calibration_label_pack.json": pack_json,
+        "calibration_label_manifest.json": manifest_json,
+        "calibration_label_manifest.md": markdown,
+        "SHA256SUMS.txt": sha256sums,
+    }
+    for file_name, content in file_contents.items():
+        (output_dir / file_name).write_text(content, encoding="utf-8", newline="\n")
+
+    result = {
+        "run_id": manifest["run_id"],
+        "status": manifest["status"],
+        "reasons": list(manifest["reasons"]),
+        "output_dir": str(output_dir),
+        "include_pending": bool(args.include_pending),
+        "label_pack_hash": manifest["label_pack_hash"],
+        "label_manifest_hash": manifest["label_manifest_hash"],
+        "artifact_hash": artifact_hash,
+        "files": files,
+        "file_hashes": file_hashes,
+    }
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] in {"ready", "incomplete"} else 1
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -708,6 +850,12 @@ def _add_calibration_label_manifest_arguments(parser: argparse.ArgumentParser) -
     parser.add_argument("--include-pending", action="store_true")
 
 
+def _add_calibration_label_export_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--include-pending", action="store_true")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -735,6 +883,7 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-pack": cmd_calibration_pack,
         "calibration-label-pack": cmd_calibration_label_pack,
         "calibration-label-manifest": cmd_calibration_label_manifest,
+        "calibration-label-export": cmd_calibration_label_export,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -775,6 +924,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_pack_arguments(p)
         if name == "calibration-label-manifest":
             _add_calibration_label_manifest_arguments(p)
+        if name == "calibration-label-export":
+            _add_calibration_label_export_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)
