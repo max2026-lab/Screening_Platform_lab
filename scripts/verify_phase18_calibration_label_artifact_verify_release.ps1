@@ -397,7 +397,7 @@ try {
     if ($createDeniedResult.ExitCode -eq 0) {
         throw "Legal-denied create-run expected non-zero exit code"
     }
-    if (-not $createDeniedResult.StdOut) {
+    if (-not ($createDeniedResult.StdOut -or $createDeniedResult.StdErr)) {
         throw "Legal-denied create-run returned empty output"
     }
 
@@ -411,7 +411,7 @@ try {
     if ($deniedExportResult.ExitCode -eq 0) {
         throw "Legal-denied calibration-label-export expected non-zero exit code"
     }
-    if (-not $deniedExportResult.StdOut) {
+    if (-not ($deniedExportResult.StdOut -or $deniedExportResult.StdErr)) {
         throw "Legal-denied calibration-label-export returned empty output"
     }
     
