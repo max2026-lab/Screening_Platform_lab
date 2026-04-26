@@ -726,6 +726,46 @@ def _render_calibration_label_registry_list_markdown(result: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_calibration_label_registry_export_markdown(
+    result: dict,
+    snapshot_hash: str,
+) -> str:
+    lines = [
+        "# Calibration Registry Snapshot",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Snapshot hash: `{snapshot_hash}`",
+        f"- Artifact count: `{result['artifact_count']}`",
+        "",
+        "## Files",
+        "",
+    ]
+    lines.extend(f"- `{file_name}`" for file_name in result["files"])
+    lines.extend(["", "## Reasons", ""])
+    if not result.get("reasons"):
+        lines.append("- Registry snapshot exported successfully")
+    else:
+        lines.extend(f"- {reason}" for reason in result["reasons"])
+    lines.extend([
+        "",
+        "## Artifacts",
+        "",
+        "| Run ID | Artifact Hash | Artifact Status | Label Count | Include Pending |",
+        "| --- | --- | --- | ---: | --- |",
+    ])
+    for artifact in result["artifacts"]:
+        lines.append(
+            "| `{run_id}` | `{artifact_hash}` | `{artifact_status}` | {label_count} | `{include_pending}` |".format(
+                run_id=artifact["run_id"],
+                artifact_hash=artifact["artifact_hash"],
+                artifact_status=artifact["artifact_status"],
+                label_count=artifact["label_count"],
+                include_pending=artifact["include_pending"],
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
 def _extract_artifact_hash_from_markdown(markdown: str) -> str | None:
     match = re.search(r"(?m)^- Artifact hash: `([^`]+)`\s*$", markdown)
     if match is None:
@@ -742,6 +782,27 @@ def _canonicalize_artifact_markdown(markdown: str) -> str:
         else:
             canonical_lines.append(line)
     return "\n".join(canonical_lines) + "\n"
+
+
+def _build_snapshot_hash(
+    *,
+    artifact_count: int,
+    artifacts: list[dict],
+    files: list[str],
+    file_hashes: dict[str, str],
+) -> str:
+    return _stable_hash(
+        {
+            "snapshot_type": "calibration_artifact_registry",
+            "snapshot_version": 1,
+            "artifact_count": artifact_count,
+            "artifacts": artifacts,
+            "files": [
+                {"name": file_name, "sha256": file_hashes[file_name]}
+                for file_name in files
+            ],
+        }
+    )
 
 
 def _compute_calibration_label_pack_hash(pack: dict) -> str:
@@ -1184,6 +1245,112 @@ def cmd_calibration_label_registry_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_calibration_label_registry_export(args: argparse.Namespace) -> int:
+    artifacts = CalibrationArtifactRepository(load_settings().db_path).list_artifacts()
+    artifacts.sort(key=lambda a: (a["run_id"], a["artifact_hash"]))
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    files = [
+        "calibration_artifact_registry.json",
+        "calibration_artifact_registry.md",
+        "SHA256SUMS.txt",
+    ]
+
+    registry_json_payload = {
+        "snapshot_type": "calibration_artifact_registry",
+        "snapshot_version": 1,
+        "artifact_count": len(artifacts),
+        "artifacts": [
+            {
+                "artifact_hash": a["artifact_hash"],
+                "run_id": a["run_id"],
+                "artifact_status": a["artifact_status"],
+                "label_pack_hash": a["label_pack_hash"],
+                "label_manifest_hash": a["label_manifest_hash"],
+                "label_count": a["label_count"],
+                "include_pending": a["include_pending"],
+                "files": a["files"],
+                "file_hashes": a["file_hashes"],
+            }
+            for a in artifacts
+        ],
+        "snapshot_hash": "<snapshot_hash_excluded_from_hash_input>",
+    }
+
+    canonical_json_text = _stable_json_text(registry_json_payload)
+    core_hashes = {
+        "calibration_artifact_registry.json": _sha256_text(canonical_json_text),
+    }
+
+    result_dict = {
+        "status": "exported",
+        "reasons": [],
+        "output_dir": str(output_dir),
+        "artifact_count": len(artifacts),
+        "artifacts": registry_json_payload["artifacts"],
+        "files": files,
+    }
+
+    canonical_markdown = _render_calibration_label_registry_export_markdown(
+        result_dict,
+        snapshot_hash="<snapshot_hash_excluded_from_hash_input>",
+    )
+    canonical_hashes = {
+        **core_hashes,
+        "calibration_artifact_registry.md": _sha256_text(canonical_markdown),
+    }
+    canonical_sha256sums = _render_sha256sums(canonical_hashes)
+    canonical_hashes["SHA256SUMS.txt"] = _sha256_text(canonical_sha256sums)
+
+    snapshot_hash = _build_snapshot_hash(
+        artifact_count=len(artifacts),
+        artifacts=registry_json_payload["artifacts"],
+        files=files,
+        file_hashes=canonical_hashes,
+    )
+
+    registry_json_payload["snapshot_hash"] = snapshot_hash
+    final_json_text = _stable_json_text(registry_json_payload)
+    
+    final_markdown = _render_calibration_label_registry_export_markdown(
+        result_dict,
+        snapshot_hash=snapshot_hash,
+    )
+    
+    file_hashes = {
+        "calibration_artifact_registry.json": _sha256_text(final_json_text),
+        "calibration_artifact_registry.md": _sha256_text(final_markdown),
+    }
+    final_sha256sums = _render_sha256sums(file_hashes)
+    file_hashes["SHA256SUMS.txt"] = _sha256_text(final_sha256sums)
+
+    file_contents = {
+        "calibration_artifact_registry.json": final_json_text,
+        "calibration_artifact_registry.md": final_markdown,
+        "SHA256SUMS.txt": final_sha256sums,
+    }
+    for file_name, content in file_contents.items():
+        (output_dir / file_name).write_text(content, encoding="utf-8", newline="\n")
+
+    result = {
+        "status": "exported",
+        "reasons": [],
+        "output_dir": str(output_dir),
+        "artifact_count": len(artifacts),
+        "snapshot_hash": snapshot_hash,
+        "files": files,
+        "file_hashes": file_hashes,
+    }
+    
+    if args.output == "markdown":
+        print(final_markdown, end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -1350,6 +1517,11 @@ def _add_calibration_label_registry_list_arguments(parser: argparse.ArgumentPars
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 
+def _add_calibration_label_registry_export_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1381,6 +1553,7 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-label-verify": cmd_calibration_label_verify,
         "calibration-label-register": cmd_calibration_label_register,
         "calibration-label-registry-list": cmd_calibration_label_registry_list,
+        "calibration-label-registry-export": cmd_calibration_label_registry_export,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -1429,6 +1602,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_register_arguments(p)
         if name == "calibration-label-registry-list":
             _add_calibration_label_registry_list_arguments(p)
+        if name == "calibration-label-registry-export":
+            _add_calibration_label_registry_export_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

@@ -257,3 +257,11 @@ The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase19_calibration_artifact_registry_release.ps1
 ```
+
+## Phase 20 Calibration Registry Snapshot Export
+
+Export a portable deterministic snapshot of the entire calibration artifact registry:
+
+```powershell
+lawful-anomaly calibration-label-registry-export --output-dir <snapshot_dir>
+```
