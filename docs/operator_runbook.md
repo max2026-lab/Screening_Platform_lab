@@ -178,3 +178,12 @@ The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase13_calibration_release.ps1
 ```
+
+## Phase 14 Calibration Policy Verification
+
+From repo root, run `uv sync` and `uv pip install -e C:\Dev\Screening_Platform_lab` first.
+The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase14_calibration_policy_release.ps1
+```
