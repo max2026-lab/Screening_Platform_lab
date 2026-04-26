@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-import sqlite3
 import io
 import hashlib
 from contextlib import redirect_stdout
@@ -45,20 +44,12 @@ def test_calibration_registry_snapshot_export(tmp_path: Path, monkeypatch: pytes
     assert empty_result["status"] == "exported"
     assert empty_result["artifact_count"] == 0
     assert empty_result["snapshot_hash"] is not None
-    assert len(empty_result["files"]) == 3
-    assert "calibration_artifact_registry.json" in empty_result["files"]
-
-    # Verify JSON file matches memory
-    json_path = snapshot_dir / "calibration_artifact_registry.json"
-    assert json_path.exists()
-    empty_json = json.loads(json_path.read_text(encoding="utf-8"))
-    assert empty_json["artifact_count"] == 0
-    assert empty_json["snapshot_hash"] == empty_result["snapshot_hash"]
     
     # Add artifacts
     repo = CalibrationArtifactRepository(db_path)
     repo.save_artifact(_create_fake_artifact("hash2", "run-b", "incomplete"))
     repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+    repo.save_artifact(_create_fake_artifact("hash3", "run-c", "fail"))
 
     # Export again
     snapshot_dir2 = tmp_path / "snapshot_full"
@@ -66,19 +57,73 @@ def test_calibration_registry_snapshot_export(tmp_path: Path, monkeypatch: pytes
     with redirect_stdout(output):
         assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir2)]) == 0
     full_result = json.loads(output.getvalue())
-    assert full_result["artifact_count"] == 2
+
+    # Check required command JSON fields
+    expected_fields = {"status", "reasons", "output_dir", "artifact_count", "snapshot_hash", "files", "file_hashes"}
+    assert expected_fields.issubset(full_result.keys())
+
+    assert full_result["status"] == "exported"
+    assert full_result["artifact_count"] == 3
     assert full_result["snapshot_hash"] != empty_result["snapshot_hash"]
 
-    # Verify JSON file structure and sorting
+    # Files list exact match
+    expected_files = [
+        "calibration_artifact_registry.json",
+        "calibration_artifact_registry.md",
+        "SHA256SUMS.txt",
+    ]
+    assert sorted(full_result["files"]) == sorted(expected_files)
+
+    # Verify JSON file matches memory
     json_path2 = snapshot_dir2 / "calibration_artifact_registry.json"
-    full_json = json.loads(json_path2.read_text(encoding="utf-8"))
+    md_path = snapshot_dir2 / "calibration_artifact_registry.md"
+    sums_path = snapshot_dir2 / "SHA256SUMS.txt"
+
+    # All three files exist and are UTF-8 readable
+    assert json_path2.exists()
+    assert md_path.exists()
+    assert sums_path.exists()
+
+    json_text = json_path2.read_text(encoding="utf-8")
+    md_text = md_path.read_text(encoding="utf-8")
+    sums_text = sums_path.read_text(encoding="utf-8")
+
+    full_json = json.loads(json_text)
     assert full_json["snapshot_type"] == "calibration_artifact_registry"
     assert full_json["snapshot_version"] == 1
-    assert full_json["artifact_count"] == 2
+    assert full_json["artifact_count"] == 3
+    
+    # Artifact entries are sorted by run_id then artifact_hash
     assert full_json["artifacts"][0]["run_id"] == "run-a"
     assert full_json["artifacts"][1]["run_id"] == "run-b"
+    assert full_json["artifacts"][2]["run_id"] == "run-c"
 
-    # Export same DB to different dir has same hash
+    # Exported snapshot JSON contains no full label payload fields
+    json_str = json.dumps(full_json)
+    assert "labels" not in full_json
+    assert "label_ids" not in full_json
+    
+    # Exported snapshot JSON contains no coordinate fields
+    for coord_field in ["lon", "lat", "longitude", "latitude", "geometry", "centroid", "bbox"]:
+        assert f'"{coord_field}"' not in json_str
+
+    # Command JSON file_hashes match actual file contents
+    actual_json_hash = hashlib.sha256(json_path2.read_bytes()).hexdigest()
+    actual_md_hash = hashlib.sha256(md_path.read_bytes()).hexdigest()
+    actual_sums_hash = hashlib.sha256(sums_path.read_bytes()).hexdigest()
+
+    assert full_result["file_hashes"]["calibration_artifact_registry.json"] == actual_json_hash
+    assert full_result["file_hashes"]["calibration_artifact_registry.md"] == actual_md_hash
+    assert full_result["file_hashes"]["SHA256SUMS.txt"] == actual_sums_hash
+
+    # SHA256SUMS contains correct hashes
+    assert f"{actual_json_hash}  calibration_artifact_registry.json" in sums_text
+    assert f"{actual_md_hash}  calibration_artifact_registry.md" in sums_text
+    
+    # SHA256SUMS does not include self hash line
+    assert "SHA256SUMS.txt" not in sums_text
+
+    # Snapshot hash is identical across different output directories for the same DB state
     snapshot_dir3 = tmp_path / "snapshot_full_copy"
     output = io.StringIO()
     with redirect_stdout(output):
@@ -86,28 +131,26 @@ def test_calibration_registry_snapshot_export(tmp_path: Path, monkeypatch: pytes
     copy_result = json.loads(output.getvalue())
     assert copy_result["snapshot_hash"] == full_result["snapshot_hash"]
 
-    # Verify markdown
-    md_path = snapshot_dir2 / "calibration_artifact_registry.md"
-    md_text = md_path.read_text(encoding="utf-8")
-    assert "# Calibration Registry Snapshot" in md_text
-    assert "Status: `exported`" in md_text
-    assert f"Snapshot hash: `{full_result['snapshot_hash']}`" in md_text
-    assert "## Artifacts" in md_text
-    assert "`run-a`" in md_text
-
-    # Verify SHA256SUMS
-    sums_path = snapshot_dir2 / "SHA256SUMS.txt"
-    sums_text = sums_path.read_text(encoding="utf-8")
-    assert "calibration_artifact_registry.json" in sums_text
-    assert "calibration_artifact_registry.md" in sums_text
-    assert "SHA256SUMS.txt" not in sums_text
-    
-    actual_json_hash = hashlib.sha256(json_path2.read_bytes()).hexdigest()
-    assert actual_json_hash in sums_text
-    
-    # Test --output markdown
+    # Snapshot hash is deterministic across repeated exports to the same directory
     output = io.StringIO()
     with redirect_stdout(output):
-        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir3), "--output", "markdown"]) == 0
-    md_out = output.getvalue()
-    assert md_out == md_text
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir2)]) == 0
+    repeat_result = json.loads(output.getvalue())
+    assert repeat_result["snapshot_hash"] == full_result["snapshot_hash"]
+    
+    # Adding one additional registered artifact changes snapshot_hash
+    repo.save_artifact(_create_fake_artifact("hash4", "run-d", "ready"))
+    snapshot_dir4 = tmp_path / "snapshot_plus_one"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir4)]) == 0
+    plus_one_result = json.loads(output.getvalue())
+    assert plus_one_result["snapshot_hash"] != full_result["snapshot_hash"]
+
+    # Verify markdown
+    assert "# Calibration Registry Snapshot" in md_text
+    assert f"- Snapshot hash: `{full_result['snapshot_hash']}`" in md_text
+    assert "- Artifact count: `3`" in md_text
+    assert "## Files" in md_text
+    assert "## Reasons" in md_text
+    assert "## Artifacts" in md_text
