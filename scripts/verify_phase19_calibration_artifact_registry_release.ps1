@@ -417,6 +417,15 @@ try {
     if ($readyRegister.registry_record.PSObject.Properties["artifact_dir"]) {
         throw "Ready register registry_record should not include artifact_dir"
     }
+    if (-not $readyRegister.registry_record.PSObject.Properties["verification"]) {
+        throw "Ready register expected registry_record.verification to be present"
+    }
+    if ($null -eq $readyRegister.registry_record.verification) {
+        throw "Ready register expected registry_record.verification to be non-null"
+    }
+    if ($readyRegister.registry_record.verification.PSObject.Properties["artifact_dir"]) {
+        throw "Ready register expected registry_record.verification to not include artifact_dir"
+    }
 
     # Register duplicate - should return already_registered
     $dupRegisterResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
@@ -436,6 +445,15 @@ try {
     }
     if ([string]$dupRegister.registry_record.artifact_hash -ne [string]$dupRegister.artifact_hash) {
         throw "Duplicate register registry_record.artifact_hash should equal artifact_hash"
+    }
+    if (-not $dupRegister.registry_record.PSObject.Properties["verification"]) {
+        throw "Duplicate register expected registry_record.verification to be present"
+    }
+    if ($null -eq $dupRegister.registry_record.verification) {
+        throw "Duplicate register expected registry_record.verification to be non-null"
+    }
+    if ($dupRegister.registry_record.verification.PSObject.Properties["artifact_dir"]) {
+        throw "Duplicate register expected registry_record.verification to not include artifact_dir"
     }
 
     # Register incomplete artifact
@@ -502,12 +520,25 @@ try {
         throw "Registry list expected artifact_count=3"
     }
     $artifacts = @($registryList.artifacts)
-    $runIds = @($artifacts | ForEach-Object { [string]$_.run_id })
     $expectedRunIds = @("phase19-registry-denied-001", "phase19-registry-incomplete-001", "phase19-registry-ready-001")
-    foreach ($expectedId in $expectedRunIds) {
-        if ($expectedId -notin $runIds) {
-            throw "Registry list expected to include run_id '$expectedId'"
+    $actualRunIds = @($artifacts | ForEach-Object { [string]$_.run_id })
+    if (($actualRunIds | ConvertTo-Json -Compress) -ne ($expectedRunIds | ConvertTo-Json -Compress)) {
+        throw "Registry list expected artifacts run_id order to be: $($expectedRunIds -join ', ')"
+    }
+
+    $actualSortKeys = @(
+        $artifacts | ForEach-Object {
+            [pscustomobject]@{
+                run_id = [string]$_.run_id
+                artifact_hash = [string]$_.artifact_hash
+            }
         }
+    )
+    $sortedSortKeys = @(
+        $actualSortKeys | Sort-Object -Property run_id, artifact_hash
+    )
+    if (($actualSortKeys | ConvertTo-Json -Compress) -ne ($sortedSortKeys | ConvertTo-Json -Compress)) {
+        throw "Registry list expected artifacts to be sorted by run_id ascending, then artifact_hash ascending"
     }
 
     foreach ($artifact in $artifacts) {
@@ -541,7 +572,7 @@ try {
     }
     $mdRegOut = $mdRegisterResult.StdOut
     Assert-TextIncludes -Text $mdRegOut -Expected "# Calibration Label Artifact Registration" -Context "Markdown register"
-    Assert-TextIncludes -Text $mdRegOut -Expected "Status: `already_registered`" -Context "Markdown register"
+    Assert-TextIncludes -Text $mdRegOut -Expected 'Status: `already_registered`' -Context "Markdown register"
     Assert-TextIncludes -Text $mdRegOut -Expected "Artifact hash:" -Context "Markdown register"
     Assert-TextIncludes -Text $mdRegOut -Expected "Run ID:" -Context "Markdown register"
     Assert-TextIncludes -Text $mdRegOut -Expected "Artifact status:" -Context "Markdown register"
