@@ -884,3 +884,113 @@ def test_calibration_label_verify_missing_artifact_hash_line_is_invalid(monkeypa
     assert exit_code == 1
     assert verify["status"] == "invalid"
     assert "Artifact hash line missing from calibration_label_manifest.md" in verify["reasons"]
+
+
+def test_calibration_label_register_and_registry_list_are_deterministic(monkeypatch, tmp_path):
+    generation_db = tmp_path / "calibration-label-registry-generation.sqlite3"
+    registry_db = tmp_path / "calibration-label-registry.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(generation_db))
+    init_db(generation_db)
+    _review_ready_run(generation_db, cache_root, tmp_path, "run-ready")
+    _bootstrap_scaffolded_run(generation_db, cache_root, "run-incomplete")
+    _bootstrap_scaffolded_run(generation_db, cache_root, "run-fail", legal_gate=_legal_gate_fail())
+
+    ready_dir = tmp_path / "ready-artifact"
+    incomplete_dir = tmp_path / "incomplete-artifact"
+    fail_dir = tmp_path / "fail-artifact"
+    assert _export_artifact("run-ready", ready_dir)[0] == 0
+    assert _export_artifact("run-incomplete", incomplete_dir)[0] == 0
+    assert _export_artifact("run-fail", fail_dir)[0] == 1
+
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(registry_db))
+    init_db(registry_db)
+
+    ready_output = io.StringIO()
+    with redirect_stdout(ready_output):
+        assert main(["calibration-label-register", "--artifact-dir", str(ready_dir)]) == 0
+    ready_register = json.loads(ready_output.getvalue())
+
+    duplicate_output = io.StringIO()
+    with redirect_stdout(duplicate_output):
+        assert main(["calibration-label-register", "--artifact-dir", str(ready_dir)]) == 0
+    duplicate_register = json.loads(duplicate_output.getvalue())
+
+    incomplete_output = io.StringIO()
+    with redirect_stdout(incomplete_output):
+        assert main(["calibration-label-register", "--artifact-dir", str(incomplete_dir)]) == 0
+    incomplete_register = json.loads(incomplete_output.getvalue())
+
+    fail_output = io.StringIO()
+    with redirect_stdout(fail_output):
+        assert main(["calibration-label-register", "--artifact-dir", str(fail_dir)]) == 0
+    fail_register = json.loads(fail_output.getvalue())
+
+    list_output = io.StringIO()
+    with redirect_stdout(list_output):
+        assert main(["calibration-label-registry-list"]) == 0
+    registry_list = json.loads(list_output.getvalue())
+
+    markdown_output = io.StringIO()
+    with redirect_stdout(markdown_output):
+        assert main(["calibration-label-registry-list", "--output", "markdown"]) == 0
+    registry_markdown = markdown_output.getvalue()
+
+    assert ready_register["status"] == "registered"
+    assert duplicate_register["status"] == "already_registered"
+    assert duplicate_register["artifact_hash"] == ready_register["artifact_hash"]
+    assert "artifact_dir" not in ready_register["registry_record"]["verification"]
+    assert incomplete_register["status"] == "registered"
+    assert incomplete_register["artifact_status"] == "incomplete"
+    assert fail_register["status"] == "registered"
+    assert fail_register["artifact_status"] == "fail"
+    assert registry_list["status"] == "ok"
+    assert registry_list["artifact_count"] == 3
+    assert [artifact["run_id"] for artifact in registry_list["artifacts"]] == [
+        "run-fail",
+        "run-incomplete",
+        "run-ready",
+    ]
+    assert "# Calibration Label Artifact Registry" in registry_markdown
+    assert "Artifact count:" in registry_markdown
+
+
+def test_calibration_label_register_rejects_invalid_artifact_without_persisting(monkeypatch, tmp_path):
+    generation_db = tmp_path / "calibration-label-registry-invalid-generation.sqlite3"
+    registry_db = tmp_path / "calibration-label-registry-invalid.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(generation_db))
+    init_db(generation_db)
+    _review_ready_run(generation_db, cache_root, tmp_path, "run-001")
+
+    artifact_dir = tmp_path / "artifact"
+    assert _export_artifact("run-001", artifact_dir)[0] == 0
+    (artifact_dir / "SHA256SUMS.txt").write_text(
+        (artifact_dir / "SHA256SUMS.txt").read_text(encoding="utf-8").replace("a", "b", 1),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(registry_db))
+    init_db(registry_db)
+
+    register_output = io.StringIO()
+    with redirect_stdout(register_output):
+        assert main(["calibration-label-register", "--artifact-dir", str(artifact_dir)]) == 1
+    register_result = json.loads(register_output.getvalue())
+
+    list_output = io.StringIO()
+    with redirect_stdout(list_output):
+        assert main(["calibration-label-registry-list"]) == 0
+    registry_list = json.loads(list_output.getvalue())
+
+    markdown_output = io.StringIO()
+    with redirect_stdout(markdown_output):
+        assert main(["calibration-label-register", "--artifact-dir", str(artifact_dir), "--output", "markdown"]) == 1
+    register_markdown = markdown_output.getvalue()
+
+    assert register_result["status"] == "invalid"
+    assert register_result["registry_record"] is None
+    assert registry_list["artifact_count"] == 0
+    assert "# Calibration Label Artifact Registration" in register_markdown
+    assert "Status: `invalid`" in register_markdown

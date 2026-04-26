@@ -247,3 +247,19 @@ CREATE TABLE IF NOT EXISTS paid_orders (
 
 CREATE INDEX IF NOT EXISTS idx_paid_orders_candidate_id
     ON paid_orders(candidate_id);
+
+CREATE TABLE IF NOT EXISTS calibration_label_artifacts (
+    artifact_hash TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    artifact_status TEXT NOT NULL,
+    label_pack_hash TEXT NOT NULL,
+    label_manifest_hash TEXT NOT NULL,
+    label_count INTEGER NOT NULL,
+    include_pending INTEGER NOT NULL DEFAULT 0,
+    files_json TEXT NOT NULL,
+    file_hashes_json TEXT NOT NULL,
+    verification_json TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_calibration_label_artifacts_run_id
+    ON calibration_label_artifacts(run_id);

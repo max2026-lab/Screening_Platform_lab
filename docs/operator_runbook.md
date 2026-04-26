@@ -231,6 +231,15 @@ Verify a saved calibration label artifact directory later without DB access:
 lawful-anomaly calibration-label-verify --artifact-dir <artifact_dir>
 ```
 
+## Phase 19 Calibration Label Artifact Registry
+
+Register a verified artifact bundle into the local registry and list registered bundles:
+
+```powershell
+lawful-anomaly calibration-label-register --artifact-dir <artifact_dir>
+lawful-anomaly calibration-label-registry-list
+```
+
 ## Phase 18 Calibration Label Artifact Verify Release Verification
 
 From repo root, run `uv sync` and `uv pip install -e C:\Dev\Screening_Platform_lab` first.

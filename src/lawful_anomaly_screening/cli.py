@@ -11,6 +11,7 @@ from datetime import datetime
 from . import __version__
 from .aoi.validation import validate_aoi_file
 from .db.repositories.acceptance_repository import AcceptanceRepository
+from .db.repositories.calibration_artifact_repository import CalibrationArtifactRepository
 from .db.repositories.export_repository import ExportRepository
 from .db.repositories.manifest_repository import ManifestRepository
 from .db.repositories.paid_repository import PaidRepository
@@ -684,6 +685,47 @@ def _render_calibration_label_verify_markdown(result: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_calibration_label_register_markdown(result: dict) -> str:
+    lines = [
+        "# Calibration Label Artifact Registration",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Artifact hash: `{result['artifact_hash']}`",
+        f"- Run ID: `{result['run_id']}`",
+        f"- Artifact status: `{result['artifact_status']}`",
+        "",
+        "## Reasons",
+        "",
+    ]
+    lines.extend(f"- {reason}" for reason in result["reasons"])
+    return "\n".join(lines) + "\n"
+
+
+def _render_calibration_label_registry_list_markdown(result: dict) -> str:
+    lines = [
+        "# Calibration Label Artifact Registry",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Artifact count: `{result['artifact_count']}`",
+        "",
+        "## Artifacts",
+        "",
+        "| Run ID | Artifact Hash | Artifact Status | Label Count | Include Pending |",
+        "| --- | --- | --- | ---: | --- |",
+    ]
+    for artifact in result["artifacts"]:
+        lines.append(
+            "| `{run_id}` | `{artifact_hash}` | `{artifact_status}` | {label_count} | `{include_pending}` |".format(
+                run_id=artifact["run_id"],
+                artifact_hash=artifact["artifact_hash"],
+                artifact_status=artifact["artifact_status"],
+                label_count=artifact["label_count"],
+                include_pending=artifact["include_pending"],
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
 def _extract_artifact_hash_from_markdown(markdown: str) -> str | None:
     match = re.search(r"(?m)^- Artifact hash: `([^`]+)`\s*$", markdown)
     if match is None:
@@ -729,6 +771,14 @@ def _compute_calibration_label_manifest_hash(manifest: dict) -> str:
             "label_ids": manifest.get("label_ids", []),
         }
     )
+
+
+def _registry_verification_payload(verification: dict) -> dict:
+    return {
+        key: value
+        for key, value in verification.items()
+        if key != "artifact_dir"
+    }
 
 
 def _verify_calibration_label_artifact(artifact_dir: Path) -> dict:
@@ -926,9 +976,24 @@ def _verify_calibration_label_artifact(artifact_dir: Path) -> dict:
         "reasons": reasons,
         "artifact_dir": str(artifact_dir),
         "run_id": run_id,
+        "artifact_status": (
+            manifest.get("status")
+            if manifest is not None
+            else pack.get("status")
+            if pack is not None
+            else None
+        ),
         "label_pack_hash": pack.get("label_pack_hash") if pack is not None else None,
         "label_manifest_hash": manifest.get("label_manifest_hash") if manifest is not None else None,
         "artifact_hash": reported_artifact_hash,
+        "label_count": (
+            manifest.get("label_count")
+            if manifest is not None
+            else len(pack.get("labels", []))
+            if pack is not None
+            else None
+        ),
+        "include_pending": bool(manifest.get("include_pending")) if manifest is not None else False,
         "files": files,
         "file_hashes": file_hashes,
         "sha256sums_valid": sha256sums_valid,
@@ -1023,6 +1088,100 @@ def cmd_calibration_label_verify(args: argparse.Namespace) -> int:
     else:
         print(json.dumps(result, indent=2))
     return 0 if result["status"] == "valid" else 1
+
+
+def cmd_calibration_label_register(args: argparse.Namespace) -> int:
+    verification = _verify_calibration_label_artifact(Path(args.artifact_dir))
+    if verification["status"] != "valid":
+        result = {
+            "status": "invalid",
+            "reasons": list(verification["reasons"]),
+            "artifact_hash": verification["artifact_hash"],
+            "run_id": verification["run_id"],
+            "artifact_status": verification["artifact_status"],
+            "label_pack_hash": verification["label_pack_hash"],
+            "label_manifest_hash": verification["label_manifest_hash"],
+            "label_count": verification["label_count"],
+            "include_pending": verification["include_pending"],
+            "files": verification["files"],
+            "file_hashes": verification["file_hashes"],
+            "registry_record": None,
+        }
+        if args.output == "markdown":
+            print(_render_calibration_label_register_markdown(result), end="")
+        else:
+            print(json.dumps(result, indent=2))
+        return 1
+
+    repository = CalibrationArtifactRepository(load_settings().db_path)
+    existing = repository.fetch_artifact(verification["artifact_hash"])
+    registry_record = existing
+    status = "already_registered"
+    reasons = ["Calibration label artifact already registered"]
+    if existing is None:
+        registry_record = repository.save_artifact(
+            {
+                "artifact_hash": verification["artifact_hash"],
+                "run_id": verification["run_id"],
+                "artifact_status": verification["artifact_status"],
+                "label_pack_hash": verification["label_pack_hash"],
+                "label_manifest_hash": verification["label_manifest_hash"],
+                "label_count": verification["label_count"],
+                "include_pending": verification["include_pending"],
+                "files": verification["files"],
+                "file_hashes": verification["file_hashes"],
+                "verification": _registry_verification_payload(verification),
+            }
+        )
+        status = "registered"
+        reasons = ["Calibration label artifact registered"]
+
+    result = {
+        "status": status,
+        "reasons": reasons,
+        "artifact_hash": verification["artifact_hash"],
+        "run_id": verification["run_id"],
+        "artifact_status": verification["artifact_status"],
+        "label_pack_hash": verification["label_pack_hash"],
+        "label_manifest_hash": verification["label_manifest_hash"],
+        "label_count": verification["label_count"],
+        "include_pending": verification["include_pending"],
+        "files": verification["files"],
+        "file_hashes": verification["file_hashes"],
+        "registry_record": registry_record,
+    }
+    if args.output == "markdown":
+        print(_render_calibration_label_register_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0
+
+
+def cmd_calibration_label_registry_list(args: argparse.Namespace) -> int:
+    artifacts = CalibrationArtifactRepository(load_settings().db_path).list_artifacts()
+    result = {
+        "status": "ok",
+        "artifact_count": len(artifacts),
+        "artifacts": [
+            {
+                "artifact_hash": artifact["artifact_hash"],
+                "run_id": artifact["run_id"],
+                "artifact_status": artifact["artifact_status"],
+                "label_pack_hash": artifact["label_pack_hash"],
+                "label_manifest_hash": artifact["label_manifest_hash"],
+                "label_count": artifact["label_count"],
+                "include_pending": artifact["include_pending"],
+                "files": artifact["files"],
+                "file_hashes": artifact["file_hashes"],
+            }
+            for artifact in artifacts
+        ],
+    }
+    if args.output == "markdown":
+        print(_render_calibration_label_registry_list_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0
 
 
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
@@ -1182,6 +1341,15 @@ def _add_calibration_label_verify_arguments(parser: argparse.ArgumentParser) -> 
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 
+def _add_calibration_label_register_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--artifact-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
+def _add_calibration_label_registry_list_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1211,6 +1379,8 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-label-manifest": cmd_calibration_label_manifest,
         "calibration-label-export": cmd_calibration_label_export,
         "calibration-label-verify": cmd_calibration_label_verify,
+        "calibration-label-register": cmd_calibration_label_register,
+        "calibration-label-registry-list": cmd_calibration_label_registry_list,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -1255,6 +1425,10 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_export_arguments(p)
         if name == "calibration-label-verify":
             _add_calibration_label_verify_arguments(p)
+        if name == "calibration-label-register":
+            _add_calibration_label_register_arguments(p)
+        if name == "calibration-label-registry-list":
+            _add_calibration_label_registry_list_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

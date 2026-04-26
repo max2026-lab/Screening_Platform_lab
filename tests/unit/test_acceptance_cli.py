@@ -89,6 +89,22 @@ def test_acceptance_cli_commands_are_registered():
             "markdown",
         ]
     )
+    label_register_args = parser.parse_args(
+        [
+            "calibration-label-register",
+            "--artifact-dir",
+            "artifacts",
+            "--output",
+            "markdown",
+        ]
+    )
+    label_registry_list_args = parser.parse_args(
+        [
+            "calibration-label-registry-list",
+            "--output",
+            "markdown",
+        ]
+    )
 
     assert kpi_args.command == "kpi-summary"
     assert kpi_args.aoi_area_km2 == 100.0
@@ -112,5 +128,10 @@ def test_acceptance_cli_commands_are_registered():
     assert label_verify_args.command == "calibration-label-verify"
     assert label_verify_args.artifact_dir == "artifacts"
     assert label_verify_args.output == "markdown"
+    assert label_register_args.command == "calibration-label-register"
+    assert label_register_args.artifact_dir == "artifacts"
+    assert label_register_args.output == "markdown"
+    assert label_registry_list_args.command == "calibration-label-registry-list"
+    assert label_registry_list_args.output == "markdown"
     assert reproducibility_args.command == "reproducibility-check"
     assert reproducibility_args.comparison_run_id == "run-002"
