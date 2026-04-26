@@ -282,3 +282,12 @@ Verify a saved calibration registry snapshot directory offline without DB access
 ```powershell
 lawful-anomaly calibration-label-registry-snapshot-verify --snapshot-dir <snapshot_dir>
 ```
+
+## Phase 21 Calibration Registry Snapshot Verify Release Verification
+
+From repo root, run `uv sync` and `uv pip install -e C:\Dev\Screening_Platform_lab` first.
+The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase21_calibration_registry_snapshot_verify_release.ps1
+```
