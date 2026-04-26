@@ -637,6 +637,25 @@ def _render_sha256sums(file_hashes: dict[str, str]) -> str:
     return "".join(f"{file_hashes[file_name]}  {file_name}\n" for file_name in sorted(file_hashes))
 
 
+def _build_artifact_hash(
+    *,
+    run_id: str,
+    include_pending: bool,
+    files: list[str],
+    file_hashes: dict[str, str],
+) -> str:
+    return _stable_hash(
+        {
+            "run_id": run_id,
+            "include_pending": include_pending,
+            "files": [
+                {"name": file_name, "sha256": file_hashes[file_name]}
+                for file_name in files
+            ],
+        }
+    )
+
+
 def cmd_calibration_label_export(args: argparse.Namespace) -> int:
     pack, manifest = _build_calibration_label_payloads(
         run_id=args.run_id,
@@ -657,16 +676,26 @@ def cmd_calibration_label_export(args: argparse.Namespace) -> int:
         "calibration_label_pack.json": _sha256_text(pack_json),
         "calibration_label_manifest.json": _sha256_text(manifest_json),
     }
-    artifact_hash = _stable_hash(
-        {
-            "files": [
-                {"name": file_name, "sha256": core_hashes[file_name]}
-                for file_name in sorted(core_hashes)
-            ],
-            "include_pending": bool(args.include_pending),
-            "run_id": manifest["run_id"],
-        }
+
+    # Use canonical markdown/SHA inputs for artifact hashing to avoid circular self-reference.
+    canonical_markdown = _render_calibration_label_export_markdown(
+        manifest=manifest,
+        artifact_hash="<artifact_hash_excluded_from_hash_input>",
+        files=files,
     )
+    canonical_hashes = {
+        **core_hashes,
+        "calibration_label_manifest.md": _sha256_text(canonical_markdown),
+    }
+    canonical_sha256sums = _render_sha256sums(canonical_hashes)
+    canonical_hashes["SHA256SUMS.txt"] = _sha256_text(canonical_sha256sums)
+    artifact_hash = _build_artifact_hash(
+        run_id=manifest["run_id"],
+        include_pending=bool(args.include_pending),
+        files=files,
+        file_hashes=canonical_hashes,
+    )
+
     markdown = _render_calibration_label_export_markdown(
         manifest=manifest,
         artifact_hash=artifact_hash,

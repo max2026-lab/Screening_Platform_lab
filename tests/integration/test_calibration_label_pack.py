@@ -57,6 +57,50 @@ def _file_hash(path) -> str:
     return sha256(path.read_bytes()).hexdigest()
 
 
+def _stable_hash(value) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return sha256(payload).hexdigest()
+
+
+def _canonical_markdown_for_artifact_hash(markdown: str) -> str:
+    lines = markdown.splitlines()
+    canonical_lines = []
+    for line in lines:
+        if line.startswith("- Artifact hash: `"):
+            canonical_lines.append("- Artifact hash: `<artifact_hash_excluded_from_hash_input>`")
+        else:
+            canonical_lines.append(line)
+    return "\n".join(canonical_lines) + "\n"
+
+
+def _render_checksums(file_hashes: dict[str, str]) -> str:
+    return "".join(f"{file_hashes[file_name]}  {file_name}\n" for file_name in sorted(file_hashes))
+
+
+def _expected_artifact_hash(export: dict, output_dir) -> str:
+    markdown = (output_dir / "calibration_label_manifest.md").read_text(encoding="utf-8")
+    canonical_file_hashes = {
+        "calibration_label_pack.json": _file_hash(output_dir / "calibration_label_pack.json"),
+        "calibration_label_manifest.json": _file_hash(output_dir / "calibration_label_manifest.json"),
+        "calibration_label_manifest.md": sha256(
+            _canonical_markdown_for_artifact_hash(markdown).encode("utf-8")
+        ).hexdigest(),
+    }
+    canonical_file_hashes["SHA256SUMS.txt"] = sha256(
+        _render_checksums(canonical_file_hashes).encode("utf-8")
+    ).hexdigest()
+    return _stable_hash(
+        {
+            "run_id": export["run_id"],
+            "include_pending": export["include_pending"],
+            "files": [
+                {"name": file_name, "sha256": canonical_file_hashes[file_name]}
+                for file_name in export["files"]
+            ],
+        }
+    )
+
+
 def _review_ready_run(db_path, cache_root, tmp_path, run_id: str) -> dict:
     run_summary = _bootstrap_scaffolded_run(db_path, cache_root, run_id)
     review_repository = ReviewRepository(db_path)
@@ -431,6 +475,35 @@ def test_calibration_label_export_writes_deterministic_artifacts(monkeypatch, tm
     assert export["artifact_hash"] == other_export["artifact_hash"]
     assert pending_export["include_pending"] is True
     assert pending_export["artifact_hash"] != export["artifact_hash"]
+    assert export["artifact_hash"] == _expected_artifact_hash(export, output_dir)
+    assert repeated_export["artifact_hash"] == _expected_artifact_hash(repeated_export, output_dir)
+    assert other_export["artifact_hash"] == _expected_artifact_hash(other_export, other_output_dir)
+
+    without_markdown_hash = _stable_hash(
+        {
+            "run_id": export["run_id"],
+            "include_pending": export["include_pending"],
+            "files": [
+                {"name": file_name, "sha256": export["file_hashes"][file_name]}
+                for file_name in export["files"]
+                if file_name != "calibration_label_manifest.md"
+            ],
+        }
+    )
+    assert without_markdown_hash != export["artifact_hash"]
+
+    without_sha_file_hash = _stable_hash(
+        {
+            "run_id": export["run_id"],
+            "include_pending": export["include_pending"],
+            "files": [
+                {"name": file_name, "sha256": export["file_hashes"][file_name]}
+                for file_name in export["files"]
+                if file_name != "SHA256SUMS.txt"
+            ],
+        }
+    )
+    assert without_sha_file_hash != export["artifact_hash"]
 
     for file_name in export["files"]:
         path = output_dir / file_name
@@ -438,6 +511,10 @@ def test_calibration_label_export_writes_deterministic_artifacts(monkeypatch, tm
         assert export["file_hashes"][file_name] == _file_hash(path)
 
     checksums = (output_dir / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    repeated_checksums = (other_output_dir / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    assert checksums == repeated_checksums
+    assert "SHA256SUMS.txt  SHA256SUMS.txt" not in checksums
+    assert f"{export['file_hashes']['SHA256SUMS.txt']}  SHA256SUMS.txt" not in checksums
     for file_name in export["files"]:
         if file_name == "SHA256SUMS.txt":
             continue
@@ -450,6 +527,29 @@ def test_calibration_label_export_writes_deterministic_artifacts(monkeypatch, tm
     assert manifest["label_manifest_hash"] == export["label_manifest_hash"]
     assert "Artifact hash:" in markdown
     assert export["artifact_hash"] in markdown
+
+    tampered_markdown = markdown.replace("# Calibration Label Artifact Export", "# Calibration Label Artifact Export (tampered)")
+    canonical_tampered_hashes = {
+        "calibration_label_pack.json": _file_hash(output_dir / "calibration_label_pack.json"),
+        "calibration_label_manifest.json": _file_hash(output_dir / "calibration_label_manifest.json"),
+        "calibration_label_manifest.md": sha256(
+            _canonical_markdown_for_artifact_hash(tampered_markdown).encode("utf-8")
+        ).hexdigest(),
+    }
+    canonical_tampered_hashes["SHA256SUMS.txt"] = sha256(
+        _render_checksums(canonical_tampered_hashes).encode("utf-8")
+    ).hexdigest()
+    tampered_artifact_hash = _stable_hash(
+        {
+            "run_id": export["run_id"],
+            "include_pending": export["include_pending"],
+            "files": [
+                {"name": file_name, "sha256": canonical_tampered_hashes[file_name]}
+                for file_name in export["files"]
+            ],
+        }
+    )
+    assert tampered_artifact_hash != export["artifact_hash"]
 
 
 def test_calibration_label_export_incomplete_and_fail_statuses(monkeypatch, tmp_path):
