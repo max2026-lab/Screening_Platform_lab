@@ -4,6 +4,7 @@ import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
+import re
 import sys
 from datetime import datetime
 
@@ -656,6 +657,288 @@ def _build_artifact_hash(
     )
 
 
+def _required_calibration_artifact_files() -> list[str]:
+    return [
+        "calibration_label_pack.json",
+        "calibration_label_manifest.json",
+        "calibration_label_manifest.md",
+        "SHA256SUMS.txt",
+    ]
+
+
+def _render_calibration_label_verify_markdown(result: dict) -> str:
+    lines = [
+        "# Calibration Label Artifact Verification",
+        "",
+        f"- Artifact directory: `{result['artifact_dir']}`",
+        f"- Status: `{result['status']}`",
+        f"- Artifact hash valid: `{result['artifact_hash_valid']}`",
+        f"- Label pack hash valid: `{result['label_pack_hash_valid']}`",
+        f"- Label manifest hash valid: `{result['label_manifest_hash_valid']}`",
+        f"- SHA256SUMS valid: `{result['sha256sums_valid']}`",
+        "",
+        "## Reasons",
+        "",
+    ]
+    lines.extend(f"- {reason}" for reason in result["reasons"])
+    return "\n".join(lines) + "\n"
+
+
+def _extract_artifact_hash_from_markdown(markdown: str) -> str | None:
+    match = re.search(r"(?m)^- Artifact hash: `([^`]+)`\s*$", markdown)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def _canonicalize_artifact_markdown(markdown: str) -> str:
+    lines = markdown.splitlines()
+    canonical_lines = []
+    for line in lines:
+        if line.startswith("- Artifact hash: `"):
+            canonical_lines.append("- Artifact hash: `<artifact_hash_excluded_from_hash_input>`")
+        else:
+            canonical_lines.append(line)
+    return "\n".join(canonical_lines) + "\n"
+
+
+def _compute_calibration_label_pack_hash(pack: dict) -> str:
+    return _stable_hash(
+        {
+            "run_id": pack.get("run_id"),
+            "calibration_policy_id": pack.get("calibration_policy_id"),
+            "latest_export_audit_manifest_hash": pack.get("latest_export_audit_manifest_hash"),
+            "labels": pack.get("labels", []),
+        }
+    )
+
+
+def _compute_calibration_label_manifest_hash(manifest: dict) -> str:
+    return _stable_hash(
+        {
+            "manifest_type": manifest.get("manifest_type"),
+            "manifest_version": manifest.get("manifest_version"),
+            "run_id": manifest.get("run_id"),
+            "calibration_policy_id": manifest.get("calibration_policy_id"),
+            "processing_baseline_id": manifest.get("processing_baseline_id"),
+            "score_formula_version": manifest.get("score_formula_version"),
+            "source_scene_manifest_hash": manifest.get("source_scene_manifest_hash"),
+            "latest_export_audit_manifest_hash": manifest.get("latest_export_audit_manifest_hash"),
+            "include_pending": manifest.get("include_pending"),
+            "label_pack_hash": manifest.get("label_pack_hash"),
+            "label_ids": manifest.get("label_ids", []),
+        }
+    )
+
+
+def _verify_calibration_label_artifact(artifact_dir: Path) -> dict:
+    files = _required_calibration_artifact_files()
+    reasons: list[str] = []
+    file_hashes: dict[str, str] = {}
+    texts: dict[str, str] = {}
+    pack = None
+    manifest = None
+    sha256_entries: dict[str, str] = {}
+    sha256sums_valid = True
+    artifact_hash_valid = True
+    label_pack_hash_valid = True
+    label_manifest_hash_valid = True
+    manifest_cross_checks_valid = True
+
+    for file_name in files:
+        path = artifact_dir / file_name
+        if not path.exists():
+            reasons.append(f"Missing required artifact file: {file_name}")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            reasons.append(f"Artifact file is not valid UTF-8 text: {file_name}")
+            continue
+        texts[file_name] = text
+        file_hashes[file_name] = _sha256_text(text)
+
+    if "calibration_label_pack.json" in texts:
+        try:
+            pack = json.loads(texts["calibration_label_pack.json"])
+            if not isinstance(pack, dict):
+                reasons.append("calibration_label_pack.json must contain a JSON object")
+                pack = None
+                label_pack_hash_valid = False
+                manifest_cross_checks_valid = False
+        except json.JSONDecodeError:
+            reasons.append("Artifact file is not valid JSON: calibration_label_pack.json")
+            label_pack_hash_valid = False
+            manifest_cross_checks_valid = False
+    else:
+        label_pack_hash_valid = False
+        manifest_cross_checks_valid = False
+
+    if "calibration_label_manifest.json" in texts:
+        try:
+            manifest = json.loads(texts["calibration_label_manifest.json"])
+            if not isinstance(manifest, dict):
+                reasons.append("calibration_label_manifest.json must contain a JSON object")
+                manifest = None
+                label_manifest_hash_valid = False
+                manifest_cross_checks_valid = False
+        except json.JSONDecodeError:
+            reasons.append("Artifact file is not valid JSON: calibration_label_manifest.json")
+            label_manifest_hash_valid = False
+            manifest_cross_checks_valid = False
+    else:
+        label_manifest_hash_valid = False
+        manifest_cross_checks_valid = False
+
+    markdown_text = texts.get("calibration_label_manifest.md")
+    sha_text = texts.get("SHA256SUMS.txt")
+    required_checksum_files = {
+        "calibration_label_pack.json",
+        "calibration_label_manifest.json",
+        "calibration_label_manifest.md",
+    }
+
+    if sha_text is None:
+        sha256sums_valid = False
+    else:
+        for raw_line in sha_text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            match = re.fullmatch(r"([0-9a-f]{64})\s{2}(.+)", line)
+            if match is None:
+                sha256sums_valid = False
+                reasons.append(f"SHA256SUMS.txt contains malformed line: {raw_line}")
+                continue
+            sha256_entries[match.group(2)] = match.group(1)
+        for file_name in sorted(required_checksum_files.difference(sha256_entries)):
+            sha256sums_valid = False
+            reasons.append(f"SHA256SUMS.txt missing hash entry for {file_name}")
+        if "SHA256SUMS.txt" in sha256_entries:
+            sha256sums_valid = False
+            reasons.append("SHA256SUMS.txt must not contain a self-hash line")
+        for file_name in sorted(required_checksum_files.intersection(file_hashes)):
+            if sha256_entries.get(file_name) != file_hashes[file_name]:
+                sha256sums_valid = False
+                reasons.append(f"SHA256SUMS.txt hash mismatch for {file_name}")
+
+    reported_artifact_hash = _extract_artifact_hash_from_markdown(markdown_text) if markdown_text else None
+    if reported_artifact_hash is None:
+        artifact_hash_valid = False
+        reasons.append("Artifact hash line missing from calibration_label_manifest.md")
+
+    if pack is not None:
+        computed_pack_hash = _compute_calibration_label_pack_hash(pack)
+        if pack.get("label_pack_hash") != computed_pack_hash:
+            label_pack_hash_valid = False
+            reasons.append("calibration_label_pack.json label_pack_hash does not match canonical hash")
+        forbidden_coordinate_fields = {
+            "lon",
+            "lat",
+            "longitude",
+            "latitude",
+            "geometry",
+            "centroid",
+            "bbox",
+        }
+        for label in pack.get("labels", []):
+            for field_name in forbidden_coordinate_fields:
+                if field_name in label:
+                    manifest_cross_checks_valid = False
+                    reasons.append(f"Label includes forbidden coordinate field: {field_name}")
+
+    if manifest is not None:
+        computed_manifest_hash = _compute_calibration_label_manifest_hash(manifest)
+        if manifest.get("label_manifest_hash") != computed_manifest_hash:
+            label_manifest_hash_valid = False
+            reasons.append("calibration_label_manifest.json label_manifest_hash does not match canonical hash")
+
+    if pack is not None and manifest is not None:
+        pack_label_ids = [str(label["candidate_id"]) for label in pack.get("labels", [])]
+        if manifest.get("label_pack_hash") != pack.get("label_pack_hash"):
+            manifest_cross_checks_valid = False
+            reasons.append("Manifest label_pack_hash does not match pack label_pack_hash")
+        if manifest.get("run_id") != pack.get("run_id"):
+            manifest_cross_checks_valid = False
+            reasons.append("Manifest run_id does not match pack run_id")
+        if manifest.get("status") != pack.get("status"):
+            manifest_cross_checks_valid = False
+            reasons.append("Manifest status does not match pack status")
+        if [str(label_id) for label_id in manifest.get("label_ids", [])] != pack_label_ids:
+            manifest_cross_checks_valid = False
+            reasons.append("Manifest label_ids do not match pack label order")
+        if manifest.get("label_count") != len(manifest.get("label_ids", [])):
+            manifest_cross_checks_valid = False
+            reasons.append("Manifest label_count does not match label_ids count")
+
+    if reported_artifact_hash is not None and all(file_name in texts for file_name in files):
+        canonical_hashes = {
+            "calibration_label_pack.json": file_hashes["calibration_label_pack.json"],
+            "calibration_label_manifest.json": file_hashes["calibration_label_manifest.json"],
+            "calibration_label_manifest.md": _sha256_text(
+                _canonicalize_artifact_markdown(markdown_text)
+            ),
+        }
+        canonical_sha = _render_sha256sums(canonical_hashes)
+        canonical_hashes["SHA256SUMS.txt"] = _sha256_text(canonical_sha)
+        computed_artifact_hash = _build_artifact_hash(
+            run_id=(
+                str(manifest.get("run_id"))
+                if manifest is not None
+                else str(pack.get("run_id"))
+                if pack is not None
+                else ""
+            ),
+            include_pending=bool(manifest.get("include_pending")) if manifest is not None else False,
+            files=files,
+            file_hashes=canonical_hashes,
+        )
+        if reported_artifact_hash != computed_artifact_hash:
+            artifact_hash_valid = False
+            reasons.append("Artifact hash does not match canonical artifact hash")
+
+    if not reasons:
+        reasons = ["Calibration label artifact is valid"]
+
+    status = (
+        "valid"
+        if (
+            sha256sums_valid
+            and artifact_hash_valid
+            and label_pack_hash_valid
+            and label_manifest_hash_valid
+            and manifest_cross_checks_valid
+            and all(file_name in texts for file_name in files)
+        )
+        else "invalid"
+    )
+    if status == "valid":
+        reasons = ["Calibration label artifact is valid"]
+
+    run_id = None
+    if manifest is not None:
+        run_id = manifest.get("run_id")
+    elif pack is not None:
+        run_id = pack.get("run_id")
+
+    return {
+        "status": status,
+        "reasons": reasons,
+        "artifact_dir": str(artifact_dir),
+        "run_id": run_id,
+        "label_pack_hash": pack.get("label_pack_hash") if pack is not None else None,
+        "label_manifest_hash": manifest.get("label_manifest_hash") if manifest is not None else None,
+        "artifact_hash": reported_artifact_hash,
+        "files": files,
+        "file_hashes": file_hashes,
+        "sha256sums_valid": sha256sums_valid,
+        "artifact_hash_valid": artifact_hash_valid,
+        "label_pack_hash_valid": label_pack_hash_valid,
+        "label_manifest_hash_valid": label_manifest_hash_valid,
+        "manifest_cross_checks_valid": manifest_cross_checks_valid,
+    }
+
+
 def cmd_calibration_label_export(args: argparse.Namespace) -> int:
     pack, manifest = _build_calibration_label_payloads(
         run_id=args.run_id,
@@ -731,6 +1014,15 @@ def cmd_calibration_label_export(args: argparse.Namespace) -> int:
     }
     print(json.dumps(result, indent=2))
     return 0 if result["status"] in {"ready", "incomplete"} else 1
+
+
+def cmd_calibration_label_verify(args: argparse.Namespace) -> int:
+    result = _verify_calibration_label_artifact(Path(args.artifact_dir))
+    if args.output == "markdown":
+        print(_render_calibration_label_verify_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "valid" else 1
 
 
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
@@ -885,6 +1177,11 @@ def _add_calibration_label_export_arguments(parser: argparse.ArgumentParser) -> 
     parser.add_argument("--include-pending", action="store_true")
 
 
+def _add_calibration_label_verify_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--artifact-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -913,6 +1210,7 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-label-pack": cmd_calibration_label_pack,
         "calibration-label-manifest": cmd_calibration_label_manifest,
         "calibration-label-export": cmd_calibration_label_export,
+        "calibration-label-verify": cmd_calibration_label_verify,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -955,6 +1253,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_manifest_arguments(p)
         if name == "calibration-label-export":
             _add_calibration_label_export_arguments(p)
+        if name == "calibration-label-verify":
+            _add_calibration_label_verify_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

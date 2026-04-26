@@ -222,3 +222,11 @@ From an outside working directory with `LAWFUL_ANOMALY_DB_PATH` pointed at the o
 ```powershell
 lawful-anomaly calibration-label-export --run-id <run_id> --output-dir <artifact_dir>
 ```
+
+## Phase 18 Calibration Label Artifact Verification
+
+Verify a saved calibration label artifact directory later without DB access:
+
+```powershell
+lawful-anomaly calibration-label-verify --artifact-dir <artifact_dir>
+```

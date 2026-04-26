@@ -80,6 +80,15 @@ def test_acceptance_cli_commands_are_registered():
             "--include-pending",
         ]
     )
+    label_verify_args = parser.parse_args(
+        [
+            "calibration-label-verify",
+            "--artifact-dir",
+            "artifacts",
+            "--output",
+            "markdown",
+        ]
+    )
 
     assert kpi_args.command == "kpi-summary"
     assert kpi_args.aoi_area_km2 == 100.0
@@ -100,5 +109,8 @@ def test_acceptance_cli_commands_are_registered():
     assert label_export_args.command == "calibration-label-export"
     assert label_export_args.output_dir == "artifacts"
     assert label_export_args.include_pending is True
+    assert label_verify_args.command == "calibration-label-verify"
+    assert label_verify_args.artifact_dir == "artifacts"
+    assert label_verify_args.output == "markdown"
     assert reproducibility_args.command == "reproducibility-check"
     assert reproducibility_args.comparison_run_id == "run-002"

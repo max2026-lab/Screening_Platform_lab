@@ -101,6 +101,81 @@ def _expected_artifact_hash(export: dict, output_dir) -> str:
     )
 
 
+def _export_artifact(run_id: str, output_dir, *, include_pending: bool = False):
+    command = [
+        "calibration-label-export",
+        "--run-id",
+        run_id,
+        "--output-dir",
+        str(output_dir),
+    ]
+    if include_pending:
+        command.append("--include-pending")
+    output = io.StringIO()
+    with redirect_stdout(output):
+        exit_code = main(command)
+    return exit_code, json.loads(output.getvalue())
+
+
+def _verify_artifact(artifact_dir, *, output: str = "json"):
+    command = [
+        "calibration-label-verify",
+        "--artifact-dir",
+        str(artifact_dir),
+        "--output",
+        output,
+    ]
+    captured = io.StringIO()
+    with redirect_stdout(captured):
+        exit_code = main(command)
+    content = captured.getvalue()
+    if output == "json":
+        return exit_code, json.loads(content)
+    return exit_code, content
+
+
+def _rewrite_artifact_files(output_dir, pack: dict, manifest: dict, artifact_hash: str):
+    pack_text = json.dumps(pack, indent=2, sort_keys=True) + "\n"
+    manifest_text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    markdown_text = "\n".join(
+        [
+            "# Calibration Label Artifact Export",
+            "",
+            f"- Run ID: `{manifest['run_id']}`",
+            f"- Status: `{manifest['status']}`",
+            f"- Include pending: `{manifest['include_pending']}`",
+            f"- Label count: `{manifest['label_count']}`",
+            f"- Label pack hash: `{manifest['label_pack_hash']}`",
+            f"- Label manifest hash: `{manifest['label_manifest_hash']}`",
+            f"- Artifact hash: `{artifact_hash}`",
+            "",
+            "## Files",
+            "",
+            "- `calibration_label_pack.json`",
+            "- `calibration_label_manifest.json`",
+            "- `calibration_label_manifest.md`",
+            "- `SHA256SUMS.txt`",
+            "",
+            "## Reasons",
+            "",
+            *[f"- {reason}" for reason in manifest["reasons"]],
+            "",
+        ]
+    )
+    file_hashes = {
+        "calibration_label_pack.json": sha256(pack_text.encode("utf-8")).hexdigest(),
+        "calibration_label_manifest.json": sha256(manifest_text.encode("utf-8")).hexdigest(),
+        "calibration_label_manifest.md": sha256(markdown_text.encode("utf-8")).hexdigest(),
+    }
+    checksums_text = _render_checksums(file_hashes)
+    file_hashes["SHA256SUMS.txt"] = sha256(checksums_text.encode("utf-8")).hexdigest()
+
+    (output_dir / "calibration_label_pack.json").write_text(pack_text, encoding="utf-8", newline="\n")
+    (output_dir / "calibration_label_manifest.json").write_text(manifest_text, encoding="utf-8", newline="\n")
+    (output_dir / "calibration_label_manifest.md").write_text(markdown_text, encoding="utf-8", newline="\n")
+    (output_dir / "SHA256SUMS.txt").write_text(checksums_text, encoding="utf-8", newline="\n")
+
+
 def _review_ready_run(db_path, cache_root, tmp_path, run_id: str) -> dict:
     run_summary = _bootstrap_scaffolded_run(db_path, cache_root, run_id)
     review_repository = ReviewRepository(db_path)
@@ -601,3 +676,211 @@ def test_calibration_label_export_incomplete_and_fail_statuses(monkeypatch, tmp_
     assert "Legal gate failed: attestation missing" in fail_export["reasons"]
     assert (fail_output_dir / "calibration_label_pack.json").exists()
     assert (fail_output_dir / "calibration_label_manifest.json").exists()
+
+
+def test_calibration_label_verify_validates_ready_incomplete_and_fail_artifacts(monkeypatch, tmp_path):
+    db_path = tmp_path / "calibration-label-verify.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    _review_ready_run(db_path, cache_root, tmp_path, "run-ready")
+    _bootstrap_scaffolded_run(db_path, cache_root, "run-incomplete")
+    _bootstrap_scaffolded_run(db_path, cache_root, "run-fail", legal_gate=_legal_gate_fail())
+
+    ready_dir = tmp_path / "ready-artifact"
+    incomplete_dir = tmp_path / "incomplete-artifact"
+    fail_dir = tmp_path / "fail-artifact"
+    assert _export_artifact("run-ready", ready_dir)[0] == 0
+    assert _export_artifact("run-incomplete", incomplete_dir)[0] == 0
+    assert _export_artifact("run-fail", fail_dir)[0] == 1
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+
+    ready_exit, ready_verify = _verify_artifact(ready_dir)
+    incomplete_exit, incomplete_verify = _verify_artifact(incomplete_dir)
+    fail_exit, fail_verify = _verify_artifact(fail_dir)
+
+    assert ready_exit == 0
+    assert incomplete_exit == 0
+    assert fail_exit == 0
+    for verify in (ready_verify, incomplete_verify, fail_verify):
+        assert verify["status"] == "valid"
+        assert verify["sha256sums_valid"] is True
+        assert verify["artifact_hash_valid"] is True
+        assert verify["label_pack_hash_valid"] is True
+        assert verify["label_manifest_hash_valid"] is True
+        assert verify["manifest_cross_checks_valid"] is True
+        assert verify["reasons"] == ["Calibration label artifact is valid"]
+
+
+def test_calibration_label_verify_detects_tampering_and_missing_files(monkeypatch, tmp_path):
+    db_path = tmp_path / "calibration-label-verify-tamper.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    _review_ready_run(db_path, cache_root, tmp_path, "run-001")
+
+    base_dir = tmp_path / "base-artifact"
+    assert _export_artifact("run-001", base_dir)[0] == 0
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+
+    pack_tamper_dir = tmp_path / "pack-tamper"
+    manifest_tamper_dir = tmp_path / "manifest-tamper"
+    markdown_tamper_dir = tmp_path / "markdown-tamper"
+    sums_tamper_dir = tmp_path / "sums-tamper"
+    missing_file_dir = tmp_path / "missing-file"
+    for target in (pack_tamper_dir, manifest_tamper_dir, markdown_tamper_dir, sums_tamper_dir, missing_file_dir):
+        target.mkdir()
+        for file_name in ("calibration_label_pack.json", "calibration_label_manifest.json", "calibration_label_manifest.md", "SHA256SUMS.txt"):
+            (target / file_name).write_bytes((base_dir / file_name).read_bytes())
+
+    (pack_tamper_dir / "calibration_label_pack.json").write_text(
+        (pack_tamper_dir / "calibration_label_pack.json").read_text(encoding="utf-8").replace('"status": "ready"', '"status": "tampered"', 1),
+        encoding="utf-8",
+        newline="\n",
+    )
+    (manifest_tamper_dir / "calibration_label_manifest.json").write_text(
+        (manifest_tamper_dir / "calibration_label_manifest.json").read_text(encoding="utf-8").replace('"status": "ready"', '"status": "tampered"', 1),
+        encoding="utf-8",
+        newline="\n",
+    )
+    (markdown_tamper_dir / "calibration_label_manifest.md").write_text(
+        (markdown_tamper_dir / "calibration_label_manifest.md").read_text(encoding="utf-8").replace("Status: `ready`", "Status: `tampered`", 1),
+        encoding="utf-8",
+        newline="\n",
+    )
+    (sums_tamper_dir / "SHA256SUMS.txt").write_text(
+        (sums_tamper_dir / "SHA256SUMS.txt").read_text(encoding="utf-8").replace("a", "b", 1),
+        encoding="utf-8",
+        newline="\n",
+    )
+    (missing_file_dir / "calibration_label_manifest.md").unlink()
+
+    for artifact_dir in (
+        pack_tamper_dir,
+        manifest_tamper_dir,
+        markdown_tamper_dir,
+        sums_tamper_dir,
+        missing_file_dir,
+    ):
+        exit_code, verify = _verify_artifact(artifact_dir)
+        assert exit_code == 1
+        assert verify["status"] == "invalid"
+
+
+def test_calibration_label_verify_rejects_coordinate_fields_and_renders_markdown(monkeypatch, tmp_path):
+    db_path = tmp_path / "calibration-label-verify-coordinate.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    _review_ready_run(db_path, cache_root, tmp_path, "run-001")
+
+    output_dir = tmp_path / "artifact"
+    _, export = _export_artifact("run-001", output_dir)
+    pack = json.loads((output_dir / "calibration_label_pack.json").read_text(encoding="utf-8"))
+    manifest = json.loads((output_dir / "calibration_label_manifest.json").read_text(encoding="utf-8"))
+    pack["labels"][0]["lon"] = -79.0
+    pack["label_pack_hash"] = _stable_hash(
+        {
+            "run_id": pack["run_id"],
+            "calibration_policy_id": pack["calibration_policy_id"],
+            "latest_export_audit_manifest_hash": pack["latest_export_audit_manifest_hash"],
+            "labels": pack["labels"],
+        }
+    )
+    manifest["label_pack_hash"] = pack["label_pack_hash"]
+    manifest["label_manifest_hash"] = _stable_hash(
+        {
+            "manifest_type": manifest["manifest_type"],
+            "manifest_version": manifest["manifest_version"],
+            "run_id": manifest["run_id"],
+            "calibration_policy_id": manifest["calibration_policy_id"],
+            "processing_baseline_id": manifest["processing_baseline_id"],
+            "score_formula_version": manifest["score_formula_version"],
+            "source_scene_manifest_hash": manifest["source_scene_manifest_hash"],
+            "latest_export_audit_manifest_hash": manifest["latest_export_audit_manifest_hash"],
+            "include_pending": manifest["include_pending"],
+            "label_pack_hash": manifest["label_pack_hash"],
+            "label_ids": manifest["label_ids"],
+        }
+    )
+    canonical_markdown_hashes = {
+        "calibration_label_pack.json": sha256((json.dumps(pack, indent=2, sort_keys=True) + "\n").encode("utf-8")).hexdigest(),
+        "calibration_label_manifest.json": sha256((json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")).hexdigest(),
+        "calibration_label_manifest.md": sha256(
+            "\n".join(
+                [
+                    "# Calibration Label Artifact Export",
+                    "",
+                    f"- Run ID: `{manifest['run_id']}`",
+                    f"- Status: `{manifest['status']}`",
+                    f"- Include pending: `{manifest['include_pending']}`",
+                    f"- Label count: `{manifest['label_count']}`",
+                    f"- Label pack hash: `{manifest['label_pack_hash']}`",
+                    f"- Label manifest hash: `{manifest['label_manifest_hash']}`",
+                    "- Artifact hash: `<artifact_hash_excluded_from_hash_input>`",
+                    "",
+                    "## Files",
+                    "",
+                    "- `calibration_label_pack.json`",
+                    "- `calibration_label_manifest.json`",
+                    "- `calibration_label_manifest.md`",
+                    "- `SHA256SUMS.txt`",
+                    "",
+                    "## Reasons",
+                    "",
+                    *[f"- {reason}" for reason in manifest["reasons"]],
+                    "",
+                ]
+            ).encode("utf-8")
+        ).hexdigest(),
+    }
+    canonical_markdown_hashes["SHA256SUMS.txt"] = sha256(
+        _render_checksums(canonical_markdown_hashes).encode("utf-8")
+    ).hexdigest()
+    artifact_hash = _stable_hash(
+        {
+            "run_id": export["run_id"],
+            "include_pending": export["include_pending"],
+            "files": [
+                {"name": file_name, "sha256": canonical_markdown_hashes[file_name]}
+                for file_name in export["files"]
+            ],
+        }
+    )
+    _rewrite_artifact_files(output_dir, pack, manifest, artifact_hash)
+
+    exit_code, verify = _verify_artifact(output_dir)
+    assert exit_code == 1
+    assert verify["status"] == "invalid"
+    assert "Label includes forbidden coordinate field: lon" in verify["reasons"]
+
+    markdown_exit, markdown = _verify_artifact(output_dir, output="markdown")
+    assert markdown_exit == 1
+    assert "# Calibration Label Artifact Verification" in markdown
+    assert "Status: `invalid`" in markdown
+    assert "## Reasons" in markdown
+
+
+def test_calibration_label_verify_missing_artifact_hash_line_is_invalid(monkeypatch, tmp_path):
+    db_path = tmp_path / "calibration-label-verify-missing-hash.sqlite3"
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    _review_ready_run(db_path, cache_root, tmp_path, "run-001")
+
+    output_dir = tmp_path / "artifact"
+    assert _export_artifact("run-001", output_dir)[0] == 0
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    (output_dir / "calibration_label_manifest.md").write_text(
+        (output_dir / "calibration_label_manifest.md").read_text(encoding="utf-8").replace(
+            "- Artifact hash: `", "- Artifact hash removed: `", 1
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    exit_code, verify = _verify_artifact(output_dir)
+    assert exit_code == 1
+    assert verify["status"] == "invalid"
+    assert "Artifact hash line missing from calibration_label_manifest.md" in verify["reasons"]
