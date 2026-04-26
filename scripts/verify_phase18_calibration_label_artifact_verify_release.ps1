@@ -351,13 +351,20 @@ try {
         "--end-date", "2024-03-31"
     ) | Out-Null
     Invoke-LawfulJson -Arguments @("execute-run", "--run-id", "phase18-artifact-verify-incomplete-001") | Out-Null
-    
+
     $incompleteArtifactDir = Join-Path $noReviewFlowRoot "artifact"
-    Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
+    $incompleteExportResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
         "calibration-label-export",
         "--run-id", "phase18-artifact-verify-incomplete-001",
         "--output-dir", $incompleteArtifactDir
-    ) | Out-Null
+    )
+    Assert-NoTraceback -Text $incompleteExportResult.StdErr -Context "Incomplete artifact calibration-label-export"
+    if ($incompleteExportResult.ExitCode -ne 0) {
+        throw "Incomplete artifact calibration-label-export expected exit code 0.`n$($incompleteExportResult.StdErr)"
+    }
+    if (-not $incompleteExportResult.StdOut) {
+        throw "Incomplete artifact calibration-label-export returned empty output"
+    }
     
     Remove-Item Env:LAWFUL_ANOMALY_DB_PATH -ErrorAction SilentlyContinue
     $incompleteVerifyResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
@@ -378,21 +385,35 @@ try {
     Set-Location $deniedFlowRoot
     $env:LAWFUL_ANOMALY_DB_PATH = Join-Path $deniedFlowRoot "phase18-verify-denied.sqlite3"
     Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @("init-db") | Out-Null
-    Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
+    $createDeniedResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
         "create-run",
         "--run-id", "phase18-artifact-verify-denied-001",
         "--geofence", "clear",
         "--aoi-path", $sampleAoiPath,
         "--start-date", "2024-01-01",
         "--end-date", "2024-03-31"
-    ) | Out-Null
+    )
+    Assert-NoTraceback -Text $createDeniedResult.StdErr -Context "Legal-denied create-run"
+    if ($createDeniedResult.ExitCode -eq 0) {
+        throw "Legal-denied create-run expected non-zero exit code"
+    }
+    if (-not $createDeniedResult.StdOut) {
+        throw "Legal-denied create-run returned empty output"
+    }
 
     $deniedArtifactDir = Join-Path $deniedFlowRoot "artifact"
-    Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
+    $deniedExportResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
         "calibration-label-export",
         "--run-id", "phase18-artifact-verify-denied-001",
         "--output-dir", $deniedArtifactDir
-    ) | Out-Null
+    )
+    Assert-NoTraceback -Text $deniedExportResult.StdErr -Context "Legal-denied calibration-label-export"
+    if ($deniedExportResult.ExitCode -eq 0) {
+        throw "Legal-denied calibration-label-export expected non-zero exit code"
+    }
+    if (-not $deniedExportResult.StdOut) {
+        throw "Legal-denied calibration-label-export returned empty output"
+    }
     
     Remove-Item Env:LAWFUL_ANOMALY_DB_PATH -ErrorAction SilentlyContinue
     $deniedVerifyResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
@@ -463,9 +484,13 @@ try {
 
     Run-TamperSmoke -TamperName "tamper-sums" -TamperAction {
         $p = "SHA256SUMS.txt"
-        $c = Get-Content $p
-        $c = $c -replace '^.', '0'
-        Set-Content $p $c
+        $c = Get-Content $p -Raw
+        if ($c -match '([a-f0-9])') {
+            $originalChar = $matches[1]
+            $newChar = if ($originalChar -eq 'a') { 'b' } elseif ($originalChar -eq 'b') { 'c' } else { 'A' }
+            $c = $c -replace $originalChar, $newChar
+            Set-Content $p $c -NoNewline
+        }
     }
 
     Run-TamperSmoke -TamperName "delete-markdown" -TamperAction {
