@@ -50,6 +50,16 @@ def test_acceptance_cli_commands_are_registered():
             "markdown",
         ]
     )
+    label_pack_args = parser.parse_args(
+        [
+            "calibration-label-pack",
+            "--run-id",
+            "run-001",
+            "--output",
+            "markdown",
+            "--include-pending",
+        ]
+    )
 
     assert kpi_args.command == "kpi-summary"
     assert kpi_args.aoi_area_km2 == 100.0
@@ -61,5 +71,8 @@ def test_acceptance_cli_commands_are_registered():
     assert calibration_args.command == "calibration-pack"
     assert calibration_args.comparison_run_id == "run-002"
     assert calibration_args.output == "markdown"
+    assert label_pack_args.command == "calibration-label-pack"
+    assert label_pack_args.output == "markdown"
+    assert label_pack_args.include_pending is True
     assert reproducibility_args.command == "reproducibility-check"
     assert reproducibility_args.comparison_run_id == "run-002"

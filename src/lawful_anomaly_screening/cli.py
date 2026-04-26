@@ -46,8 +46,10 @@ from .sources.earth_search import load_endpoint_registry
 from .sources.manifest_builder import build_manifest
 from .orchestration.acceptance import (
     build_acceptance_summary,
+    build_calibration_label_pack,
     build_calibration_pack,
     build_kpi_summary,
+    render_calibration_label_pack_markdown,
     render_calibration_pack_markdown,
     render_acceptance_summary_markdown,
     reproducibility_check,
@@ -500,6 +502,33 @@ def cmd_calibration_pack(args: argparse.Namespace) -> int:
     return 0 if pack["status"] in {"ready", "incomplete"} else 1
 
 
+def cmd_calibration_label_pack(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    baseline = _load_baseline()
+    calibration_policy = baseline.get("calibration_policy")
+    repository = AcceptanceRepository(settings.db_path)
+    run = repository.fetch_run(args.run_id)
+    if run is None:
+        print(f"run not found: {args.run_id}", file=sys.stderr)
+        return 1
+    pack = build_calibration_label_pack(
+        run_metadata=run,
+        candidate_rows=repository.fetch_candidate_rows(args.run_id),
+        label_rows=repository.fetch_label_candidates(
+            args.run_id,
+            include_pending=bool(args.include_pending),
+        ),
+        review_state_counts=repository.fetch_review_state_counts(args.run_id),
+        export_audit_manifest=repository.fetch_latest_export_audit_manifest(args.run_id),
+        calibration_policy=calibration_policy,
+    )
+    if args.output == "markdown":
+        print(render_calibration_label_pack_markdown(pack), end="")
+    else:
+        print(json.dumps(pack, indent=2))
+    return 0 if pack["status"] in {"ready", "incomplete"} else 1
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -634,6 +663,12 @@ def _add_calibration_pack_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 
+def _add_calibration_label_pack_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+    parser.add_argument("--include-pending", action="store_true")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -659,6 +694,7 @@ def build_parser() -> argparse.ArgumentParser:
         "kpi-summary": cmd_kpi_summary,
         "acceptance-check": cmd_acceptance_check,
         "calibration-pack": cmd_calibration_pack,
+        "calibration-label-pack": cmd_calibration_label_pack,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -695,6 +731,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_acceptance_check_arguments(p)
         if name == "calibration-pack":
             _add_calibration_pack_arguments(p)
+        if name == "calibration-label-pack":
+            _add_calibration_label_pack_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

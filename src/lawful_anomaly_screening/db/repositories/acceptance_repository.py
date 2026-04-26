@@ -8,6 +8,10 @@ import sqlite3
 from lawful_anomaly_screening.db.sqlite import connect
 from lawful_anomaly_screening.db.repositories.export_repository import ExportRepository
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
+from lawful_anomaly_screening.sources.candidate_explainability import (
+    build_candidate_scoring_explanation,
+    rank_items_by_score,
+)
 from lawful_anomaly_screening.sources.manifest_builder import (
     build_composite_quality_metadata,
     resolve_cloud_policy_thresholds,
@@ -111,6 +115,133 @@ class AcceptanceRepository:
             candidate_rows.append(candidate)
         return candidate_rows
 
+    def fetch_label_candidates(
+        self,
+        run_id: str,
+        *,
+        include_pending: bool = False,
+    ) -> list[dict]:
+        pending_filter = ""
+        params: tuple[object, ...] = (run_id,)
+        if not include_pending:
+            pending_filter = "AND cp.current_state != 'pending_review'"
+
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                f"""
+                SELECT
+                    cp.candidate_id,
+                    cp.run_id,
+                    cp.current_state AS review_state,
+                    cp.parent_tile_id,
+                    cp.source_scene_manifest_hash,
+                    cp.source_scene_ids_json,
+                    cp.area_m2,
+                    cp.boundary_touching,
+                    pb.score_formula_version,
+                    cs.parent_tile_score,
+                    cs.candidate_score,
+                    cs.score_breakdown_json,
+                    ts.optical_anomaly,
+                    ts.persistence,
+                    ts.cloud_penalty,
+                    ts.noise_penalty,
+                    latest_action.reviewer_id,
+                    latest_action.note AS review_note,
+                    latest_action.acted_at AS reviewed_at
+                FROM candidate_polygons cp
+                JOIN runs r
+                    ON r.run_id = cp.run_id
+                LEFT JOIN processing_baselines pb
+                    ON pb.processing_baseline_id = r.processing_baseline_id
+                LEFT JOIN candidate_scores cs
+                    ON cs.candidate_id = cp.candidate_id
+                    AND cs.run_id = cp.run_id
+                LEFT JOIN tile_scores ts
+                    ON ts.tile_id = cp.parent_tile_id
+                    AND ts.run_id = cp.run_id
+                LEFT JOIN (
+                    SELECT
+                        ra.candidate_id,
+                        ra.run_id,
+                        ra.reviewer_id,
+                        ra.note,
+                        ra.acted_at
+                    FROM review_actions ra
+                    JOIN (
+                        SELECT
+                            candidate_id,
+                            run_id,
+                            MAX(review_action_id) AS latest_review_action_id
+                        FROM review_actions
+                        GROUP BY candidate_id, run_id
+                    ) latest
+                        ON latest.latest_review_action_id = ra.review_action_id
+                ) latest_action
+                    ON latest_action.candidate_id = cp.candidate_id
+                    AND latest_action.run_id = cp.run_id
+                WHERE cp.run_id = ?
+                    {pending_filter}
+                ORDER BY
+                    COALESCE(cs.candidate_score, -1.0) DESC,
+                    COALESCE(cs.parent_tile_score, -1.0) DESC,
+                    cp.candidate_id ASC
+                """,
+                params,
+            ).fetchall()
+
+        manifest_repository = ManifestRepository(self.db_path)
+        rank_map = rank_items_by_score(
+            [dict(row) for row in rows],
+            id_key="candidate_id",
+            primary_score_key="candidate_score",
+            secondary_score_key="parent_tile_score",
+        )
+        tile_rank_map = self._tile_rank_map(run_id)
+
+        labels = []
+        for row in rows:
+            candidate = dict(row)
+            source_scene_manifest_hash = candidate.pop("source_scene_manifest_hash")
+            candidate["source_scene_ids"] = json.loads(candidate.pop("source_scene_ids_json"))
+            candidate["source_scenes"] = manifest_repository.resolve_source_scenes(
+                source_scene_manifest_hash,
+                candidate["source_scene_ids"],
+            )
+            score_breakdown_json = candidate.pop("score_breakdown_json")
+            candidate["score_breakdown"] = (
+                json.loads(score_breakdown_json) if score_breakdown_json is not None else None
+            )
+            candidate["boundary_touching"] = bool(candidate["boundary_touching"])
+            candidate["rank"] = rank_map.get(str(candidate["candidate_id"]))
+            candidate["scoring_explanation"] = build_candidate_scoring_explanation(
+                candidate_score=candidate.get("candidate_score"),
+                parent_tile_score=candidate.get("parent_tile_score"),
+                score_formula_version=candidate.get("score_formula_version"),
+                rank=candidate["rank"],
+                parent_tile_rank=tile_rank_map.get(str(candidate["parent_tile_id"])),
+                texture_support=(candidate.get("score_breakdown") or {}).get("texture_support"),
+                compactness_support=(candidate.get("score_breakdown") or {}).get("compactness_support"),
+                polygon_object_score=(candidate.get("score_breakdown") or {}).get("polygon_object_score"),
+                weighted_parent_tile_score=(candidate.get("score_breakdown") or {}).get(
+                    "weighted_parent_tile_score"
+                ),
+                weighted_polygon_object_score=(candidate.get("score_breakdown") or {}).get(
+                    "weighted_polygon_object_score"
+                ),
+                optical_anomaly=candidate.get("optical_anomaly"),
+                persistence=candidate.get("persistence"),
+                cloud_penalty=candidate.get("cloud_penalty"),
+                noise_penalty=candidate.get("noise_penalty"),
+                source_scene_ids=list(candidate.get("source_scene_ids") or []),
+                source_scenes=list(candidate.get("source_scenes") or []),
+                boundary_touching=bool(candidate.get("boundary_touching")),
+                area_m2=candidate.get("area_m2"),
+            )
+            labels.append(candidate)
+        return labels
+
     def fetch_review_state_counts(self, run_id: str) -> dict[str, int]:
         with connect(self.db_path) as conn:
             rows = conn.execute(
@@ -147,6 +278,25 @@ class AcceptanceRepository:
                 (run_id,),
             ).fetchone()[0]
         return int(max(quote_count, order_count))
+
+    def _tile_rank_map(self, run_id: str) -> dict[str, int]:
+        with connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT
+                    tile_id,
+                    tile_score
+                FROM tile_scores
+                WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchall()
+        return rank_items_by_score(
+            [dict(row) for row in rows],
+            id_key="tile_id",
+            primary_score_key="tile_score",
+        )
 
 
 def _stable_candidate_key(candidate_row: dict) -> str:

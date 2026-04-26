@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 import json
 
 
@@ -873,4 +874,211 @@ def render_calibration_pack_markdown(pack: dict) -> str:
         ]
     )
     lines.extend(f"- {reason}" for reason in pack["reasons"])
+    return "\n".join(lines) + "\n"
+
+
+def build_calibration_label_pack(
+    *,
+    run_metadata: dict,
+    candidate_rows: list[dict],
+    label_rows: list[dict],
+    review_state_counts: dict[str, int] | None = None,
+    export_audit_manifest: dict | None = None,
+    calibration_policy: dict | None = None,
+) -> dict:
+    policy = calibration_policy if calibration_policy is not None else DEFAULT_CALIBRATION_POLICY
+    sorted_review_state_counts = dict(sorted((review_state_counts or {}).items()))
+    candidate_count = len(candidate_rows)
+    reviewed_candidate_count = sum(
+        count for state, count in sorted_review_state_counts.items() if state != PENDING_REVIEW_STATE
+    )
+    approved_candidate_count = int(sorted_review_state_counts.get(APPROVED_REVIEW_STATE, 0))
+    rejected_candidate_count = int(sorted_review_state_counts.get(REJECTED_REVIEW_STATE, 0))
+    watched_candidate_count = int(sorted_review_state_counts.get(WATCH_REVIEW_STATE, 0))
+    pending_candidate_count = int(sorted_review_state_counts.get(PENDING_REVIEW_STATE, 0))
+    review_coverage = review_coverage_rate(candidate_rows)
+    top20_review_coverage = review_coverage_rate(candidate_rows, top_n=20)
+    export_audit_ready = export_audit_manifest is not None
+    legal_gate = run_metadata.get("legal_gate")
+    legal_gate_decision = (legal_gate or {}).get("decision")
+    composite_quality = run_metadata.get("composite_quality")
+    review_coverage_min = float(policy.get("review_coverage_minimum_rate", 0.20))
+    top20_review_coverage_min = float(policy.get("top20_review_coverage_minimum_rate", 0.50))
+    requires_export_audit = bool(policy.get("requires_export_audit_manifest", True))
+
+    reasons = []
+    if legal_gate_decision != "pass":
+        reasons.append(
+            f"Legal gate failed: {(legal_gate or {}).get('reason') or 'legal gate did not pass'}"
+        )
+    if candidate_count == 0:
+        reasons.append("No candidates produced for run")
+    if reviewed_candidate_count == 0:
+        reasons.append("No reviewed candidates available for calibration label pack")
+    if review_coverage < review_coverage_min:
+        reasons.append(
+            f"Review coverage rate {review_coverage:.2f} is below minimum {review_coverage_min:.2f}"
+        )
+    if top20_review_coverage < top20_review_coverage_min:
+        reasons.append(
+            f"Top-20 review coverage rate {top20_review_coverage:.2f} is below minimum {top20_review_coverage_min:.2f}"
+        )
+    if requires_export_audit and not export_audit_ready:
+        reasons.append("Export audit manifest not created yet")
+
+    checks = [
+        {
+            "name": "legal_gate",
+            "status": "pass" if legal_gate_decision == "pass" else "fail",
+            "observed": legal_gate_decision,
+            "target": "decision == pass",
+        },
+        {
+            "name": "candidate_count",
+            "status": "pass" if candidate_count >= int(policy.get("minimum_candidate_count", 1)) else "incomplete",
+            "observed": candidate_count,
+            "target": f">= {int(policy.get('minimum_candidate_count', 1))}",
+        },
+        {
+            "name": "reviewed_candidate_count",
+            "status": "pass" if reviewed_candidate_count > 0 else "incomplete",
+            "observed": reviewed_candidate_count,
+            "target": ">= 1",
+        },
+        {
+            "name": "review_coverage_rate",
+            "status": "pass" if review_coverage >= review_coverage_min else "incomplete",
+            "observed": review_coverage,
+            "target": f">= {review_coverage_min:.2f}",
+        },
+        {
+            "name": "top20_review_coverage_rate",
+            "status": "pass" if top20_review_coverage >= top20_review_coverage_min else "incomplete",
+            "observed": top20_review_coverage,
+            "target": f">= {top20_review_coverage_min:.2f}",
+        },
+        {
+            "name": "export_audit_ready",
+            "status": "pass" if export_audit_ready else ("incomplete" if requires_export_audit else "pass"),
+            "observed": export_audit_ready,
+            "target": "export audit manifest available"
+            if requires_export_audit
+            else "export audit manifest not required",
+        },
+    ]
+
+    statuses = {check["status"] for check in checks}
+    if "fail" in statuses:
+        status = "fail"
+    elif "incomplete" in statuses:
+        status = "incomplete"
+    else:
+        status = "ready"
+
+    ordered_labels = [
+        {
+            "candidate_id": label["candidate_id"],
+            "rank": label.get("rank"),
+            "score": round(float(label.get("candidate_score") or 0.0), 6),
+            "review_state": label.get("review_state"),
+            "reviewer_id": label.get("reviewer_id"),
+            "reviewed_at": label.get("reviewed_at"),
+            "review_note": label.get("review_note"),
+            "score_formula_version": label.get("score_formula_version"),
+            "scoring_explanation": label.get("scoring_explanation"),
+        }
+        for label in sorted(
+            label_rows,
+            key=lambda row: (int(row.get("rank") or 0), str(row["candidate_id"])),
+        )
+    ]
+    label_pack_hash = sha256(
+        json.dumps(
+            {
+                "run_id": run_metadata["run_id"],
+                "calibration_policy_id": policy.get("calibration_policy_id"),
+                "latest_export_audit_manifest_hash": (
+                    export_audit_manifest.get("audit_manifest_hash") if export_audit_manifest else None
+                ),
+                "labels": ordered_labels,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    if not reasons:
+        reasons = ["Calibration label pack ready"]
+
+    return {
+        "run_id": run_metadata["run_id"],
+        "status": status,
+        "reasons": reasons,
+        "calibration_policy_id": policy.get("calibration_policy_id"),
+        "calibration_policy": dict(policy),
+        "processing_baseline_id": run_metadata.get("processing_baseline_id"),
+        "score_formula_version": run_metadata.get("score_formula_version"),
+        "source_scene_manifest_hash": run_metadata.get("source_scene_manifest_hash"),
+        "legal_gate": legal_gate,
+        "composite_quality": composite_quality,
+        "candidate_count": candidate_count,
+        "reviewed_candidate_count": reviewed_candidate_count,
+        "approved_candidate_count": approved_candidate_count,
+        "rejected_candidate_count": rejected_candidate_count,
+        "watched_candidate_count": watched_candidate_count,
+        "pending_candidate_count": pending_candidate_count,
+        "review_coverage_rate": review_coverage,
+        "top20_review_coverage_rate": top20_review_coverage,
+        "export_audit_ready": export_audit_ready,
+        "latest_export_audit_manifest_hash": (
+            export_audit_manifest.get("audit_manifest_hash") if export_audit_manifest else None
+        ),
+        "label_pack_hash": label_pack_hash,
+        "labels": ordered_labels,
+    }
+
+
+def render_calibration_label_pack_markdown(pack: dict) -> str:
+    lines = [
+        "# Calibration Label Pack",
+        "",
+        f"- Run ID: `{pack['run_id']}`",
+        f"- Status: `{pack['status']}`",
+        f"- Candidate count: `{pack['candidate_count']}`",
+        f"- Reviewed candidate count: `{pack['reviewed_candidate_count']}`",
+        f"- Approved candidate count: `{pack['approved_candidate_count']}`",
+        f"- Rejected candidate count: `{pack['rejected_candidate_count']}`",
+        f"- Watched candidate count: `{pack['watched_candidate_count']}`",
+        f"- Pending candidate count: `{pack['pending_candidate_count']}`",
+        f"- Review coverage rate: `{pack['review_coverage_rate']}`",
+        f"- Top-20 review coverage rate: `{pack['top20_review_coverage_rate']}`",
+        f"- Export audit ready: `{pack['export_audit_ready']}`",
+        f"- Label pack hash: `{pack['label_pack_hash']}`",
+    ]
+    if pack.get("reasons"):
+        lines.extend(["", "## Reasons", ""])
+        lines.extend(f"- {reason}" for reason in pack["reasons"])
+    lines.extend(
+        [
+            "",
+            "## Labels",
+            "",
+            "| Candidate | Rank | Score | Review State | Reviewer | Reviewed At |",
+            "| --- | ---: | ---: | --- | --- | --- |",
+        ]
+    )
+    for label in pack["labels"][:10]:
+        lines.append(
+            "| `{candidate_id}` | {rank} | {score} | `{review_state}` | {reviewer_id} | {reviewed_at} |".format(
+                candidate_id=label["candidate_id"],
+                rank=label["rank"],
+                score=json.dumps(label["score"]),
+                review_state=label["review_state"],
+                reviewer_id=label["reviewer_id"] or "",
+                reviewed_at=label["reviewed_at"] or "",
+            )
+        )
+    if len(pack["labels"]) > 10:
+        lines.append("")
+        lines.append(f"- Showing top 10 of {len(pack['labels'])} labels")
     return "\n".join(lines) + "\n"
