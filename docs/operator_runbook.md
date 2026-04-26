@@ -206,6 +206,15 @@ The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase16_label_pack_manifest_release.ps1
 ```
 
+## Phase 17 Calibration Label Artifact Release Verification
+
+From repo root, run `uv sync` and `uv pip install -e C:\Dev\Screening_Platform_lab` first.
+The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase17_calibration_label_artifact_release.ps1
+```
+
 ## Phase 17 Calibration Label Artifact Export
 
 From an outside working directory with `LAWFUL_ANOMALY_DB_PATH` pointed at the operator database, export a portable label artifact bundle:
