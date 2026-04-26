@@ -625,7 +625,17 @@ try {
     $tamperSumsDir = Copy-Snapshot -Name "tamper-sums"
     $tamperSumsPath = Join-Path $tamperSumsDir "SHA256SUMS.txt"
     $ts = Get-Content $tamperSumsPath -Raw
-    $ts = $ts.Replace("0", "1")
+    $originalTs = $ts
+    $match = [regex]::Match($ts, '^([0-9a-f])')
+    if (-not $match.Success) {
+        throw "Could not find hex hash character in SHA256SUMS.txt"
+    }
+    $firstHex = $match.Groups[1].Value
+    $replacementChar = if ($firstHex -eq '0') { '1' } else { '0' }
+    $ts = $ts.Substring(0, $match.Index) + $replacementChar + $ts.Substring($match.Index + 1)
+    if ($ts -eq $originalTs) {
+        throw "SHA256SUMS tamper did not change content"
+    }
     Set-Content -Path $tamperSumsPath -Value $ts -NoNewline
     $r = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @("calibration-label-registry-snapshot-verify", "--snapshot-dir", $tamperSumsDir)
     Assert-InvalidVerifyResult -Result $r -Context "Tamper SHA256SUMS"
