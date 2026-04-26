@@ -1126,6 +1126,42 @@ def _verify_calibration_label_artifact(artifact_dir: Path) -> dict:
     }
 
 
+def _compute_expected_final_snapshot_files(
+    artifact_count: int,
+    artifacts: list[dict],
+    files: list[str],
+    snapshot_hash: str,
+) -> tuple[str, str, str]:
+    registry_json_payload = {
+        "snapshot_type": "calibration_artifact_registry",
+        "snapshot_version": 1,
+        "artifact_count": artifact_count,
+        "artifacts": artifacts,
+        "snapshot_hash": snapshot_hash,
+    }
+    expected_json_text = _stable_json_text(registry_json_payload)
+
+    result_dict = {
+        "status": "exported",
+        "reasons": [],
+        "output_dir": "",
+        "artifact_count": artifact_count,
+        "artifacts": artifacts,
+        "files": files,
+    }
+    expected_md_text = _render_calibration_label_registry_export_markdown(
+        result_dict,
+        snapshot_hash=snapshot_hash,
+    )
+
+    expected_hashes = {
+        "calibration_artifact_registry.json": _sha256_text(expected_json_text),
+        "calibration_artifact_registry.md": _sha256_text(expected_md_text),
+    }
+    expected_sha256sums = _render_sha256sums(expected_hashes)
+    return expected_json_text, expected_md_text, expected_sha256sums
+
+
 def _verify_calibration_registry_snapshot(snapshot_dir: Path) -> dict:
     files = [
         "calibration_artifact_registry.json",
@@ -1161,56 +1197,105 @@ def _verify_calibration_registry_snapshot(snapshot_dir: Path) -> dict:
 
     artifact_count = 0
     artifacts: list[dict] = []
+    json_structurally_valid = registry_json is not None
+
     if registry_json is not None:
         if registry_json.get("snapshot_type") != "calibration_artifact_registry":
             reasons.append("JSON snapshot_type must be calibration_artifact_registry")
         if registry_json.get("snapshot_version") != 1:
             reasons.append("JSON snapshot_version must be 1")
 
-        artifact_count = registry_json.get("artifact_count", 0)
-        artifacts = registry_json.get("artifacts", [])
-        if artifact_count != len(artifacts):
+        raw_count = registry_json.get("artifact_count")
+        if not isinstance(raw_count, int):
+            reasons.append(
+                f"JSON artifact_count must be an integer, got {type(raw_count).__name__}"
+            )
+            json_structurally_valid = False
+        else:
+            artifact_count = raw_count
+
+        raw_artifacts = registry_json.get("artifacts")
+        if not isinstance(raw_artifacts, list):
+            reasons.append(
+                f"JSON artifacts must be a list, got {type(raw_artifacts).__name__}"
+            )
+            json_structurally_valid = False
+        else:
+            artifacts = raw_artifacts
+
+        if json_structurally_valid and artifact_count != len(artifacts):
             reasons.append(
                 f"JSON artifact_count ({artifact_count}) does not match artifacts length ({len(artifacts)})"
             )
 
-        expected_sort = sorted(artifacts, key=lambda a: (a.get("run_id", ""), a.get("artifact_hash", "")))
-        if artifacts != expected_sort:
-            reasons.append("JSON artifacts must be sorted by run_id ascending, then artifact_hash ascending")
+        if json_structurally_valid:
+            all_artifacts_are_objects = True
+            for i, artifact in enumerate(artifacts):
+                if not isinstance(artifact, dict):
+                    reasons.append(
+                        f"Artifact {i} must be a JSON object, got {type(artifact).__name__}"
+                    )
+                    all_artifacts_are_objects = False
+            if not all_artifacts_are_objects:
+                json_structurally_valid = False
 
-        required_artifact_fields = {
-            "artifact_hash",
-            "run_id",
-            "artifact_status",
-            "label_pack_hash",
-            "label_manifest_hash",
-            "label_count",
-            "include_pending",
-            "files",
-            "file_hashes",
-        }
-        valid_statuses = {"ready", "incomplete", "fail"}
-        forbidden_label_fields = {"labels", "label_ids"}
-        forbidden_coordinate_fields = {"lon", "lat", "longitude", "latitude", "geometry", "centroid", "bbox"}
-
-        for i, artifact in enumerate(artifacts):
-            missing = required_artifact_fields - set(artifact.keys())
-            if missing:
-                reasons.append(f"Artifact {i} missing required fields: {', '.join(sorted(missing))}")
-
-            status = artifact.get("artifact_status")
-            if status not in valid_statuses:
+        if json_structurally_valid:
+            expected_sort = sorted(
+                artifacts,
+                key=lambda a: (a.get("run_id", ""), a.get("artifact_hash", "")),
+            )
+            if artifacts != expected_sort:
                 reasons.append(
-                    f"Artifact {i} artifact_status must be ready, incomplete, or fail, got {status}"
+                    "JSON artifacts must be sorted by run_id ascending, then artifact_hash ascending"
                 )
 
-            for field in forbidden_label_fields:
-                if field in artifact:
-                    reasons.append(f"Artifact {i} must not contain full label payload field: {field}")
+            required_artifact_fields = {
+                "artifact_hash",
+                "run_id",
+                "artifact_status",
+                "label_pack_hash",
+                "label_manifest_hash",
+                "label_count",
+                "include_pending",
+                "files",
+                "file_hashes",
+            }
+            valid_statuses = {"ready", "incomplete", "fail"}
+            forbidden_label_fields = {"labels", "label_ids"}
+            forbidden_coordinate_fields = {
+                "lon",
+                "lat",
+                "longitude",
+                "latitude",
+                "geometry",
+                "centroid",
+                "bbox",
+            }
 
-            for field in forbidden_coordinate_fields:
-                if field in artifact:
-                    reasons.append(f"Artifact {i} must not contain coordinate field: {field}")
+            for i, artifact in enumerate(artifacts):
+                missing = required_artifact_fields - set(artifact.keys())
+                if missing:
+                    reasons.append(
+                        f"Artifact {i} missing required fields: {', '.join(sorted(missing))}"
+                    )
+
+                status = artifact.get("artifact_status")
+                if status not in valid_statuses:
+                    reasons.append(
+                        f"Artifact {i} artifact_status must be ready, incomplete, or fail, got {status}"
+                    )
+
+                for field in forbidden_label_fields:
+                    if field in artifact:
+                        reasons.append(
+                            f"Artifact {i} must not contain full label payload field: {field}"
+                        )
+
+                for field in forbidden_coordinate_fields:
+                    if field in artifact:
+                        reasons.append(
+                            f"Artifact {i} must not contain coordinate field: {field}"
+                        )
 
     sha256sums_valid = True
     sha256_entries: dict[str, str] = {}
@@ -1271,6 +1356,7 @@ def _verify_calibration_registry_snapshot(snapshot_dir: Path) -> dict:
 
     snapshot_hash_valid = True
     snapshot_cross_checks_valid = True
+    canonical_files_valid = True
     reported_snapshot_hash = None
 
     if registry_json is not None:
@@ -1278,6 +1364,9 @@ def _verify_calibration_registry_snapshot(snapshot_dir: Path) -> dict:
         if not reported_snapshot_hash:
             snapshot_hash_valid = False
             reasons.append("JSON missing snapshot_hash")
+        elif not json_structurally_valid:
+            snapshot_hash_valid = False
+            reasons.append("Cannot validate snapshot_hash because JSON structure is invalid")
         else:
             try:
                 recomputed_hash, _ = _recompute_snapshot_hash(
@@ -1288,6 +1377,30 @@ def _verify_calibration_registry_snapshot(snapshot_dir: Path) -> dict:
                 if reported_snapshot_hash != recomputed_hash:
                     snapshot_hash_valid = False
                     reasons.append("snapshot_hash does not match recalculated snapshot hash")
+                else:
+                    expected_json_text, expected_md_text, expected_sha256sums = (
+                        _compute_expected_final_snapshot_files(
+                            artifact_count=artifact_count,
+                            artifacts=artifacts,
+                            files=files,
+                            snapshot_hash=reported_snapshot_hash,
+                        )
+                    )
+                    if texts.get("calibration_artifact_registry.json") != expected_json_text:
+                        canonical_files_valid = False
+                        reasons.append(
+                            "calibration_artifact_registry.json does not match canonical final content"
+                        )
+                    if texts.get("calibration_artifact_registry.md") != expected_md_text:
+                        canonical_files_valid = False
+                        reasons.append(
+                            "calibration_artifact_registry.md does not match canonical final content"
+                        )
+                    if texts.get("SHA256SUMS.txt") != expected_sha256sums:
+                        canonical_files_valid = False
+                        reasons.append(
+                            "SHA256SUMS.txt does not match canonical final content"
+                        )
             except Exception as exc:
                 snapshot_hash_valid = False
                 reasons.append(f"Failed to recalculate snapshot hash: {exc}")
@@ -1303,6 +1416,7 @@ def _verify_calibration_registry_snapshot(snapshot_dir: Path) -> dict:
             and sha256sums_valid
             and snapshot_hash_valid
             and snapshot_cross_checks_valid
+            and canonical_files_valid
             and registry_json is not None
             and "calibration_artifact_registry.md" in texts
             and "SHA256SUMS.txt" in texts
