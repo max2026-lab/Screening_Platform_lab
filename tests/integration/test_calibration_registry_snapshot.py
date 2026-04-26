@@ -160,3 +160,291 @@ def test_calibration_registry_snapshot_export(tmp_path: Path, monkeypatch: pytes
     assert "## Files" in md_text
     assert "## Reasons" in md_text
     assert "## Artifacts" in md_text
+
+
+def test_calibration_registry_snapshot_verify_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    snapshot_dir = tmp_path / "snapshot_empty"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    # Verify without DB access
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 0
+    result = json.loads(output.getvalue())
+
+    assert result["status"] == "valid"
+    assert result["artifact_count"] == 0
+    assert result["snapshot_hash"] is not None
+    assert result["sha256sums_valid"] is True
+    assert result["snapshot_hash_valid"] is True
+    assert result["snapshot_cross_checks_valid"] is True
+    expected_fields = {
+        "status", "reasons", "snapshot_dir", "artifact_count", "snapshot_hash",
+        "files", "file_hashes", "sha256sums_valid", "snapshot_hash_valid", "snapshot_cross_checks_valid",
+    }
+    assert expected_fields.issubset(result.keys())
+
+
+def test_calibration_registry_snapshot_verify_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash2", "run-b", "incomplete"))
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+    repo.save_artifact(_create_fake_artifact("hash3", "run-c", "fail"))
+
+    snapshot_dir = tmp_path / "snapshot_full"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 0
+    result = json.loads(output.getvalue())
+
+    assert result["status"] == "valid"
+    assert result["artifact_count"] == 3
+    assert result["sha256sums_valid"] is True
+    assert result["snapshot_hash_valid"] is True
+    assert result["snapshot_cross_checks_valid"] is True
+
+
+def test_calibration_registry_snapshot_verify_markdown_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    snapshot_dir = tmp_path / "snapshot_md"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir), "--output", "markdown"]) == 0
+    md_text = output.getvalue()
+
+    assert "# Calibration Registry Snapshot Verification" in md_text
+    assert "- Status: `valid`" in md_text
+    assert "## Reasons" in md_text
+
+
+def test_calibration_registry_snapshot_verify_tampered_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    snapshot_dir = tmp_path / "snapshot_tamper"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    json_path = snapshot_dir / "calibration_artifact_registry.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["artifact_count"] = 999
+    json_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+
+
+def test_calibration_registry_snapshot_verify_tampered_md(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    snapshot_dir = tmp_path / "snapshot_tamper_md"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    md_path = snapshot_dir / "calibration_artifact_registry.md"
+    md_text = md_path.read_text(encoding="utf-8")
+    md_path.write_text(md_text.replace("Calibration Registry Snapshot", "TAMPERED"), encoding="utf-8")
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+
+
+def test_calibration_registry_snapshot_verify_tampered_sums(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    snapshot_dir = tmp_path / "snapshot_tamper_sums"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    sums_path = snapshot_dir / "SHA256SUMS.txt"
+    sums_text = sums_path.read_text(encoding="utf-8")
+    sums_path.write_text(sums_text.replace("0", "1"), encoding="utf-8")
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["sha256sums_valid"] is False
+
+
+def test_calibration_registry_snapshot_verify_missing_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    snapshot_dir = tmp_path / "snapshot_missing"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    (snapshot_dir / "SHA256SUMS.txt").unlink()
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+
+
+def test_calibration_registry_snapshot_verify_unsorted_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+    repo.save_artifact(_create_fake_artifact("hash2", "run-b", "ready"))
+
+    snapshot_dir = tmp_path / "snapshot_unsorted"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    json_path = snapshot_dir / "calibration_artifact_registry.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["artifacts"] = list(reversed(data["artifacts"]))
+    json_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert any("sorted" in r for r in result["reasons"])
+
+
+def test_calibration_registry_snapshot_verify_artifact_count_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    snapshot_dir = tmp_path / "snapshot_count"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    json_path = snapshot_dir / "calibration_artifact_registry.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["artifact_count"] = 99
+    json_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert any("artifact_count" in r for r in result["reasons"])
+
+
+def test_calibration_registry_snapshot_verify_coordinate_field_injected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    snapshot_dir = tmp_path / "snapshot_coord"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    json_path = snapshot_dir / "calibration_artifact_registry.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["artifacts"][0]["lon"] = 1.0
+    json_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert any("coordinate" in r for r in result["reasons"])
+
+
+def test_calibration_registry_snapshot_verify_label_payload_field_injected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    snapshot_dir = tmp_path / "snapshot_labels"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(snapshot_dir)]) == 0
+
+    json_path = snapshot_dir / "calibration_artifact_registry.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["artifacts"][0]["labels"] = []
+    json_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-verify", "--snapshot-dir", str(snapshot_dir)]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert any("label payload" in r for r in result["reasons"])

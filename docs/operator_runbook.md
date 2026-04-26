@@ -274,3 +274,11 @@ Export a portable deterministic snapshot of the entire calibration artifact regi
 ```powershell
 lawful-anomaly calibration-label-registry-export --output-dir <snapshot_dir>
 ```
+
+## Phase 21 Calibration Registry Snapshot Verification
+
+Verify a saved calibration registry snapshot directory offline without DB access:
+
+```powershell
+lawful-anomaly calibration-label-registry-snapshot-verify --snapshot-dir <snapshot_dir>
+```

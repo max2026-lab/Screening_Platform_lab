@@ -766,6 +766,23 @@ def _render_calibration_label_registry_export_markdown(
     return "\n".join(lines) + "\n"
 
 
+def _render_calibration_label_registry_snapshot_verify_markdown(result: dict) -> str:
+    lines = [
+        "# Calibration Registry Snapshot Verification",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Snapshot hash valid: `{result['snapshot_hash_valid']}`",
+        f"- SHA256SUMS valid: `{result['sha256sums_valid']}`",
+        f"- Cross-check valid: `{result['snapshot_cross_checks_valid']}`",
+        f"- Artifact count: `{result['artifact_count']}`",
+        "",
+        "## Reasons",
+        "",
+    ]
+    lines.extend(f"- {reason}" for reason in result["reasons"])
+    return "\n".join(lines) + "\n"
+
+
 def _extract_artifact_hash_from_markdown(markdown: str) -> str | None:
     match = re.search(r"(?m)^- Artifact hash: `([^`]+)`\s*$", markdown)
     if match is None:
@@ -803,6 +820,50 @@ def _build_snapshot_hash(
             ],
         }
     )
+
+
+def _recompute_snapshot_hash(
+    artifact_count: int,
+    artifacts: list[dict],
+    files: list[str],
+) -> tuple[str, dict[str, str]]:
+    registry_json_payload = {
+        "snapshot_type": "calibration_artifact_registry",
+        "snapshot_version": 1,
+        "artifact_count": artifact_count,
+        "artifacts": artifacts,
+        "snapshot_hash": "<snapshot_hash_excluded_from_hash_input>",
+    }
+    canonical_json_text = _stable_json_text(registry_json_payload)
+
+    result_dict = {
+        "status": "exported",
+        "reasons": [],
+        "output_dir": "",
+        "artifact_count": artifact_count,
+        "artifacts": artifacts,
+        "files": files,
+    }
+
+    canonical_markdown = _render_calibration_label_registry_export_markdown(
+        result_dict,
+        snapshot_hash="<snapshot_hash_excluded_from_hash_input>",
+    )
+
+    canonical_hashes = {
+        "calibration_artifact_registry.json": _sha256_text(canonical_json_text),
+        "calibration_artifact_registry.md": _sha256_text(canonical_markdown),
+    }
+    canonical_sha256sums = _render_sha256sums(canonical_hashes)
+    canonical_hashes["SHA256SUMS.txt"] = _sha256_text(canonical_sha256sums)
+
+    snapshot_hash = _build_snapshot_hash(
+        artifact_count=artifact_count,
+        artifacts=artifacts,
+        files=files,
+        file_hashes=canonical_hashes,
+    )
+    return snapshot_hash, canonical_hashes
 
 
 def _compute_calibration_label_pack_hash(pack: dict) -> str:
@@ -1062,6 +1123,206 @@ def _verify_calibration_label_artifact(artifact_dir: Path) -> dict:
         "label_pack_hash_valid": label_pack_hash_valid,
         "label_manifest_hash_valid": label_manifest_hash_valid,
         "manifest_cross_checks_valid": manifest_cross_checks_valid,
+    }
+
+
+def _verify_calibration_registry_snapshot(snapshot_dir: Path) -> dict:
+    files = [
+        "calibration_artifact_registry.json",
+        "calibration_artifact_registry.md",
+        "SHA256SUMS.txt",
+    ]
+    reasons: list[str] = []
+    file_hashes: dict[str, str] = {}
+    texts: dict[str, str] = {}
+
+    for file_name in files:
+        path = snapshot_dir / file_name
+        if not path.exists():
+            reasons.append(f"Missing required snapshot file: {file_name}")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            reasons.append(f"Snapshot file is not valid UTF-8 text: {file_name}")
+            continue
+        texts[file_name] = text
+        file_hashes[file_name] = _sha256_text(text)
+
+    registry_json = None
+    if "calibration_artifact_registry.json" in texts:
+        try:
+            registry_json = json.loads(texts["calibration_artifact_registry.json"])
+            if not isinstance(registry_json, dict):
+                reasons.append("calibration_artifact_registry.json must contain a JSON object")
+                registry_json = None
+        except json.JSONDecodeError:
+            reasons.append("Snapshot file is not valid JSON: calibration_artifact_registry.json")
+
+    artifact_count = 0
+    artifacts: list[dict] = []
+    if registry_json is not None:
+        if registry_json.get("snapshot_type") != "calibration_artifact_registry":
+            reasons.append("JSON snapshot_type must be calibration_artifact_registry")
+        if registry_json.get("snapshot_version") != 1:
+            reasons.append("JSON snapshot_version must be 1")
+
+        artifact_count = registry_json.get("artifact_count", 0)
+        artifacts = registry_json.get("artifacts", [])
+        if artifact_count != len(artifacts):
+            reasons.append(
+                f"JSON artifact_count ({artifact_count}) does not match artifacts length ({len(artifacts)})"
+            )
+
+        expected_sort = sorted(artifacts, key=lambda a: (a.get("run_id", ""), a.get("artifact_hash", "")))
+        if artifacts != expected_sort:
+            reasons.append("JSON artifacts must be sorted by run_id ascending, then artifact_hash ascending")
+
+        required_artifact_fields = {
+            "artifact_hash",
+            "run_id",
+            "artifact_status",
+            "label_pack_hash",
+            "label_manifest_hash",
+            "label_count",
+            "include_pending",
+            "files",
+            "file_hashes",
+        }
+        valid_statuses = {"ready", "incomplete", "fail"}
+        forbidden_label_fields = {"labels", "label_ids"}
+        forbidden_coordinate_fields = {"lon", "lat", "longitude", "latitude", "geometry", "centroid", "bbox"}
+
+        for i, artifact in enumerate(artifacts):
+            missing = required_artifact_fields - set(artifact.keys())
+            if missing:
+                reasons.append(f"Artifact {i} missing required fields: {', '.join(sorted(missing))}")
+
+            status = artifact.get("artifact_status")
+            if status not in valid_statuses:
+                reasons.append(
+                    f"Artifact {i} artifact_status must be ready, incomplete, or fail, got {status}"
+                )
+
+            for field in forbidden_label_fields:
+                if field in artifact:
+                    reasons.append(f"Artifact {i} must not contain full label payload field: {field}")
+
+            for field in forbidden_coordinate_fields:
+                if field in artifact:
+                    reasons.append(f"Artifact {i} must not contain coordinate field: {field}")
+
+    sha256sums_valid = True
+    sha256_entries: dict[str, str] = {}
+    if "SHA256SUMS.txt" in texts:
+        for raw_line in texts["SHA256SUMS.txt"].splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            match = re.fullmatch(r"([0-9a-f]{64})\s{2}(.+)", line)
+            if match is None:
+                sha256sums_valid = False
+                reasons.append(f"SHA256SUMS.txt contains malformed line: {raw_line}")
+                continue
+            sha256_entries[match.group(2)] = match.group(1)
+
+        required_checksum_files = {
+            "calibration_artifact_registry.json",
+            "calibration_artifact_registry.md",
+        }
+        for file_name in sorted(required_checksum_files.difference(sha256_entries)):
+            sha256sums_valid = False
+            reasons.append(f"SHA256SUMS.txt missing hash entry for {file_name}")
+
+        if "SHA256SUMS.txt" in sha256_entries:
+            sha256sums_valid = False
+            reasons.append("SHA256SUMS.txt must not contain a self-hash line")
+
+        for file_name in sorted(required_checksum_files.intersection(file_hashes)):
+            if sha256_entries.get(file_name) != file_hashes[file_name]:
+                sha256sums_valid = False
+                reasons.append(f"SHA256SUMS.txt hash mismatch for {file_name}")
+    else:
+        sha256sums_valid = False
+
+    md_text = texts.get("calibration_artifact_registry.md", "")
+    md_snapshot_hash = None
+    md_valid = True
+    if md_text:
+        required_md_sections = [
+            "# Calibration Registry Snapshot",
+            "Snapshot hash:",
+            "Artifact count:",
+            "## Files",
+            "## Reasons",
+            "## Artifacts",
+        ]
+        for section in required_md_sections:
+            if section not in md_text:
+                md_valid = False
+                reasons.append(f"Markdown missing required section: {section}")
+
+        match = re.search(r"(?m)^- Snapshot hash: `([^`]+)`\s*$", md_text)
+        if match:
+            md_snapshot_hash = match.group(1)
+        else:
+            md_valid = False
+            reasons.append("Markdown missing Snapshot hash line")
+
+    snapshot_hash_valid = True
+    snapshot_cross_checks_valid = True
+    reported_snapshot_hash = None
+
+    if registry_json is not None:
+        reported_snapshot_hash = registry_json.get("snapshot_hash")
+        if not reported_snapshot_hash:
+            snapshot_hash_valid = False
+            reasons.append("JSON missing snapshot_hash")
+        else:
+            try:
+                recomputed_hash, _ = _recompute_snapshot_hash(
+                    artifact_count=artifact_count,
+                    artifacts=artifacts,
+                    files=files,
+                )
+                if reported_snapshot_hash != recomputed_hash:
+                    snapshot_hash_valid = False
+                    reasons.append("snapshot_hash does not match recalculated snapshot hash")
+            except Exception as exc:
+                snapshot_hash_valid = False
+                reasons.append(f"Failed to recalculate snapshot hash: {exc}")
+
+            if md_snapshot_hash is not None and md_snapshot_hash != reported_snapshot_hash:
+                snapshot_cross_checks_valid = False
+                reasons.append("Markdown snapshot hash does not match JSON snapshot_hash")
+
+    status = (
+        "valid"
+        if (
+            not reasons
+            and sha256sums_valid
+            and snapshot_hash_valid
+            and snapshot_cross_checks_valid
+            and registry_json is not None
+            and "calibration_artifact_registry.md" in texts
+            and "SHA256SUMS.txt" in texts
+        )
+        else "invalid"
+    )
+    if status == "valid":
+        reasons = ["Calibration registry snapshot is valid"]
+
+    return {
+        "status": status,
+        "reasons": reasons,
+        "snapshot_dir": str(snapshot_dir),
+        "artifact_count": artifact_count,
+        "snapshot_hash": reported_snapshot_hash,
+        "files": files,
+        "file_hashes": file_hashes,
+        "sha256sums_valid": sha256sums_valid,
+        "snapshot_hash_valid": snapshot_hash_valid,
+        "snapshot_cross_checks_valid": snapshot_cross_checks_valid,
     }
 
 
@@ -1351,6 +1612,15 @@ def cmd_calibration_label_registry_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_calibration_label_registry_snapshot_verify(args: argparse.Namespace) -> int:
+    result = _verify_calibration_registry_snapshot(Path(args.snapshot_dir))
+    if args.output == "markdown":
+        print(_render_calibration_label_registry_snapshot_verify_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "valid" else 1
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -1522,6 +1792,11 @@ def _add_calibration_label_registry_export_arguments(parser: argparse.ArgumentPa
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 
+def _add_calibration_label_registry_snapshot_verify_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--snapshot-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1554,6 +1829,7 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-label-register": cmd_calibration_label_register,
         "calibration-label-registry-list": cmd_calibration_label_registry_list,
         "calibration-label-registry-export": cmd_calibration_label_registry_export,
+        "calibration-label-registry-snapshot-verify": cmd_calibration_label_registry_snapshot_verify,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -1604,6 +1880,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_registry_list_arguments(p)
         if name == "calibration-label-registry-export":
             _add_calibration_label_registry_export_arguments(p)
+        if name == "calibration-label-registry-snapshot-verify":
+            _add_calibration_label_registry_snapshot_verify_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

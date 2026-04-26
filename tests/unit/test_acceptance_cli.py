@@ -114,6 +114,15 @@ def test_acceptance_cli_commands_are_registered():
             "markdown",
         ]
     )
+    label_registry_snapshot_verify_args = parser.parse_args(
+        [
+            "calibration-label-registry-snapshot-verify",
+            "--snapshot-dir",
+            "snapshot",
+            "--output",
+            "markdown",
+        ]
+    )
 
     assert kpi_args.command == "kpi-summary"
     assert kpi_args.aoi_area_km2 == 100.0
@@ -145,5 +154,8 @@ def test_acceptance_cli_commands_are_registered():
     assert label_registry_export_args.command == "calibration-label-registry-export"
     assert label_registry_export_args.output_dir == "registry_snapshot"
     assert label_registry_export_args.output == "markdown"
+    assert label_registry_snapshot_verify_args.command == "calibration-label-registry-snapshot-verify"
+    assert label_registry_snapshot_verify_args.snapshot_dir == "snapshot"
+    assert label_registry_snapshot_verify_args.output == "markdown"
     assert reproducibility_args.command == "reproducibility-check"
     assert reproducibility_args.comparison_run_id == "run-002"
