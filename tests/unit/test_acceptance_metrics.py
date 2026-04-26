@@ -804,7 +804,37 @@ def test_calibration_label_pack_is_ready_and_hash_is_deterministic():
     )
 
     assert pack["status"] == "ready"
+    assert set(pack.keys()) >= {
+        "run_id",
+        "status",
+        "reasons",
+        "calibration_policy_id",
+        "calibration_policy",
+        "processing_baseline_id",
+        "score_formula_version",
+        "source_scene_manifest_hash",
+        "legal_gate",
+        "composite_quality",
+        "candidate_count",
+        "review_state_counts",
+        "reviewed_candidate_count",
+        "approved_candidate_count",
+        "rejected_candidate_count",
+        "watched_candidate_count",
+        "pending_candidate_count",
+        "review_coverage_rate",
+        "top20_review_coverage_rate",
+        "export_audit_ready",
+        "latest_export_audit_manifest_hash",
+        "label_pack_hash",
+        "labels",
+    }
     assert pack["calibration_policy_id"] == "calibration_policy_v1_0_default"
+    assert pack["review_state_counts"] == {
+        "approved_for_archive_quote": 1,
+        "pending_review": 1,
+        "watch": 1,
+    }
     assert pack["reviewed_candidate_count"] == 2
     assert pack["pending_candidate_count"] == 1
     assert pack["review_coverage_rate"] == 0.666667
@@ -834,6 +864,7 @@ def test_calibration_label_pack_without_reviews_is_incomplete():
     )
 
     assert pack["status"] == "incomplete"
+    assert pack["review_state_counts"] == {"pending_review": 20}
     assert "No reviewed candidates available for calibration label pack" in pack["reasons"]
     assert "Review coverage rate 0.00 is below minimum 0.20" in pack["reasons"]
     assert "Top-20 review coverage rate 0.00 is below minimum 0.50" in pack["reasons"]

@@ -111,9 +111,39 @@ def test_calibration_label_pack_ready_and_pending_toggle(monkeypatch, tmp_path):
     pending_pack = json.loads(pending_output.getvalue())
 
     assert pack["status"] == "ready"
+    assert set(pack.keys()) >= {
+        "run_id",
+        "status",
+        "reasons",
+        "calibration_policy_id",
+        "calibration_policy",
+        "processing_baseline_id",
+        "score_formula_version",
+        "source_scene_manifest_hash",
+        "legal_gate",
+        "composite_quality",
+        "candidate_count",
+        "review_state_counts",
+        "reviewed_candidate_count",
+        "approved_candidate_count",
+        "rejected_candidate_count",
+        "watched_candidate_count",
+        "pending_candidate_count",
+        "review_coverage_rate",
+        "top20_review_coverage_rate",
+        "export_audit_ready",
+        "latest_export_audit_manifest_hash",
+        "label_pack_hash",
+        "labels",
+    }
     assert pack["reviewed_candidate_count"] == len(approved_ids) + len(watched_ids)
     assert pack["approved_candidate_count"] == len(approved_ids)
     assert pack["watched_candidate_count"] == len(watched_ids)
+    assert pack["review_state_counts"] == {
+        "approved_for_archive_quote": len(approved_ids),
+        "pending_review": len(run_summary["candidate_ids"]) - (len(approved_ids) + len(watched_ids)),
+        "watch": len(watched_ids),
+    }
     assert pack["pending_candidate_count"] == len(run_summary["candidate_ids"]) - (
         len(approved_ids) + len(watched_ids)
     )
@@ -121,6 +151,7 @@ def test_calibration_label_pack_ready_and_pending_toggle(monkeypatch, tmp_path):
     assert pack["label_pack_hash"] == repeated_pack["label_pack_hash"]
     assert all(label["review_state"] != "pending_review" for label in pack["labels"])
     assert any(label["review_state"] == "pending_review" for label in pending_pack["labels"])
+    assert pending_pack["review_state_counts"] == pack["review_state_counts"]
 
 
 def test_calibration_label_pack_no_review_and_markdown(monkeypatch, tmp_path):

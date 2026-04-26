@@ -1022,6 +1022,7 @@ def build_calibration_label_pack(
         "legal_gate": legal_gate,
         "composite_quality": composite_quality,
         "candidate_count": candidate_count,
+        "review_state_counts": sorted_review_state_counts,
         "reviewed_candidate_count": reviewed_candidate_count,
         "approved_candidate_count": approved_candidate_count,
         "rejected_candidate_count": rejected_candidate_count,
