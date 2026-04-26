@@ -315,6 +315,7 @@ try {
         "--start-date", "2024-01-01",
         "--end-date", "2024-03-31"
     )
+    Assert-NoTraceback -Text $deniedCreateResult.StdErr -Context "Denied create-run"
     if ($deniedCreateResult.ExitCode -eq 0) {
         throw "Legal-denied create-run expected non-zero exit code"
     }
@@ -325,6 +326,7 @@ try {
         "--run-id", "phase20-snapshot-denied-001",
         "--output-dir", $deniedArtifactDir
     )
+    Assert-NoTraceback -Text $deniedExportResult.StdErr -Context "Denied export"
     if ($deniedExportResult.ExitCode -eq 0) {
         throw "Legal-denied calibration-label-export expected non-zero exit code"
     }
@@ -672,7 +674,11 @@ try {
     Assert-NoTraceback -Text $repeatExportResult.StdErr -Context "Repeat registry snapshot export"
     $repeatExport = $repeatExportResult.StdOut | ConvertFrom-Json
     if ([string]$repeatExport.snapshot_hash -ne [string]$fullExport.snapshot_hash) { throw "Repeat export snapshot_hash mismatch" }
-    if ([string]$repeatExport.file_hashes."calibration_artifact_registry.json" -ne [string]$fullExport.file_hashes."calibration_artifact_registry.json") { throw "Repeat export JSON hash mismatch" }
+    foreach ($fileName in $expectedFiles) {
+        if ([string]$repeatExport.file_hashes.$fileName -ne [string]$fullExport.file_hashes.$fileName) {
+            throw "Repeat export file_hashes mismatch for $fileName"
+        }
+    }
 
     $copySnapshotDir = Join-Path $registryFlowRoot "snapshot-copy"
     $copyExportResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
@@ -681,8 +687,13 @@ try {
     )
     Assert-NoTraceback -Text $copyExportResult.StdErr -Context "Copy registry snapshot export"
     $copyExport = $copyExportResult.StdOut | ConvertFrom-Json
+    if ([string]$copyExport.output_dir -eq [string]$fullExport.output_dir) { throw "Copy export output_dir should differ" }
     if ([string]$copyExport.snapshot_hash -ne [string]$fullExport.snapshot_hash) { throw "Copy export snapshot_hash mismatch" }
-    if ([string]$copyExport.file_hashes."calibration_artifact_registry.json" -ne [string]$fullExport.file_hashes."calibration_artifact_registry.json") { throw "Copy export JSON hash mismatch" }
+    foreach ($fileName in $expectedFiles) {
+        if ([string]$copyExport.file_hashes.$fileName -ne [string]$fullExport.file_hashes.$fileName) {
+            throw "Copy export file_hashes mismatch for $fileName"
+        }
+    }
 
     # ============================================================
     # INCREMENTAL CHANGE SMOKE
