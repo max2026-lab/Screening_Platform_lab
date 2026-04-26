@@ -72,7 +72,8 @@ def test_calibration_registry_snapshot_export(tmp_path: Path, monkeypatch: pytes
         "calibration_artifact_registry.md",
         "SHA256SUMS.txt",
     ]
-    assert sorted(full_result["files"]) == sorted(expected_files)
+    assert full_result["files"] == expected_files
+    assert full_result["output_dir"] == str(snapshot_dir2)
 
     # Verify JSON file matches memory
     json_path2 = snapshot_dir2 / "calibration_artifact_registry.json"
@@ -92,11 +93,16 @@ def test_calibration_registry_snapshot_export(tmp_path: Path, monkeypatch: pytes
     assert full_json["snapshot_type"] == "calibration_artifact_registry"
     assert full_json["snapshot_version"] == 1
     assert full_json["artifact_count"] == 3
+    assert full_json["snapshot_hash"] == full_result["snapshot_hash"]
     
     # Artifact entries are sorted by run_id then artifact_hash
     assert full_json["artifacts"][0]["run_id"] == "run-a"
     assert full_json["artifacts"][1]["run_id"] == "run-b"
     assert full_json["artifacts"][2]["run_id"] == "run-c"
+
+    # Exported artifact statuses include ready, incomplete, and fail
+    statuses = {a["artifact_status"] for a in full_json["artifacts"]}
+    assert statuses == {"ready", "incomplete", "fail"}
 
     # Exported snapshot JSON contains no full label payload fields
     json_str = json.dumps(full_json)
