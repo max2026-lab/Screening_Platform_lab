@@ -376,3 +376,11 @@ The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase26_calibration_signoff_evidence_bundle_release.ps1
 ```
+
+## Phase 27 Full Release Verification Chain
+
+Run the complete validated test and release suite through Phase 26. This is the required full pre-tag validation chain after Phase 26.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase27_full_release_verification_chain.ps1
+```
