@@ -943,3 +943,202 @@ def test_calibration_registry_snapshot_diff_no_coordinate_fields(tmp_path: Path,
     result_str = json.dumps(result)
     for field in ["lon", "lat", "longitude", "latitude", "geometry", "centroid", "bbox"]:
         assert f'"{field}"' not in result_str
+
+
+def test_calibration_registry_snapshot_diff_required_fields(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    before_dir = tmp_path / "snapshot_before"
+    after_dir = tmp_path / "snapshot_after"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(before_dir)]) == 0
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(after_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-diff", "--before-snapshot-dir", str(before_dir), "--after-snapshot-dir", str(after_dir)]) == 0
+    result = json.loads(output.getvalue())
+
+    required_fields = {
+        "status", "reasons", "before_snapshot_dir", "after_snapshot_dir",
+        "before_snapshot_hash", "after_snapshot_hash", "before_artifact_count",
+        "after_artifact_count", "added_count", "removed_count", "changed_count",
+        "unchanged_count", "diff_hash", "added", "removed", "changed", "unchanged",
+        "before_valid", "after_valid",
+    }
+    assert required_fields.issubset(result.keys())
+
+
+def test_calibration_registry_snapshot_diff_changed_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    before_db = tmp_path / "before_registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(before_db))
+    init_db(before_db)
+    repo = CalibrationArtifactRepository(before_db)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    before_dir = tmp_path / "snapshot_before"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(before_dir)]) == 0
+
+    after_db = tmp_path / "after_registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(after_db))
+    init_db(after_db)
+    repo2 = CalibrationArtifactRepository(after_db)
+    changed = _create_fake_artifact("hash1", "run-a", "ready")
+    changed["label_count"] = 20
+    repo2.save_artifact(changed)
+
+    after_dir = tmp_path / "snapshot_after"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(after_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-diff", "--before-snapshot-dir", str(before_dir), "--after-snapshot-dir", str(after_dir)]) == 0
+    result = json.loads(output.getvalue())
+
+    assert result["status"] == "compared"
+    assert result["added_count"] == 0
+    assert result["removed_count"] == 0
+    assert result["changed_count"] == 1
+    assert result["unchanged_count"] == 0
+
+    changed_row = result["changed"][0]
+    assert changed_row["artifact_hash"] == "hash1"
+
+    before_expected_fields = {
+        "run_id", "artifact_status", "label_pack_hash", "label_manifest_hash",
+        "label_count", "include_pending", "files", "file_hashes",
+    }
+    assert before_expected_fields.issubset(changed_row["before"].keys())
+    assert before_expected_fields.issubset(changed_row["after"].keys())
+
+    assert changed_row["before"]["label_count"] == 10
+    assert changed_row["after"]["label_count"] == 20
+    assert changed_row["changed_fields"] == sorted(changed_row["changed_fields"])
+    assert "label_count" in changed_row["changed_fields"]
+
+
+def test_calibration_registry_snapshot_diff_hash_deterministic_across_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    before_dir = tmp_path / "snapshot_before"
+    after_dir = tmp_path / "snapshot_after"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(before_dir)]) == 0
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(after_dir)]) == 0
+
+    copied_before = tmp_path / "copied_before"
+    copied_after = tmp_path / "copied_after"
+    import shutil
+    shutil.copytree(before_dir, copied_before)
+    shutil.copytree(after_dir, copied_after)
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-diff", "--before-snapshot-dir", str(before_dir), "--after-snapshot-dir", str(after_dir)]) == 0
+    result1 = json.loads(output.getvalue())
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-diff", "--before-snapshot-dir", str(copied_before), "--after-snapshot-dir", str(copied_after)]) == 0
+    result2 = json.loads(output.getvalue())
+
+    assert result1["diff_hash"] == result2["diff_hash"]
+    assert result1["before_snapshot_dir"] != result2["before_snapshot_dir"]
+    assert result1["after_snapshot_dir"] != result2["after_snapshot_dir"]
+
+
+def test_calibration_registry_snapshot_diff_hash_changes_with_content(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    before_dir = tmp_path / "snapshot_before"
+    same_as_before_dir = tmp_path / "snapshot_same"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(before_dir)]) == 0
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(same_as_before_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-diff", "--before-snapshot-dir", str(before_dir), "--after-snapshot-dir", str(same_as_before_dir)]) == 0
+    baseline_result = json.loads(output.getvalue())
+    assert baseline_result["status"] == "compared"
+    assert baseline_result["added_count"] == 0
+
+    # Now add an artifact and create a new after snapshot
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    repo.save_artifact(_create_fake_artifact("hash2", "run-b", "ready"))
+    after_dir = tmp_path / "snapshot_after"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(after_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-diff", "--before-snapshot-dir", str(before_dir), "--after-snapshot-dir", str(after_dir)]) == 0
+    new_result = json.loads(output.getvalue())
+
+    assert new_result["status"] == "compared"
+    assert new_result["added_count"] == 1
+    assert new_result["added"][0]["artifact_hash"] == "hash2"
+    assert new_result["diff_hash"] != baseline_result["diff_hash"]
+
+
+def test_calibration_registry_snapshot_diff_empty_vs_empty_deterministic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    before_dir = tmp_path / "snapshot_empty_before"
+    after_dir = tmp_path / "snapshot_empty_after"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(before_dir)]) == 0
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(after_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-diff", "--before-snapshot-dir", str(before_dir), "--after-snapshot-dir", str(after_dir)]) == 0
+    result1 = json.loads(output.getvalue())
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-snapshot-diff", "--before-snapshot-dir", str(before_dir), "--after-snapshot-dir", str(after_dir)]) == 0
+    result2 = json.loads(output.getvalue())
+
+    assert result1["diff_hash"] == result2["diff_hash"]
+    assert result1["diff_hash"] is not None
