@@ -2340,48 +2340,91 @@ def _verify_diff_export_evidence(evidence_dir: Path) -> dict:
         before_snapshot_hash = evidence_json.get("before_snapshot_hash")
         after_snapshot_hash = evidence_json.get("after_snapshot_hash")
 
+        # Required count fields must exist and be integers
+        count_fields = {
+            "added_count": "JSON added_count must be an integer",
+            "removed_count": "JSON removed_count must be an integer",
+            "changed_count": "JSON changed_count must be an integer",
+            "unchanged_count": "JSON unchanged_count must be an integer",
+        }
+        for field, msg in count_fields.items():
+            if field not in evidence_json:
+                json_valid = False
+                reasons.append(f"JSON missing required field: {field}")
+            elif not isinstance(evidence_json[field], int):
+                json_valid = False
+                reasons.append(msg)
+
         added_count = evidence_json.get("added_count", 0)
         removed_count = evidence_json.get("removed_count", 0)
         changed_count = evidence_json.get("changed_count", 0)
         unchanged_count = evidence_json.get("unchanged_count", 0)
 
-        if not isinstance(added_count, int):
-            json_valid = False
-            reasons.append("JSON added_count must be an integer")
-        if not isinstance(removed_count, int):
-            json_valid = False
-            reasons.append("JSON removed_count must be an integer")
-        if not isinstance(changed_count, int):
-            json_valid = False
-            reasons.append("JSON changed_count must be an integer")
-        if not isinstance(unchanged_count, int):
-            json_valid = False
-            reasons.append("JSON unchanged_count must be an integer")
+        # Required row arrays must exist and be lists
+        row_fields = {
+            "added": "JSON added must be a list",
+            "removed": "JSON removed must be a list",
+            "changed": "JSON changed must be a list",
+            "unchanged": "JSON unchanged must be a list",
+        }
+        for field, msg in row_fields.items():
+            if field not in evidence_json:
+                json_valid = False
+                reasons.append(f"JSON missing required field: {field}")
 
-        actual_added = evidence_json.get("added", [])
-        actual_removed = evidence_json.get("removed", [])
-        actual_changed = evidence_json.get("changed", [])
-        actual_unchanged = evidence_json.get("unchanged", [])
+        actual_added = evidence_json.get("added")
+        actual_removed = evidence_json.get("removed")
+        actual_changed = evidence_json.get("changed")
+        actual_unchanged = evidence_json.get("unchanged")
 
-        if isinstance(actual_added, list) and len(actual_added) != added_count:
+        if actual_added is not None and not isinstance(actual_added, list):
+            json_valid = False
+            reasons.append("JSON added must be a list")
+        if actual_removed is not None and not isinstance(actual_removed, list):
+            json_valid = False
+            reasons.append("JSON removed must be a list")
+        if actual_changed is not None and not isinstance(actual_changed, list):
+            json_valid = False
+            reasons.append("JSON changed must be a list")
+        if actual_unchanged is not None and not isinstance(actual_unchanged, list):
+            json_valid = False
+            reasons.append("JSON unchanged must be a list")
+
+        actual_added = actual_added if isinstance(actual_added, list) else []
+        actual_removed = actual_removed if isinstance(actual_removed, list) else []
+        actual_changed = actual_changed if isinstance(actual_changed, list) else []
+        actual_unchanged = actual_unchanged if isinstance(actual_unchanged, list) else []
+
+        if len(actual_added) != added_count:
             evidence_cross_checks_valid = False
             reasons.append(f"JSON added length ({len(actual_added)}) does not match added_count ({added_count})")
-        if isinstance(actual_removed, list) and len(actual_removed) != removed_count:
+        if len(actual_removed) != removed_count:
             evidence_cross_checks_valid = False
             reasons.append(f"JSON removed length ({len(actual_removed)}) does not match removed_count ({removed_count})")
-        if isinstance(actual_changed, list) and len(actual_changed) != changed_count:
+        if len(actual_changed) != changed_count:
             evidence_cross_checks_valid = False
             reasons.append(f"JSON changed length ({len(actual_changed)}) does not match changed_count ({changed_count})")
-        if isinstance(actual_unchanged, list) and len(actual_unchanged) != unchanged_count:
+        if len(actual_unchanged) != unchanged_count:
             evidence_cross_checks_valid = False
             reasons.append(f"JSON unchanged length ({len(actual_unchanged)}) does not match unchanged_count ({unchanged_count})")
 
-        if isinstance(actual_changed, list):
-            for i, row in enumerate(actual_changed):
-                changed_fields = row.get("changed_fields", [])
-                if changed_fields != sorted(changed_fields):
+        # Changed rows validation
+        for i, row in enumerate(actual_changed):
+            if not isinstance(row, dict):
+                evidence_cross_checks_valid = False
+                reasons.append(f"Changed row {i} must be a JSON object")
+                continue
+            for required_key in ("artifact_hash", "before", "after", "changed_fields"):
+                if required_key not in row:
                     evidence_cross_checks_valid = False
-                    reasons.append(f"Changed row {i} changed_fields are not sorted alphabetically")
+                    reasons.append(f"Changed row {i} missing required field: {required_key}")
+            changed_fields = row.get("changed_fields")
+            if changed_fields is not None and not isinstance(changed_fields, list):
+                evidence_cross_checks_valid = False
+                reasons.append(f"Changed row {i} changed_fields must be a list")
+            elif isinstance(changed_fields, list) and changed_fields != sorted(changed_fields):
+                evidence_cross_checks_valid = False
+                reasons.append(f"Changed row {i} changed_fields are not sorted alphabetically")
 
         # diff_hash validation using Phase 22 canonical rules
         if not diff_hash:
