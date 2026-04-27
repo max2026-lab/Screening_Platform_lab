@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 import io
 import hashlib
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 
 import pytest
 
@@ -2693,3 +2693,463 @@ def test_calibration_registry_snapshot_diff_export_verify_changed_row_changed_fi
     assert result["status"] == "invalid"
     assert result["evidence_cross_checks_valid"] is False
     assert any("changed_fields must be a list" in r for r in result["reasons"])
+
+
+def test_calibration_registry_snapshot_diff_export_accept_empty_vs_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "accepted"
+    assert result["policy_id"] == "calibration_registry_diff_acceptance_v1"
+    assert result["policy_version"] == 1
+    assert result["evidence_valid"] is True
+    assert result["decision_hash"] is not None
+    assert result["added_count"] == 0
+    assert result["removed_count"] == 0
+    assert result["changed_count"] == 0
+    assert result["unchanged_count"] == 3
+
+
+def test_calibration_registry_snapshot_diff_export_accept_full_vs_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "accepted"
+    assert result["evidence_valid"] is True
+
+
+def test_calibration_registry_snapshot_diff_export_accept_empty_vs_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    empty_dir = tmp_path / "snapshot_empty"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(empty_dir)]) == 0
+
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+    repo.save_artifact(_create_fake_artifact("hash2", "run-b", "incomplete"))
+    repo.save_artifact(_create_fake_artifact("hash3", "run-c", "fail"))
+
+    full_dir = tmp_path / "snapshot_full"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(full_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    evidence_dir = tmp_path / "evidence"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export",
+            "--before-snapshot-dir", str(empty_dir),
+            "--after-snapshot-dir", str(full_dir),
+            "--output-dir", str(evidence_dir),
+        ]) == 0
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "accepted"
+    assert result["added_count"] == 3
+    assert result["removed_count"] == 0
+    assert result["changed_count"] == 0
+    assert result["evidence_valid"] is True
+
+
+def test_calibration_registry_snapshot_diff_export_accept_full_vs_plus_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+    repo.save_artifact(_create_fake_artifact("hash2", "run-b", "incomplete"))
+    repo.save_artifact(_create_fake_artifact("hash3", "run-c", "fail"))
+
+    full_dir = tmp_path / "snapshot_full"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(full_dir)]) == 0
+
+    # Add one more artifact
+    repo2 = CalibrationArtifactRepository(db_path)
+    repo2.save_artifact(_create_fake_artifact("hash4", "run-d", "ready"))
+    plus_dir = tmp_path / "snapshot_plus"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(plus_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    evidence_dir = tmp_path / "evidence"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export",
+            "--before-snapshot-dir", str(full_dir),
+            "--after-snapshot-dir", str(plus_dir),
+            "--output-dir", str(evidence_dir),
+        ]) == 0
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "accepted"
+    assert result["added_count"] == 1
+    assert result["removed_count"] == 0
+    assert result["changed_count"] == 0
+    assert result["evidence_valid"] is True
+
+
+def test_calibration_registry_snapshot_diff_export_accept_full_vs_empty_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+    repo.save_artifact(_create_fake_artifact("hash2", "run-b", "incomplete"))
+    repo.save_artifact(_create_fake_artifact("hash3", "run-c", "fail"))
+
+    full_dir = tmp_path / "snapshot_full"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(full_dir)]) == 0
+
+    empty_db_path = tmp_path / "empty_registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(empty_db_path))
+    init_db(empty_db_path)
+
+    empty_dir = tmp_path / "snapshot_empty"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(empty_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    evidence_dir = tmp_path / "evidence"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export",
+            "--before-snapshot-dir", str(full_dir),
+            "--after-snapshot-dir", str(empty_dir),
+            "--output-dir", str(evidence_dir),
+        ]) == 0
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "rejected"
+    assert result["evidence_valid"] is True
+    assert result["removed_count"] == 3
+    assert any("removed_count" in r for r in result["reasons"])
+
+
+def test_calibration_registry_snapshot_diff_export_accept_changed_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    before_db = tmp_path / "before_registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(before_db))
+    init_db(before_db)
+    repo = CalibrationArtifactRepository(before_db)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    before_dir = tmp_path / "snapshot_before"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(before_dir)]) == 0
+
+    after_db = tmp_path / "after_registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(after_db))
+    init_db(after_db)
+    repo2 = CalibrationArtifactRepository(after_db)
+    changed = _create_fake_artifact("hash1", "run-a", "ready")
+    changed["label_count"] = 20
+    repo2.save_artifact(changed)
+
+    after_dir = tmp_path / "snapshot_after"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(after_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    evidence_dir = tmp_path / "evidence"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export",
+            "--before-snapshot-dir", str(before_dir),
+            "--after-snapshot-dir", str(after_dir),
+            "--output-dir", str(evidence_dir),
+        ]) == 0
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "rejected"
+    assert result["evidence_valid"] is True
+    assert result["changed_count"] == 1
+    assert any("changed_count" in r for r in result["reasons"])
+
+
+def test_calibration_registry_snapshot_diff_export_accept_invalid_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    json_path = evidence_dir / "calibration_registry_snapshot_diff.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["diff_hash"] = "tampered"
+    json_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    _recompute_sha256sums(evidence_dir)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["evidence_valid"] is False
+    assert any("Evidence pack verification failed" in r for r in result["reasons"])
+
+
+def test_calibration_registry_snapshot_diff_export_accept_missing_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    (evidence_dir / "calibration_registry_snapshot_diff.json").unlink()
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["evidence_valid"] is False
+
+
+def test_calibration_registry_snapshot_diff_export_accept_tampered_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    json_path = evidence_dir / "calibration_registry_snapshot_diff.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["diff_hash"] = "tampered"
+    json_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    _recompute_sha256sums(evidence_dir)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["evidence_valid"] is False
+
+
+def test_calibration_registry_snapshot_diff_export_accept_tampered_sums(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    sums_path = evidence_dir / "SHA256SUMS.txt"
+    sums_text = sums_path.read_text(encoding="utf-8")
+    sums_path.write_text(sums_text.replace("0", "1"), encoding="utf-8")
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["evidence_valid"] is False
+
+
+def test_calibration_registry_snapshot_diff_export_accept_injected_coordinate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    json_path = evidence_dir / "calibration_registry_snapshot_diff.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["unchanged"][0]["lon"] = 1.0
+    json_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    _recompute_sha256sums(evidence_dir)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["evidence_valid"] is False
+
+
+def test_calibration_registry_snapshot_diff_export_accept_injected_labels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    json_path = evidence_dir / "calibration_registry_snapshot_diff.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["unchanged"][0]["labels"] = []
+    json_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    _recompute_sha256sums(evidence_dir)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["evidence_valid"] is False
+
+
+def test_calibration_registry_snapshot_diff_export_accept_markdown_accepted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+            "--output", "markdown",
+        ]) == 0
+    md_text = output.getvalue()
+    assert "# Calibration Registry Snapshot Diff Acceptance" in md_text
+    assert "- Status: `accepted`" in md_text
+    assert "- Policy:" in md_text
+    assert "- Decision hash:" in md_text
+    assert "## Reasons" in md_text
+
+
+def test_calibration_registry_snapshot_diff_export_accept_markdown_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    full_dir = tmp_path / "snapshot_full"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(full_dir)]) == 0
+
+    empty_db_path = tmp_path / "empty_registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(empty_db_path))
+    init_db(empty_db_path)
+
+    empty_dir = tmp_path / "snapshot_empty"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(empty_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    evidence_dir = tmp_path / "evidence"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export",
+            "--before-snapshot-dir", str(full_dir),
+            "--after-snapshot-dir", str(empty_dir),
+            "--output-dir", str(evidence_dir),
+        ]) == 0
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+            "--output", "markdown",
+        ]) == 1
+    md_text = output.getvalue()
+    assert "# Calibration Registry Snapshot Diff Acceptance" in md_text
+    assert "- Status: `rejected`" in md_text
+    assert "## Reasons" in md_text
+
+
+def test_calibration_registry_snapshot_diff_export_accept_markdown_invalid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    (evidence_dir / "calibration_registry_snapshot_diff.json").unlink()
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+            "--output", "markdown",
+        ]) == 1
+    md_text = output.getvalue()
+    assert "# Calibration Registry Snapshot Diff Acceptance" in md_text
+    assert "- Status: `invalid`" in md_text
+    assert "## Reasons" in md_text
+
+
+def test_calibration_registry_snapshot_diff_export_accept_decision_hash_stable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 0
+    result1 = json.loads(output.getvalue())
+    assert result1["status"] == "accepted"
+    decision_hash1 = result1["decision_hash"]
+
+    # Copy evidence to a new directory
+    copied_dir = tmp_path / "copied_evidence"
+    import shutil
+    shutil.copytree(evidence_dir, copied_dir)
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(copied_dir),
+        ]) == 0
+    result2 = json.loads(output.getvalue())
+    assert result2["status"] == "accepted"
+    assert result2["decision_hash"] == decision_hash1
+
+
+def test_calibration_registry_snapshot_diff_export_accept_offline_no_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "accepted"
+    assert result["evidence_valid"] is True
+
+
+def test_calibration_registry_snapshot_diff_export_accept_no_traceback_invalid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    (evidence_dir / "calibration_registry_snapshot_diff.json").unlink()
+    output = io.StringIO()
+    err_output = io.StringIO()
+    with redirect_stdout(output), redirect_stderr(err_output):
+        rc = main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ])
+    assert rc == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert "Traceback" not in err_output.getvalue()

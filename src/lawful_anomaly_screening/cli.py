@@ -2535,6 +2535,138 @@ def cmd_calibration_label_registry_snapshot_diff_export_verify(args: argparse.Na
     return 0 if result["status"] == "valid" else 1
 
 
+def _render_calibration_label_registry_snapshot_diff_export_accept_markdown(result: dict) -> str:
+    lines = [
+        "# Calibration Registry Snapshot Diff Acceptance",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Policy: `{result.get('policy_id', '')}` v{result.get('policy_version', '')}",
+        f"- Decision hash: `{result.get('decision_hash', '')}`",
+        f"- Diff hash: `{result.get('diff_hash', '')}`",
+        f"- Before snapshot hash: `{result.get('before_snapshot_hash', '')}`",
+        f"- After snapshot hash: `{result.get('after_snapshot_hash', '')}`",
+        f"- Added: `{result.get('added_count', 0)}`",
+        f"- Removed: `{result.get('removed_count', 0)}`",
+        f"- Changed: `{result.get('changed_count', 0)}`",
+        f"- Unchanged: `{result.get('unchanged_count', 0)}`",
+        "",
+        "## Reasons",
+        "",
+    ]
+    lines.extend(f"- {reason}" for reason in result["reasons"])
+    return "\n".join(lines) + "\n"
+
+
+def _compute_decision_hash(
+    policy_id: str,
+    policy_version: int,
+    diff_hash: str | None,
+    before_snapshot_hash: str | None,
+    after_snapshot_hash: str | None,
+    added_count: int,
+    removed_count: int,
+    changed_count: int,
+    unchanged_count: int,
+    status: str,
+    reasons: list[str],
+) -> str:
+    return _stable_hash(
+        {
+            "policy_id": policy_id,
+            "policy_version": policy_version,
+            "diff_hash": diff_hash,
+            "before_snapshot_hash": before_snapshot_hash,
+            "after_snapshot_hash": after_snapshot_hash,
+            "added_count": added_count,
+            "removed_count": removed_count,
+            "changed_count": changed_count,
+            "unchanged_count": unchanged_count,
+            "status": status,
+            "reasons": reasons,
+        }
+    )
+
+
+def _accept_diff_export_evidence(evidence_dir: Path) -> dict:
+    policy_id = "calibration_registry_diff_acceptance_v1"
+    policy_version = 1
+
+    verify_result = _verify_diff_export_evidence(evidence_dir)
+
+    reasons: list[str] = []
+    evidence_valid = verify_result["status"] == "valid"
+
+    if not evidence_valid:
+        reasons.append("Evidence pack verification failed")
+        reasons.extend(verify_result["reasons"])
+
+    added_count = verify_result.get("added_count", 0)
+    removed_count = verify_result.get("removed_count", 0)
+    changed_count = verify_result.get("changed_count", 0)
+    unchanged_count = verify_result.get("unchanged_count", 0)
+
+    if evidence_valid:
+        if removed_count > 0:
+            reasons.append(f"Policy rejects evidence with removed_count={removed_count} (must be 0)")
+        if changed_count > 0:
+            reasons.append(f"Policy rejects evidence with changed_count={changed_count} (must be 0)")
+        if added_count < 0:
+            reasons.append(f"Policy rejects evidence with added_count={added_count} (must be >= 0)")
+
+    if evidence_valid and removed_count == 0 and changed_count == 0 and added_count >= 0:
+        status = "accepted"
+        reasons = ["Evidence pack passes calibration registry diff acceptance policy"]
+    elif not evidence_valid:
+        status = "invalid"
+    else:
+        status = "rejected"
+
+    decision_hash = _compute_decision_hash(
+        policy_id=policy_id,
+        policy_version=policy_version,
+        diff_hash=verify_result.get("diff_hash"),
+        before_snapshot_hash=verify_result.get("before_snapshot_hash"),
+        after_snapshot_hash=verify_result.get("after_snapshot_hash"),
+        added_count=added_count,
+        removed_count=removed_count,
+        changed_count=changed_count,
+        unchanged_count=unchanged_count,
+        status=status,
+        reasons=reasons,
+    )
+
+    return {
+        "status": status,
+        "reasons": reasons,
+        "evidence_dir": str(evidence_dir),
+        "policy_id": policy_id,
+        "policy_version": policy_version,
+        "diff_hash": verify_result.get("diff_hash"),
+        "before_snapshot_hash": verify_result.get("before_snapshot_hash"),
+        "after_snapshot_hash": verify_result.get("after_snapshot_hash"),
+        "added_count": added_count,
+        "removed_count": removed_count,
+        "changed_count": changed_count,
+        "unchanged_count": unchanged_count,
+        "evidence_valid": evidence_valid,
+        "sha256sums_valid": verify_result.get("sha256sums_valid", False),
+        "json_valid": verify_result.get("json_valid", False),
+        "markdown_valid": verify_result.get("markdown_valid", False),
+        "diff_hash_valid": verify_result.get("diff_hash_valid", False),
+        "evidence_cross_checks_valid": verify_result.get("evidence_cross_checks_valid", False),
+        "decision_hash": decision_hash,
+    }
+
+
+def cmd_calibration_label_registry_snapshot_diff_export_accept(args: argparse.Namespace) -> int:
+    result = _accept_diff_export_evidence(Path(args.evidence_dir))
+    if args.output == "markdown":
+        print(_render_calibration_label_registry_snapshot_diff_export_accept_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "accepted" else 1
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -2730,6 +2862,11 @@ def _add_calibration_label_registry_snapshot_diff_export_verify_arguments(parser
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 
+def _add_calibration_label_registry_snapshot_diff_export_accept_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--evidence-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -2766,6 +2903,7 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-label-registry-snapshot-diff": cmd_calibration_label_registry_snapshot_diff,
         "calibration-label-registry-snapshot-diff-export": cmd_calibration_label_registry_snapshot_diff_export,
         "calibration-label-registry-snapshot-diff-export-verify": cmd_calibration_label_registry_snapshot_diff_export_verify,
+        "calibration-label-registry-snapshot-diff-export-accept": cmd_calibration_label_registry_snapshot_diff_export_accept,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -2824,6 +2962,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_registry_snapshot_diff_export_arguments(p)
         if name == "calibration-label-registry-snapshot-diff-export-verify":
             _add_calibration_label_registry_snapshot_diff_export_verify_arguments(p)
+        if name == "calibration-label-registry-snapshot-diff-export-accept":
+            _add_calibration_label_registry_snapshot_diff_export_accept_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

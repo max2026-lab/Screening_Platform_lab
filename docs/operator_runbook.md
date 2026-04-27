@@ -342,3 +342,11 @@ The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase24_calibration_registry_snapshot_diff_export_verify_release.ps1
 ```
+
+## Phase 25 Calibration Registry Snapshot Diff Acceptance
+
+Apply deterministic acceptance policy to a verified registry diff evidence pack offline without DB access:
+
+```powershell
+lawful-anomaly calibration-label-registry-snapshot-diff-export-accept --evidence-dir <diff_evidence_dir>
+```
