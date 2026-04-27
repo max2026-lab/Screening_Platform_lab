@@ -863,7 +863,7 @@ conn.close()
         "--before-snapshot-dir", $badArtifactsDir,
         "--after-snapshot-dir", $plusOneSnapshotDir
     )
-    Assert-InvalidDiffResult -Result $r -Context "Malformed artifacts string"
+    Assert-InvalidDiffResult -Result $r -Context "Malformed artifacts string" | Out-Null
 
     # Inject coordinate field into after first artifact
     $coordDir = Copy-Snapshot -Name "coord-injected" -SourceDir $plusOneSnapshotDir
