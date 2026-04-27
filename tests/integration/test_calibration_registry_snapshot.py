@@ -3206,38 +3206,56 @@ def test_calibration_signoff_evidence_export_accepted(tmp_path: Path, monkeypatc
             "--evidence-dir", str(evidence_dir),
             "--output-dir", str(output_dir),
         ]) == 0
-    result = json.loads(output.getvalue())
-    assert result["status"] == "ready"
-    assert result["signoff_evidence_type"] == "calibration_signoff_evidence"
-    assert result["signoff_evidence_version"] == 1
-    assert result["acceptance_status"] == "accepted"
-    assert result["policy_id"] == "calibration_registry_diff_acceptance_v1"
-    assert result["policy_version"] == 1
-    assert result["evidence_valid"] is True
-    assert result["sha256sums_valid"] is True
-    assert result["json_valid"] is True
-    assert result["markdown_valid"] is True
-    assert result["diff_hash_valid"] is True
-    assert result["evidence_cross_checks_valid"] is True
-    assert "decision_hash" in result
-    assert "signoff_hash" in result
-    assert result["signoff_hash"] is not None
-    assert "diff_hash" in result
-    assert "before_snapshot_hash" in result
-    assert "after_snapshot_hash" in result
-    assert "added_count" in result
-    assert "removed_count" in result
-    assert "changed_count" in result
-    assert "unchanged_count" in result
-    assert "reasons" in result
-    assert "files" in result
-    assert "file_hashes" in result
-    assert "calibration_signoff_evidence.json" in result["file_hashes"]
-    assert "calibration_signoff_evidence.md" in result["file_hashes"]
-    assert "SHA256SUMS.txt" in result["file_hashes"]
+    stdout_result = json.loads(output.getvalue())
+    assert stdout_result["status"] == "ready"
+    assert stdout_result["signoff_evidence_type"] == "calibration_signoff_evidence"
+    assert stdout_result["signoff_evidence_version"] == 1
+    assert stdout_result["acceptance_status"] == "accepted"
+    assert stdout_result["policy_id"] == "calibration_registry_diff_acceptance_v1"
+    assert stdout_result["policy_version"] == 1
+    assert stdout_result["evidence_valid"] is True
+    assert stdout_result["sha256sums_valid"] is True
+    assert stdout_result["json_valid"] is True
+    assert stdout_result["markdown_valid"] is True
+    assert stdout_result["diff_hash_valid"] is True
+    assert stdout_result["evidence_cross_checks_valid"] is True
+    assert "decision_hash" in stdout_result
+    assert "signoff_hash" in stdout_result
+    assert stdout_result["signoff_hash"] is not None
+    assert "diff_hash" in stdout_result
+    assert "before_snapshot_hash" in stdout_result
+    assert "after_snapshot_hash" in stdout_result
+    assert "added_count" in stdout_result
+    assert "removed_count" in stdout_result
+    assert "changed_count" in stdout_result
+    assert "unchanged_count" in stdout_result
+    assert "reasons" in stdout_result
+    assert "files" in stdout_result
+    assert set(stdout_result["files"]) == {
+        "calibration_signoff_evidence.json",
+        "calibration_signoff_evidence.md",
+        "SHA256SUMS.txt",
+    }
+    assert "source_evidence_file_hashes" in stdout_result
+    assert "bundle_file_manifest_policy" in stdout_result
     assert (output_dir / "calibration_signoff_evidence.json").exists()
     assert (output_dir / "calibration_signoff_evidence.md").exists()
     assert (output_dir / "SHA256SUMS.txt").exists()
+
+    # Disk must match stdout
+    disk_json = json.loads((output_dir / "calibration_signoff_evidence.json").read_text(encoding="utf-8"))
+    assert disk_json["status"] == stdout_result["status"]
+    assert disk_json["acceptance_status"] == stdout_result["acceptance_status"]
+    assert disk_json["decision_hash"] == stdout_result["decision_hash"]
+    assert disk_json["signoff_hash"] == stdout_result["signoff_hash"]
+    assert disk_json["diff_hash"] == stdout_result["diff_hash"]
+    assert disk_json["added_count"] == stdout_result["added_count"]
+    assert disk_json["removed_count"] == stdout_result["removed_count"]
+    assert disk_json["changed_count"] == stdout_result["changed_count"]
+    assert disk_json["unchanged_count"] == stdout_result["unchanged_count"]
+    assert disk_json["files"] == stdout_result["files"]
+    assert disk_json["source_evidence_file_hashes"] == stdout_result["source_evidence_file_hashes"]
+    assert disk_json["bundle_file_manifest_policy"] == stdout_result["bundle_file_manifest_policy"]
 
 
 def test_calibration_signoff_evidence_export_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3280,13 +3298,22 @@ def test_calibration_signoff_evidence_export_rejected(tmp_path: Path, monkeypatc
             "--evidence-dir", str(evidence_dir),
             "--output-dir", str(output_dir),
         ]) == 1
-    result = json.loads(output.getvalue())
-    assert result["status"] == "rejected"
-    assert result["acceptance_status"] == "rejected"
-    assert result["evidence_valid"] is True
-    assert result["removed_count"] == 1
-    assert "signoff_hash" in result
+    stdout_result = json.loads(output.getvalue())
+    assert stdout_result["status"] == "rejected"
+    assert stdout_result["acceptance_status"] == "rejected"
+    assert stdout_result["evidence_valid"] is True
+    assert stdout_result["removed_count"] == 1
+    assert "signoff_hash" in stdout_result
     assert (output_dir / "calibration_signoff_evidence.json").exists()
+    disk_json = json.loads((output_dir / "calibration_signoff_evidence.json").read_text(encoding="utf-8"))
+    assert disk_json["status"] == stdout_result["status"]
+    assert disk_json["acceptance_status"] == stdout_result["acceptance_status"]
+    assert disk_json["signoff_hash"] == stdout_result["signoff_hash"]
+    assert set(disk_json["files"]) == {
+        "calibration_signoff_evidence.json",
+        "calibration_signoff_evidence.md",
+        "SHA256SUMS.txt",
+    }
 
 
 def test_calibration_signoff_evidence_export_invalid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3300,12 +3327,21 @@ def test_calibration_signoff_evidence_export_invalid(tmp_path: Path, monkeypatch
             "--evidence-dir", str(evidence_dir),
             "--output-dir", str(output_dir),
         ]) == 1
-    result = json.loads(output.getvalue())
-    assert result["status"] == "invalid"
-    assert result["acceptance_status"] == "invalid"
-    assert result["evidence_valid"] is False
-    assert "signoff_hash" in result
+    stdout_result = json.loads(output.getvalue())
+    assert stdout_result["status"] == "invalid"
+    assert stdout_result["acceptance_status"] == "invalid"
+    assert stdout_result["evidence_valid"] is False
+    assert "signoff_hash" in stdout_result
     assert (output_dir / "calibration_signoff_evidence.json").exists()
+    disk_json = json.loads((output_dir / "calibration_signoff_evidence.json").read_text(encoding="utf-8"))
+    assert disk_json["status"] == stdout_result["status"]
+    assert disk_json["acceptance_status"] == stdout_result["acceptance_status"]
+    assert disk_json["signoff_hash"] == stdout_result["signoff_hash"]
+    assert set(disk_json["files"]) == {
+        "calibration_signoff_evidence.json",
+        "calibration_signoff_evidence.md",
+        "SHA256SUMS.txt",
+    }
 
 
 def test_calibration_signoff_evidence_export_offline_no_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3384,6 +3420,11 @@ def test_calibration_signoff_evidence_export_sha256sums_actual_hashes(tmp_path: 
     expected_md_hash = hashlib.sha256(md_text.encode("utf-8")).hexdigest()
     assert expected_json_hash in sums_text
     assert expected_md_hash in sums_text
+    # Verify JSON does not claim to contain bundle file hashes
+    disk_json = json.loads(json_text)
+    assert "file_hashes" not in disk_json or disk_json.get("file_hashes") == {}
+    assert "source_evidence_file_hashes" in disk_json
+    assert "bundle_file_manifest_policy" in disk_json
 
 
 def test_calibration_signoff_evidence_export_hash_deterministic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

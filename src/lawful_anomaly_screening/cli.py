@@ -2805,8 +2805,13 @@ def _export_signoff_evidence(evidence_dir: Path, output_dir: Path) -> dict:
         "markdown_valid": acceptance.get("markdown_valid", False),
         "diff_hash_valid": acceptance.get("diff_hash_valid", False),
         "evidence_cross_checks_valid": acceptance.get("evidence_cross_checks_valid", False),
-        "files": [],
-        "file_hashes": {},
+        "files": [
+            "calibration_signoff_evidence.json",
+            "calibration_signoff_evidence.md",
+            "SHA256SUMS.txt",
+        ],
+        "source_evidence_file_hashes": acceptance.get("file_hashes", {}),
+        "bundle_file_manifest_policy": "Bundle file content hashes are recorded in SHA256SUMS.txt to avoid self-referential JSON hashing.",
         "signoff_hash": signoff_hash,
     }
 
@@ -2847,18 +2852,6 @@ def cmd_calibration_signoff_evidence_export(args: argparse.Namespace) -> int:
     md_hash = _sha256_text(md_text)
     sums_text = f"{json_hash}  calibration_signoff_evidence.json\n{md_hash}  calibration_signoff_evidence.md\n"
     sums_path.write_text(sums_text, encoding="utf-8", newline="\n")
-
-    # Update result with files and file_hashes for output
-    result["files"] = [
-        "calibration_signoff_evidence.json",
-        "calibration_signoff_evidence.md",
-        "SHA256SUMS.txt",
-    ]
-    result["file_hashes"] = {
-        "calibration_signoff_evidence.json": json_hash,
-        "calibration_signoff_evidence.md": md_hash,
-        "SHA256SUMS.txt": _sha256_text(sums_text),
-    }
 
     if args.output == "markdown":
         print(_render_calibration_signoff_evidence_markdown(result), end="")
