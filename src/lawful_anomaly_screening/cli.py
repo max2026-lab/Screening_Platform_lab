@@ -2195,6 +2195,265 @@ def cmd_calibration_label_registry_snapshot_diff_export(args: argparse.Namespace
     return 0
 
 
+def _render_calibration_label_registry_snapshot_diff_export_verify_markdown(result: dict) -> str:
+    lines = [
+        "# Calibration Registry Snapshot Diff Export Verification",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Diff hash: `{result.get('diff_hash', '')}`",
+        f"- Before snapshot hash: `{result.get('before_snapshot_hash', '')}`",
+        f"- After snapshot hash: `{result.get('after_snapshot_hash', '')}`",
+        f"- Added: `{result.get('added_count', 0)}`",
+        f"- Removed: `{result.get('removed_count', 0)}`",
+        f"- Changed: `{result.get('changed_count', 0)}`",
+        f"- Unchanged: `{result.get('unchanged_count', 0)}`",
+        "",
+        "## Files",
+        "",
+    ]
+    for file_name in result.get("files", []):
+        lines.append(f"- `{file_name}`")
+    lines.extend(["", "## Reasons", ""])
+    lines.extend(f"- {reason}" for reason in result["reasons"])
+    return "\n".join(lines) + "\n"
+
+
+def _verify_diff_export_evidence(evidence_dir: Path) -> dict:
+    files = [
+        "calibration_registry_snapshot_diff.json",
+        "calibration_registry_snapshot_diff.md",
+        "SHA256SUMS.txt",
+    ]
+    reasons: list[str] = []
+    file_hashes: dict[str, str] = {}
+    texts: dict[str, str] = {}
+
+    for file_name in files:
+        path = evidence_dir / file_name
+        if not path.exists():
+            reasons.append(f"Missing required evidence file: {file_name}")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            reasons.append(f"Evidence file is not valid UTF-8 text: {file_name}")
+            continue
+        texts[file_name] = text
+        file_hashes[file_name] = _sha256_text(text)
+
+    sha256sums_valid = True
+    sha256_entries: dict[str, str] = {}
+    if "SHA256SUMS.txt" in texts:
+        for raw_line in texts["SHA256SUMS.txt"].splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            match = re.fullmatch(r"([0-9a-f]{64})\s{2}(.+)", line)
+            if match is None:
+                sha256sums_valid = False
+                reasons.append(f"SHA256SUMS.txt contains malformed line: {raw_line}")
+                continue
+            sha256_entries[match.group(2)] = match.group(1)
+
+        required_checksum_files = {
+            "calibration_registry_snapshot_diff.json",
+            "calibration_registry_snapshot_diff.md",
+        }
+        for file_name in sorted(required_checksum_files.difference(sha256_entries)):
+            sha256sums_valid = False
+            reasons.append(f"SHA256SUMS.txt missing hash entry for {file_name}")
+        if "SHA256SUMS.txt" in sha256_entries:
+            sha256sums_valid = False
+            reasons.append("SHA256SUMS.txt must not contain a self-hash line")
+        for file_name in sorted(required_checksum_files.intersection(file_hashes)):
+            if sha256_entries.get(file_name) != file_hashes[file_name]:
+                sha256sums_valid = False
+                reasons.append(f"SHA256SUMS.txt hash mismatch for {file_name}")
+    else:
+        sha256sums_valid = False
+
+    evidence_json = None
+    json_valid = True
+    if "calibration_registry_snapshot_diff.json" in texts:
+        try:
+            evidence_json = json.loads(texts["calibration_registry_snapshot_diff.json"])
+            if not isinstance(evidence_json, dict):
+                reasons.append("Evidence JSON must contain a JSON object")
+                evidence_json = None
+                json_valid = False
+        except json.JSONDecodeError:
+            reasons.append("Evidence file is not valid JSON: calibration_registry_snapshot_diff.json")
+            json_valid = False
+
+    markdown_valid = True
+    md_text = texts.get("calibration_registry_snapshot_diff.md", "")
+    if md_text:
+        required_md_sections = [
+            "# Calibration Registry Snapshot Diff",
+            "Diff hash:",
+            "Before snapshot hash:",
+            "After snapshot hash:",
+            "Added:",
+            "Removed:",
+            "Changed:",
+            "Unchanged:",
+            "## Files",
+            "## Reasons",
+            "## Added Artifacts",
+            "## Removed Artifacts",
+            "## Changed Artifacts",
+            "## Unchanged Artifacts",
+        ]
+        for section in required_md_sections:
+            if section not in md_text:
+                markdown_valid = False
+                reasons.append(f"Evidence markdown missing required section: {section}")
+
+    diff_hash_valid = True
+    evidence_cross_checks_valid = True
+    diff_hash = None
+    before_snapshot_hash = None
+    after_snapshot_hash = None
+    added_count = 0
+    removed_count = 0
+    changed_count = 0
+    unchanged_count = 0
+
+    if evidence_json is not None:
+        if evidence_json.get("snapshot_diff_type") != "calibration_registry_snapshot_diff":
+            json_valid = False
+            reasons.append("JSON snapshot_diff_type must be calibration_registry_snapshot_diff")
+        if evidence_json.get("snapshot_diff_version") != 1:
+            json_valid = False
+            reasons.append("JSON snapshot_diff_version must be 1")
+        if evidence_json.get("status") != "compared":
+            json_valid = False
+            reasons.append("JSON status must be compared")
+        if evidence_json.get("before_valid") is not True:
+            json_valid = False
+            reasons.append("JSON before_valid must be true")
+        if evidence_json.get("after_valid") is not True:
+            json_valid = False
+            reasons.append("JSON after_valid must be true")
+
+        diff_hash = evidence_json.get("diff_hash")
+        before_snapshot_hash = evidence_json.get("before_snapshot_hash")
+        after_snapshot_hash = evidence_json.get("after_snapshot_hash")
+
+        added_count = evidence_json.get("added_count", 0)
+        removed_count = evidence_json.get("removed_count", 0)
+        changed_count = evidence_json.get("changed_count", 0)
+        unchanged_count = evidence_json.get("unchanged_count", 0)
+
+        if not isinstance(added_count, int):
+            json_valid = False
+            reasons.append("JSON added_count must be an integer")
+        if not isinstance(removed_count, int):
+            json_valid = False
+            reasons.append("JSON removed_count must be an integer")
+        if not isinstance(changed_count, int):
+            json_valid = False
+            reasons.append("JSON changed_count must be an integer")
+        if not isinstance(unchanged_count, int):
+            json_valid = False
+            reasons.append("JSON unchanged_count must be an integer")
+
+        actual_added = evidence_json.get("added", [])
+        actual_removed = evidence_json.get("removed", [])
+        actual_changed = evidence_json.get("changed", [])
+        actual_unchanged = evidence_json.get("unchanged", [])
+
+        if isinstance(actual_added, list) and len(actual_added) != added_count:
+            evidence_cross_checks_valid = False
+            reasons.append(f"JSON added length ({len(actual_added)}) does not match added_count ({added_count})")
+        if isinstance(actual_removed, list) and len(actual_removed) != removed_count:
+            evidence_cross_checks_valid = False
+            reasons.append(f"JSON removed length ({len(actual_removed)}) does not match removed_count ({removed_count})")
+        if isinstance(actual_changed, list) and len(actual_changed) != changed_count:
+            evidence_cross_checks_valid = False
+            reasons.append(f"JSON changed length ({len(actual_changed)}) does not match changed_count ({changed_count})")
+        if isinstance(actual_unchanged, list) and len(actual_unchanged) != unchanged_count:
+            evidence_cross_checks_valid = False
+            reasons.append(f"JSON unchanged length ({len(actual_unchanged)}) does not match unchanged_count ({unchanged_count})")
+
+        if isinstance(actual_changed, list):
+            for i, row in enumerate(actual_changed):
+                changed_fields = row.get("changed_fields", [])
+                if changed_fields != sorted(changed_fields):
+                    evidence_cross_checks_valid = False
+                    reasons.append(f"Changed row {i} changed_fields are not sorted alphabetically")
+
+        # Safety checks: no full label payload or coordinate fields
+        forbidden_label_fields = {"labels", "label_ids"}
+        forbidden_coordinate_fields = {
+            "lon", "lat", "longitude", "latitude", "geometry", "centroid", "bbox"
+        }
+        json_str = texts.get("calibration_registry_snapshot_diff.json", "")
+        for field in forbidden_label_fields:
+            if f'"{field}"' in json_str:
+                evidence_cross_checks_valid = False
+                reasons.append(f"Evidence JSON contains forbidden label payload field: {field}")
+        for field in forbidden_coordinate_fields:
+            if f'"{field}"' in json_str:
+                evidence_cross_checks_valid = False
+                reasons.append(f"Evidence JSON contains forbidden coordinate field: {field}")
+
+        if md_text:
+            for field in forbidden_label_fields:
+                if field in md_text:
+                    evidence_cross_checks_valid = False
+                    reasons.append(f"Evidence markdown contains forbidden label payload field: {field}")
+            for field in forbidden_coordinate_fields:
+                if field in md_text:
+                    evidence_cross_checks_valid = False
+                    reasons.append(f"Evidence markdown contains forbidden coordinate field: {field}")
+
+    status = (
+        "valid"
+        if (
+            sha256sums_valid
+            and json_valid
+            and markdown_valid
+            and evidence_cross_checks_valid
+            and evidence_json is not None
+            and "calibration_registry_snapshot_diff.md" in texts
+            and "SHA256SUMS.txt" in texts
+        )
+        else "invalid"
+    )
+    if status == "valid":
+        reasons = ["Calibration registry snapshot diff evidence pack is valid"]
+
+    return {
+        "status": status,
+        "reasons": reasons,
+        "evidence_dir": str(evidence_dir),
+        "diff_hash": diff_hash,
+        "before_snapshot_hash": before_snapshot_hash,
+        "after_snapshot_hash": after_snapshot_hash,
+        "added_count": added_count,
+        "removed_count": removed_count,
+        "changed_count": changed_count,
+        "unchanged_count": unchanged_count,
+        "files": files,
+        "file_hashes": file_hashes,
+        "sha256sums_valid": sha256sums_valid,
+        "json_valid": json_valid,
+        "markdown_valid": markdown_valid,
+        "diff_hash_valid": diff_hash_valid,
+        "evidence_cross_checks_valid": evidence_cross_checks_valid,
+    }
+
+
+def cmd_calibration_label_registry_snapshot_diff_export_verify(args: argparse.Namespace) -> int:
+    result = _verify_diff_export_evidence(Path(args.evidence_dir))
+    if args.output == "markdown":
+        print(_render_calibration_label_registry_snapshot_diff_export_verify_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "valid" else 1
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -2385,6 +2644,11 @@ def _add_calibration_label_registry_snapshot_diff_export_arguments(parser: argpa
     parser.add_argument("--overwrite", action="store_true")
 
 
+def _add_calibration_label_registry_snapshot_diff_export_verify_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--evidence-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -2420,6 +2684,7 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-label-registry-snapshot-verify": cmd_calibration_label_registry_snapshot_verify,
         "calibration-label-registry-snapshot-diff": cmd_calibration_label_registry_snapshot_diff,
         "calibration-label-registry-snapshot-diff-export": cmd_calibration_label_registry_snapshot_diff_export,
+        "calibration-label-registry-snapshot-diff-export-verify": cmd_calibration_label_registry_snapshot_diff_export_verify,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -2476,6 +2741,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_registry_snapshot_diff_arguments(p)
         if name == "calibration-label-registry-snapshot-diff-export":
             _add_calibration_label_registry_snapshot_diff_export_arguments(p)
+        if name == "calibration-label-registry-snapshot-diff-export-verify":
+            _add_calibration_label_registry_snapshot_diff_export_verify_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

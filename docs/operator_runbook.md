@@ -325,3 +325,11 @@ Export a deterministic offline diff evidence pack of two verified calibration re
 ```powershell
 lawful-anomaly calibration-label-registry-snapshot-diff-export --before-snapshot-dir <old_snapshot_dir> --after-snapshot-dir <new_snapshot_dir> --output-dir <diff_evidence_dir>
 ```
+
+## Phase 24 Calibration Registry Snapshot Diff Export Verification
+
+Verify a saved calibration registry snapshot diff evidence pack offline without DB access:
+
+```powershell
+lawful-anomaly calibration-label-registry-snapshot-diff-export-verify --evidence-dir <diff_evidence_dir>
+```
