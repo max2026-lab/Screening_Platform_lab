@@ -137,6 +137,14 @@ function Assert-TextIncludes {
     }
 }
 
+function Get-SHA256Hex {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $FilePath
+    )
+    return (Get-FileHash $FilePath -Algorithm SHA256).Hash.ToLower()
+}
+
 $helpResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @("--help")
 if ($helpResult.ExitCode -ne 0) {
     $details = if ($helpResult.StdErr) { $helpResult.StdErr } else { $helpResult.StdOut }
@@ -535,7 +543,10 @@ try {
             [string] $EvidenceDir,
 
             [Parameter(Mandatory = $true)]
-            [string] $Context
+            [string] $Context,
+
+            [Parameter(Mandatory = $false)]
+            [object] $StdoutResult
         )
         $jsonPath = Join-Path $EvidenceDir "calibration_registry_snapshot_diff.json"
         $mdPath = Join-Path $EvidenceDir "calibration_registry_snapshot_diff.md"
@@ -561,7 +572,39 @@ try {
             throw "$Context evidence JSON expected snapshot_diff_version=1"
         }
 
+        $actualJsonHash = Get-SHA256Hex -FilePath $jsonPath
+        $actualMdHash = Get-SHA256Hex -FilePath $mdPath
+        $actualSumsHash = Get-SHA256Hex -FilePath $sumsPath
+
+        # Evidence JSON must contain file_hashes entries for all three files
+        # (Evidence JSON uses canonical hashes internally to avoid circular self-reference)
+        foreach ($fileName in @("calibration_registry_snapshot_diff.json", "calibration_registry_snapshot_diff.md", "SHA256SUMS.txt")) {
+            if (-not $evidenceJson.file_hashes.PSObject.Properties[$fileName]) {
+                throw "$Context evidence JSON file_hashes missing $fileName"
+            }
+        }
+
+        # Stdout file_hashes must match actual file contents for all three files
+        if ($null -ne $StdoutResult) {
+            if ([string]$StdoutResult.file_hashes."calibration_registry_snapshot_diff.json" -ne $actualJsonHash) {
+                throw "$Context stdout file_hash mismatch for .json"
+            }
+            if ([string]$StdoutResult.file_hashes."calibration_registry_snapshot_diff.md" -ne $actualMdHash) {
+                throw "$Context stdout file_hash mismatch for .md"
+            }
+            if ([string]$StdoutResult.file_hashes."SHA256SUMS.txt" -ne $actualSumsHash) {
+                throw "$Context stdout file_hash mismatch for SHA256SUMS.txt"
+            }
+        }
+
+        # SHA256SUMS.txt must contain actual hashes and no self-hash
         $sumsText = Get-Content $sumsPath -Raw
+        if (-not $sumsText.Contains("$actualJsonHash  calibration_registry_snapshot_diff.json")) {
+            throw "$Context SHA256SUMS.txt missing correct hash for .json"
+        }
+        if (-not $sumsText.Contains("$actualMdHash  calibration_registry_snapshot_diff.md")) {
+            throw "$Context SHA256SUMS.txt missing correct hash for .md"
+        }
         if ($sumsText.Contains("SHA256SUMS.txt")) {
             throw "$Context SHA256SUMS.txt must not contain a self-hash line"
         }
@@ -615,7 +658,7 @@ try {
         }
     }
 
-    $emptyEvidenceJson = Assert-EvidencePack -EvidenceDir $evidenceEmptyEmpty -Context "Empty vs empty"
+    $emptyEvidenceJson = Assert-EvidencePack -EvidenceDir $evidenceEmptyEmpty -Context "Empty vs empty" -StdoutResult $emptyDiffExport
     if ([int]$emptyEvidenceJson.unchanged_count -ne 0) { throw "Empty evidence JSON expected unchanged_count=0" }
 
     # ============================================================
@@ -637,7 +680,7 @@ try {
     if ([int]$fullDiffExport.unchanged_count -ne 3) { throw "Full diff export expected unchanged_count=3" }
     if (-not [string]$fullDiffExport.diff_hash) { throw "Full diff export expected diff_hash non-empty" }
 
-    $fullEvidenceJson = Assert-EvidencePack -EvidenceDir $evidenceFullFull -Context "Full vs full"
+    $fullEvidenceJson = Assert-EvidencePack -EvidenceDir $evidenceFullFull -Context "Full vs full" -StdoutResult $fullDiffExport
     if ([int]$fullEvidenceJson.unchanged_count -ne 3) { throw "Full evidence JSON expected unchanged_count=3" }
 
     # ============================================================
@@ -656,7 +699,7 @@ try {
     if ([int]$emptyFullExport.changed_count -ne 0) { throw "Empty vs full diff export expected changed_count=0" }
     if ([int]$emptyFullExport.unchanged_count -ne 0) { throw "Empty vs full diff export expected unchanged_count=0" }
 
-    $emptyFullEvidenceJson = Assert-EvidencePack -EvidenceDir $evidenceEmptyFull -Context "Empty vs full"
+    $emptyFullEvidenceJson = Assert-EvidencePack -EvidenceDir $evidenceEmptyFull -Context "Empty vs full" -StdoutResult $emptyFullExport
     $addedStatuses = @($emptyFullEvidenceJson.added | ForEach-Object { [string]$_.artifact_status })
     if ("ready" -notin $addedStatuses -or "incomplete" -notin $addedStatuses -or "fail" -notin $addedStatuses) {
         throw "Empty vs full evidence expected added statuses to include ready, incomplete, fail"
@@ -681,7 +724,7 @@ try {
     if ([int]$fullEmptyExport.changed_count -ne 0) { throw "Full vs empty diff export expected changed_count=0" }
     if ([int]$fullEmptyExport.unchanged_count -ne 0) { throw "Full vs empty diff export expected unchanged_count=0" }
 
-    $fullEmptyEvidenceJson = Assert-EvidencePack -EvidenceDir $evidenceFullEmpty -Context "Full vs empty"
+    $fullEmptyEvidenceJson = Assert-EvidencePack -EvidenceDir $evidenceFullEmpty -Context "Full vs empty" -StdoutResult $fullEmptyExport
     $removedStatuses = @($fullEmptyEvidenceJson.removed | ForEach-Object { [string]$_.artifact_status })
     if ("ready" -notin $removedStatuses -or "incomplete" -notin $removedStatuses -or "fail" -notin $removedStatuses) {
         throw "Full vs empty evidence expected removed statuses to include ready, incomplete, fail"
@@ -709,62 +752,9 @@ try {
         throw "Plus-one diff export expected diff_hash different from full-vs-full diff_hash"
     }
 
-    $plusOneEvidenceJson = Assert-EvidencePack -EvidenceDir $evidencePlusOne -Context "Plus-one"
+    $plusOneEvidenceJson = Assert-EvidencePack -EvidenceDir $evidencePlusOne -Context "Plus-one" -StdoutResult $plusOneDiffExport
     if ([string]$plusOneEvidenceJson.added[0].run_id -ne "phase23-diff-export-ready-002") {
         throw "Plus-one evidence expected added run_id=phase23-diff-export-ready-002"
-    }
-
-    # ============================================================
-    # EVIDENCE PACK FILE_HASHES MATCH ACTUAL FILE CONTENTS
-    # ============================================================
-    foreach ($evidenceDir in @($evidenceEmptyEmpty, $evidenceFullFull, $evidenceEmptyFull, $evidenceFullEmpty, $evidencePlusOne)) {
-        $context = (Split-Path $evidenceDir -Leaf)
-        $jsonPath = Join-Path $evidenceDir "calibration_registry_snapshot_diff.json"
-        $mdPath = Join-Path $evidenceDir "calibration_registry_snapshot_diff.md"
-        $sumsPath = Join-Path $evidenceDir "SHA256SUMS.txt"
-
-        $actualJsonHash = (Get-FileHash $jsonPath -Algorithm SHA256).Hash.ToLower()
-        $actualMdHash = (Get-FileHash $mdPath -Algorithm SHA256).Hash.ToLower()
-        $actualSumsHash = (Get-FileHash $sumsPath -Algorithm SHA256).Hash.ToLower()
-
-        # Verify SHA256SUMS.txt matches actual file contents
-        $sumsText = Get-Content $sumsPath -Raw
-        if (-not $sumsText.Contains("$actualJsonHash  calibration_registry_snapshot_diff.json")) {
-            throw "$context SHA256SUMS.txt missing correct hash for .json"
-        }
-        if (-not $sumsText.Contains("$actualMdHash  calibration_registry_snapshot_diff.md")) {
-            throw "$context SHA256SUMS.txt missing correct hash for .md"
-        }
-
-        # Verify evidence JSON contains all three file_hashes entries
-        $evidenceJson = Get-Content $jsonPath -Raw | ConvertFrom-Json
-        foreach ($fileName in @("calibration_registry_snapshot_diff.json", "calibration_registry_snapshot_diff.md", "SHA256SUMS.txt")) {
-            if (-not $evidenceJson.file_hashes.PSObject.Properties[$fileName]) {
-                throw "$context evidence JSON file_hashes missing $fileName"
-            }
-        }
-    }
-
-    # Verify stdout file_hashes match actual files for a representative run
-    $tmpEvidenceDir = Join-Path $invalidFlowRoot "tmp-filehash-verify"
-    $stdoutResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
-        "calibration-label-registry-snapshot-diff-export",
-        "--before-snapshot-dir", $fullSnapshotDir,
-        "--after-snapshot-dir", $plusOneSnapshotDir,
-        "--output-dir", $tmpEvidenceDir
-    )
-    $stdoutParsed = $stdoutResult.StdOut | ConvertFrom-Json
-    $tmpJsonHash = (Get-FileHash (Join-Path $tmpEvidenceDir "calibration_registry_snapshot_diff.json") -Algorithm SHA256).Hash.ToLower()
-    $tmpMdHash = (Get-FileHash (Join-Path $tmpEvidenceDir "calibration_registry_snapshot_diff.md") -Algorithm SHA256).Hash.ToLower()
-    $tmpSumsHash = (Get-FileHash (Join-Path $tmpEvidenceDir "SHA256SUMS.txt") -Algorithm SHA256).Hash.ToLower()
-    if ([string]$stdoutParsed.file_hashes."calibration_registry_snapshot_diff.json" -ne $tmpJsonHash) {
-        throw "Stdout file_hash mismatch for .json"
-    }
-    if ([string]$stdoutParsed.file_hashes."calibration_registry_snapshot_diff.md" -ne $tmpMdHash) {
-        throw "Stdout file_hash mismatch for .md"
-    }
-    if ([string]$stdoutParsed.file_hashes."SHA256SUMS.txt" -ne $tmpSumsHash) {
-        throw "Stdout file_hash mismatch for SHA256SUMS.txt"
     }
 
     # ============================================================
@@ -781,6 +771,7 @@ try {
     if ([string]$plusOneDiffExport2.diff_hash -ne [string]$plusOneDiffExport.diff_hash) {
         throw "Plus-one diff export expected same diff_hash on repeated run"
     }
+    Assert-EvidencePack -EvidenceDir $evidencePlusOne2 -Context "Plus-one repeat" -StdoutResult $plusOneDiffExport2 | Out-Null
 
     $copiedFull = Join-Path $invalidFlowRoot "copied-full"
     $copiedPlusOne = Join-Path $invalidFlowRoot "copied-plus-one"
@@ -804,6 +795,7 @@ try {
     if ([string]$copiedDiffExport.after_snapshot_dir -eq [string]$plusOneDiffExport.after_snapshot_dir) {
         throw "Copied plus-one diff export expected different after_snapshot_dir"
     }
+    Assert-EvidencePack -EvidenceDir $evidenceCopied -Context "Copied plus-one" -StdoutResult $copiedDiffExport | Out-Null
 
     # Evidence files identical across original and copied snapshots
     $originalJson = Get-Content (Join-Path $evidencePlusOne "calibration_registry_snapshot_diff.json") -Raw
@@ -821,11 +813,12 @@ try {
     # ============================================================
     # MARKDOWN STDOUT SMOKE
     # ============================================================
+    $evidenceMdStdout = Join-Path $invalidFlowRoot "evidence-md-stdout"
     $mdDiffExportResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
         "calibration-label-registry-snapshot-diff-export",
         "--before-snapshot-dir", $fullSnapshotDir,
         "--after-snapshot-dir", $plusOneSnapshotDir,
-        "--output-dir", (Join-Path $invalidFlowRoot "evidence-md-stdout"),
+        "--output-dir", $evidenceMdStdout,
         "--output", "markdown"
     )
     Assert-NoTraceback -Text $mdDiffExportResult.StdErr -Context "Markdown diff export"
@@ -843,6 +836,7 @@ try {
     Assert-TextIncludes -Text $mdDiffExportOut -Expected "Unchanged:" -Context "Markdown diff export"
     Assert-TextIncludes -Text $mdDiffExportOut -Expected "## Files" -Context "Markdown diff export"
     Assert-TextIncludes -Text $mdDiffExportOut -Expected "## Reasons" -Context "Markdown diff export"
+    Assert-EvidencePack -EvidenceDir $evidenceMdStdout -Context "Markdown stdout" | Out-Null
 
     # ============================================================
     # MARKDOWN EVIDENCE FILE SMOKE
@@ -904,17 +898,13 @@ try {
     )
     Assert-NoTraceback -Text $overwriteResult.StdErr -Context "Overwrite output dir"
     if ($overwriteResult.ExitCode -ne 0) { throw "Overwrite output dir expected exit 0" }
+    $overwriteParsed = $overwriteResult.StdOut | ConvertFrom-Json
+    Assert-EvidencePack -EvidenceDir $overwriteDir -Context "Overwrite" -StdoutResult $overwriteParsed | Out-Null
     if (-not (Test-Path (Join-Path $overwriteDir "unrelated.txt"))) {
         throw "Overwrite must preserve unrelated files"
     }
     $replacedJson = Get-Content (Join-Path $overwriteDir "calibration_registry_snapshot_diff.json") -Raw
     if ($replacedJson -eq "old") { throw "Overwrite must replace known output files" }
-    if (-not (Test-Path (Join-Path $overwriteDir "calibration_registry_snapshot_diff.md"))) {
-        throw "Overwrite must write all known output files"
-    }
-    if (-not (Test-Path (Join-Path $overwriteDir "SHA256SUMS.txt"))) {
-        throw "Overwrite must write SHA256SUMS.txt"
-    }
 
     # ============================================================
     # INVALID SNAPSHOT SMOKES
