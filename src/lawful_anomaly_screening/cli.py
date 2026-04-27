@@ -1735,6 +1735,265 @@ def cmd_calibration_label_registry_snapshot_verify(args: argparse.Namespace) -> 
     return 0 if result["status"] == "valid" else 1
 
 
+_COMPARABLE_ARTIFACT_FIELDS = {
+    "artifact_hash",
+    "run_id",
+    "artifact_status",
+    "label_pack_hash",
+    "label_manifest_hash",
+    "label_count",
+    "include_pending",
+    "files",
+    "file_hashes",
+}
+
+
+def _artifact_identity(artifact: dict) -> dict:
+    return {k: artifact[k] for k in _COMPARABLE_ARTIFACT_FIELDS}
+
+
+def _compute_diff_hash(
+    before_snapshot_hash: str | None,
+    after_snapshot_hash: str | None,
+    added: list[dict],
+    removed: list[dict],
+    changed: list[dict],
+    unchanged: list[dict],
+) -> str:
+    return _stable_hash(
+        {
+            "before_snapshot_hash": before_snapshot_hash,
+            "after_snapshot_hash": after_snapshot_hash,
+            "added": added,
+            "removed": removed,
+            "changed": changed,
+            "unchanged": unchanged,
+        }
+    )
+
+
+def _render_calibration_label_registry_snapshot_diff_markdown(result: dict) -> str:
+    lines = [
+        "# Calibration Registry Snapshot Diff",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Diff hash: `{result['diff_hash']}`",
+        f"- Before snapshot hash: `{result['before_snapshot_hash']}`",
+        f"- After snapshot hash: `{result['after_snapshot_hash']}`",
+        f"- Added: `{result['added_count']}`",
+        f"- Removed: `{result['removed_count']}`",
+        f"- Changed: `{result['changed_count']}`",
+        f"- Unchanged: `{result['unchanged_count']}`",
+        "",
+        "## Reasons",
+        "",
+    ]
+    lines.extend(f"- {reason}" for reason in result["reasons"])
+
+    sections = [
+        ("## Added Artifacts", result["added"]),
+        ("## Removed Artifacts", result["removed"]),
+        ("## Changed Artifacts", result["changed"]),
+        ("## Unchanged Artifacts", result["unchanged"]),
+    ]
+    for header, rows in sections:
+        lines.extend(["", header, ""])
+        if not rows:
+            lines.append("- None")
+            continue
+        lines.append("| Run ID | Artifact Hash | Status | Label Count | Include Pending |")
+        lines.append("| --- | --- | --- | ---: | --- |")
+        for row in rows:
+            if "before" in row and "after" in row:
+                run_id = row["after"]["run_id"]
+                artifact_hash = row["artifact_hash"]
+                status = row["after"]["artifact_status"]
+                label_count = row["after"]["label_count"]
+                include_pending = row["after"]["include_pending"]
+            else:
+                run_id = row["run_id"]
+                artifact_hash = row["artifact_hash"]
+                status = row["artifact_status"]
+                label_count = row["label_count"]
+                include_pending = row["include_pending"]
+            lines.append(
+                "| `{run_id}` | `{artifact_hash}` | `{status}` | {label_count} | `{include_pending}` |".format(
+                    run_id=run_id,
+                    artifact_hash=artifact_hash,
+                    status=status,
+                    label_count=label_count,
+                    include_pending=include_pending,
+                )
+            )
+    return "\n".join(lines) + "\n"
+
+
+def _diff_calibration_registry_snapshots(
+    before_dir: Path,
+    after_dir: Path,
+) -> dict:
+    before_verify = _verify_calibration_registry_snapshot(before_dir)
+    after_verify = _verify_calibration_registry_snapshot(after_dir)
+
+    reasons: list[str] = []
+    before_valid = before_verify["status"] == "valid"
+    after_valid = after_verify["status"] == "valid"
+
+    if not before_valid:
+        reasons.append(f"Before snapshot is invalid: {before_dir}")
+        reasons.extend(before_verify["reasons"])
+    if not after_valid:
+        reasons.append(f"After snapshot is invalid: {after_dir}")
+        reasons.extend(after_verify["reasons"])
+
+    if not before_valid or not after_valid:
+        return {
+            "status": "invalid",
+            "reasons": reasons,
+            "before_snapshot_dir": str(before_dir),
+            "after_snapshot_dir": str(after_dir),
+            "before_snapshot_hash": before_verify.get("snapshot_hash"),
+            "after_snapshot_hash": after_verify.get("snapshot_hash"),
+            "before_artifact_count": before_verify.get("artifact_count", 0),
+            "after_artifact_count": after_verify.get("artifact_count", 0),
+            "added_count": 0,
+            "removed_count": 0,
+            "changed_count": 0,
+            "unchanged_count": 0,
+            "diff_hash": None,
+            "added": [],
+            "removed": [],
+            "changed": [],
+            "unchanged": [],
+            "before_valid": before_valid,
+            "after_valid": after_valid,
+        }
+
+    before_json = json.loads((before_dir / "calibration_artifact_registry.json").read_text(encoding="utf-8"))
+    after_json = json.loads((after_dir / "calibration_artifact_registry.json").read_text(encoding="utf-8"))
+
+    before_artifacts = {a["artifact_hash"]: a for a in before_json.get("artifacts", [])}
+    after_artifacts = {a["artifact_hash"]: a for a in after_json.get("artifacts", [])}
+
+    added: list[dict] = []
+    removed: list[dict] = []
+    changed: list[dict] = []
+    unchanged: list[dict] = []
+
+    for artifact_hash, after_artifact in after_artifacts.items():
+        before_artifact = before_artifacts.get(artifact_hash)
+        if before_artifact is None:
+            added.append({
+                "artifact_hash": artifact_hash,
+                "run_id": after_artifact["run_id"],
+                "artifact_status": after_artifact["artifact_status"],
+                "label_count": after_artifact["label_count"],
+                "include_pending": after_artifact["include_pending"],
+            })
+        else:
+            if _artifact_identity(before_artifact) == _artifact_identity(after_artifact):
+                unchanged.append({
+                    "artifact_hash": artifact_hash,
+                    "run_id": after_artifact["run_id"],
+                    "artifact_status": after_artifact["artifact_status"],
+                    "label_count": after_artifact["label_count"],
+                    "include_pending": after_artifact["include_pending"],
+                })
+            else:
+                changed_fields = sorted(
+                    k for k in _COMPARABLE_ARTIFACT_FIELDS
+                    if before_artifact.get(k) != after_artifact.get(k)
+                )
+                changed.append({
+                    "artifact_hash": artifact_hash,
+                    "before": {
+                        "run_id": before_artifact["run_id"],
+                        "artifact_status": before_artifact["artifact_status"],
+                        "label_pack_hash": before_artifact["label_pack_hash"],
+                        "label_manifest_hash": before_artifact["label_manifest_hash"],
+                        "label_count": before_artifact["label_count"],
+                        "include_pending": before_artifact["include_pending"],
+                        "files": before_artifact["files"],
+                        "file_hashes": before_artifact["file_hashes"],
+                    },
+                    "after": {
+                        "run_id": after_artifact["run_id"],
+                        "artifact_status": after_artifact["artifact_status"],
+                        "label_pack_hash": after_artifact["label_pack_hash"],
+                        "label_manifest_hash": after_artifact["label_manifest_hash"],
+                        "label_count": after_artifact["label_count"],
+                        "include_pending": after_artifact["include_pending"],
+                        "files": after_artifact["files"],
+                        "file_hashes": after_artifact["file_hashes"],
+                    },
+                    "changed_fields": changed_fields,
+                })
+
+    for artifact_hash, before_artifact in before_artifacts.items():
+        if artifact_hash not in after_artifacts:
+            removed.append({
+                "artifact_hash": artifact_hash,
+                "run_id": before_artifact["run_id"],
+                "artifact_status": before_artifact["artifact_status"],
+                "label_count": before_artifact["label_count"],
+                "include_pending": before_artifact["include_pending"],
+            })
+
+    sort_key = lambda a: (a.get("run_id", ""), a.get("artifact_hash", ""))
+    added.sort(key=sort_key)
+    removed.sort(key=sort_key)
+    unchanged.sort(key=sort_key)
+    changed.sort(key=lambda a: (a["after"]["run_id"], a["artifact_hash"]))
+
+    before_snapshot_hash = before_json.get("snapshot_hash")
+    after_snapshot_hash = after_json.get("snapshot_hash")
+
+    diff_hash = _compute_diff_hash(
+        before_snapshot_hash=before_snapshot_hash,
+        after_snapshot_hash=after_snapshot_hash,
+        added=added,
+        removed=removed,
+        changed=changed,
+        unchanged=unchanged,
+    )
+
+    reasons = ["Snapshots compared successfully"]
+
+    return {
+        "status": "compared",
+        "reasons": reasons,
+        "before_snapshot_dir": str(before_dir),
+        "after_snapshot_dir": str(after_dir),
+        "before_snapshot_hash": before_snapshot_hash,
+        "after_snapshot_hash": after_snapshot_hash,
+        "before_artifact_count": before_verify["artifact_count"],
+        "after_artifact_count": after_verify["artifact_count"],
+        "added_count": len(added),
+        "removed_count": len(removed),
+        "changed_count": len(changed),
+        "unchanged_count": len(unchanged),
+        "diff_hash": diff_hash,
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "unchanged": unchanged,
+        "before_valid": before_valid,
+        "after_valid": after_valid,
+    }
+
+
+def cmd_calibration_label_registry_snapshot_diff(args: argparse.Namespace) -> int:
+    result = _diff_calibration_registry_snapshots(
+        Path(args.before_snapshot_dir),
+        Path(args.after_snapshot_dir),
+    )
+    if args.output == "markdown":
+        print(_render_calibration_label_registry_snapshot_diff_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "compared" else 1
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -1911,6 +2170,12 @@ def _add_calibration_label_registry_snapshot_verify_arguments(parser: argparse.A
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 
+def _add_calibration_label_registry_snapshot_diff_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--before-snapshot-dir", required=True)
+    parser.add_argument("--after-snapshot-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1944,6 +2209,7 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-label-registry-list": cmd_calibration_label_registry_list,
         "calibration-label-registry-export": cmd_calibration_label_registry_export,
         "calibration-label-registry-snapshot-verify": cmd_calibration_label_registry_snapshot_verify,
+        "calibration-label-registry-snapshot-diff": cmd_calibration_label_registry_snapshot_diff,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -1996,6 +2262,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_registry_export_arguments(p)
         if name == "calibration-label-registry-snapshot-verify":
             _add_calibration_label_registry_snapshot_verify_arguments(p)
+        if name == "calibration-label-registry-snapshot-diff":
+            _add_calibration_label_registry_snapshot_diff_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

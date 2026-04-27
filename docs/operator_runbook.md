@@ -291,3 +291,11 @@ The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase21_calibration_registry_snapshot_verify_release.ps1
 ```
+
+## Phase 22 Calibration Registry Snapshot Diff
+
+Compare two verified calibration registry snapshots offline without DB access:
+
+```powershell
+lawful-anomaly calibration-label-registry-snapshot-diff --before-snapshot-dir <old_snapshot_dir> --after-snapshot-dir <new_snapshot_dir>
+```
