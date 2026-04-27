@@ -2550,9 +2550,16 @@ def _render_calibration_label_registry_snapshot_diff_export_accept_markdown(resu
         f"- Changed: `{result.get('changed_count', 0)}`",
         f"- Unchanged: `{result.get('unchanged_count', 0)}`",
         "",
-        "## Reasons",
+        "## Files",
         "",
     ]
+    for f in result.get("files", []):
+        lines.append(f"- `{f}`")
+    lines.extend([
+        "",
+        "## Reasons",
+        "",
+    ])
     lines.extend(f"- {reason}" for reason in result["reasons"])
     return "\n".join(lines) + "\n"
 
@@ -2655,6 +2662,7 @@ def _accept_diff_export_evidence(evidence_dir: Path) -> dict:
         "diff_hash_valid": verify_result.get("diff_hash_valid", False),
         "evidence_cross_checks_valid": verify_result.get("evidence_cross_checks_valid", False),
         "decision_hash": decision_hash,
+        "files": verify_result.get("files", []),
     }
 
 

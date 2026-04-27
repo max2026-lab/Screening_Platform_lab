@@ -2696,7 +2696,30 @@ def test_calibration_registry_snapshot_diff_export_verify_changed_row_changed_fi
 
 
 def test_calibration_registry_snapshot_diff_export_accept_empty_vs_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+
+    empty_a = tmp_path / "snapshot_empty_a"
+    empty_b = tmp_path / "snapshot_empty_b"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(empty_a)]) == 0
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(empty_b)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    evidence_dir = tmp_path / "evidence"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export",
+            "--before-snapshot-dir", str(empty_a),
+            "--after-snapshot-dir", str(empty_b),
+            "--output-dir", str(evidence_dir),
+        ]) == 0
+
     output = io.StringIO()
     with redirect_stdout(output):
         assert main([
@@ -2712,7 +2735,7 @@ def test_calibration_registry_snapshot_diff_export_accept_empty_vs_empty(tmp_pat
     assert result["added_count"] == 0
     assert result["removed_count"] == 0
     assert result["changed_count"] == 0
-    assert result["unchanged_count"] == 3
+    assert result["unchanged_count"] == 0
 
 
 def test_calibration_registry_snapshot_diff_export_accept_full_vs_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2726,6 +2749,10 @@ def test_calibration_registry_snapshot_diff_export_accept_full_vs_full(tmp_path:
     result = json.loads(output.getvalue())
     assert result["status"] == "accepted"
     assert result["evidence_valid"] is True
+    assert result["added_count"] == 0
+    assert result["removed_count"] == 0
+    assert result["changed_count"] == 0
+    assert result["unchanged_count"] == 3
 
 
 def test_calibration_registry_snapshot_diff_export_accept_empty_vs_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3033,6 +3060,7 @@ def test_calibration_registry_snapshot_diff_export_accept_markdown_accepted(tmp_
     assert "- Status: `accepted`" in md_text
     assert "- Policy:" in md_text
     assert "- Decision hash:" in md_text
+    assert "## Files" in md_text
     assert "## Reasons" in md_text
 
 
@@ -3078,6 +3106,7 @@ def test_calibration_registry_snapshot_diff_export_accept_markdown_rejected(tmp_
     md_text = output.getvalue()
     assert "# Calibration Registry Snapshot Diff Acceptance" in md_text
     assert "- Status: `rejected`" in md_text
+    assert "## Files" in md_text
     assert "## Reasons" in md_text
 
 
