@@ -3190,3 +3190,363 @@ def test_calibration_registry_snapshot_diff_export_accept_no_traceback_invalid(t
     result = json.loads(output.getvalue())
     assert result["status"] == "invalid"
     assert "Traceback" not in err_output.getvalue()
+
+
+# ============================================================
+# PHASE 26: CALIBRATION SIGNOFF EVIDENCE EXPORT
+# ============================================================
+
+def test_calibration_signoff_evidence_export_accepted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output_dir = tmp_path / "signoff"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "ready"
+    assert result["signoff_evidence_type"] == "calibration_signoff_evidence"
+    assert result["signoff_evidence_version"] == 1
+    assert result["acceptance_status"] == "accepted"
+    assert result["policy_id"] == "calibration_registry_diff_acceptance_v1"
+    assert result["policy_version"] == 1
+    assert result["evidence_valid"] is True
+    assert result["sha256sums_valid"] is True
+    assert result["json_valid"] is True
+    assert result["markdown_valid"] is True
+    assert result["diff_hash_valid"] is True
+    assert result["evidence_cross_checks_valid"] is True
+    assert "decision_hash" in result
+    assert "signoff_hash" in result
+    assert result["signoff_hash"] is not None
+    assert "diff_hash" in result
+    assert "before_snapshot_hash" in result
+    assert "after_snapshot_hash" in result
+    assert "added_count" in result
+    assert "removed_count" in result
+    assert "changed_count" in result
+    assert "unchanged_count" in result
+    assert "reasons" in result
+    assert "files" in result
+    assert "file_hashes" in result
+    assert "calibration_signoff_evidence.json" in result["file_hashes"]
+    assert "calibration_signoff_evidence.md" in result["file_hashes"]
+    assert "SHA256SUMS.txt" in result["file_hashes"]
+    assert (output_dir / "calibration_signoff_evidence.json").exists()
+    assert (output_dir / "calibration_signoff_evidence.md").exists()
+    assert (output_dir / "SHA256SUMS.txt").exists()
+
+
+def test_calibration_signoff_evidence_export_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    full_dir = tmp_path / "snapshot_full"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(full_dir)]) == 0
+
+    empty_db_path = tmp_path / "empty_registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(empty_db_path))
+    init_db(empty_db_path)
+
+    empty_dir = tmp_path / "snapshot_empty"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(empty_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    evidence_dir = tmp_path / "evidence"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export",
+            "--before-snapshot-dir", str(full_dir),
+            "--after-snapshot-dir", str(empty_dir),
+            "--output-dir", str(evidence_dir),
+        ]) == 0
+
+    output_dir = tmp_path / "signoff"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "rejected"
+    assert result["acceptance_status"] == "rejected"
+    assert result["evidence_valid"] is True
+    assert result["removed_count"] == 1
+    assert "signoff_hash" in result
+    assert (output_dir / "calibration_signoff_evidence.json").exists()
+
+
+def test_calibration_signoff_evidence_export_invalid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    (evidence_dir / "calibration_registry_snapshot_diff.json").unlink()
+    output_dir = tmp_path / "signoff"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["acceptance_status"] == "invalid"
+    assert result["evidence_valid"] is False
+    assert "signoff_hash" in result
+    assert (output_dir / "calibration_signoff_evidence.json").exists()
+
+
+def test_calibration_signoff_evidence_export_offline_no_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    output_dir = tmp_path / "signoff"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "ready"
+    assert result["acceptance_status"] == "accepted"
+    assert result["evidence_valid"] is True
+
+
+def test_calibration_signoff_evidence_export_markdown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output_dir = tmp_path / "signoff"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir),
+            "--output", "markdown",
+        ]) == 0
+    md_text = output.getvalue()
+    assert "# Calibration Sign-off Evidence" in md_text
+    assert "Status:" in md_text
+    assert "Acceptance status:" in md_text
+    assert "Policy:" in md_text
+    assert "Decision hash:" in md_text
+    assert "Sign-off hash:" in md_text
+    assert "Diff hash:" in md_text
+    assert "Before snapshot hash:" in md_text
+    assert "After snapshot hash:" in md_text
+    assert "Added:" in md_text
+    assert "Removed:" in md_text
+    assert "Changed:" in md_text
+    assert "Unchanged:" in md_text
+    assert "## Files" in md_text
+    assert "## Reasons" in md_text
+
+
+def test_calibration_signoff_evidence_export_sha256sums_no_self_hash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output_dir = tmp_path / "signoff"
+    main([
+        "calibration-signoff-evidence-export",
+        "--evidence-dir", str(evidence_dir),
+        "--output-dir", str(output_dir),
+    ])
+    sums_text = (output_dir / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    assert "calibration_signoff_evidence.json" in sums_text
+    assert "calibration_signoff_evidence.md" in sums_text
+    assert "SHA256SUMS.txt" not in sums_text
+
+
+def test_calibration_signoff_evidence_export_sha256sums_actual_hashes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output_dir = tmp_path / "signoff"
+    main([
+        "calibration-signoff-evidence-export",
+        "--evidence-dir", str(evidence_dir),
+        "--output-dir", str(output_dir),
+    ])
+    json_text = (output_dir / "calibration_signoff_evidence.json").read_text(encoding="utf-8")
+    md_text = (output_dir / "calibration_signoff_evidence.md").read_text(encoding="utf-8")
+    sums_text = (output_dir / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    import hashlib
+    expected_json_hash = hashlib.sha256(json_text.encode("utf-8")).hexdigest()
+    expected_md_hash = hashlib.sha256(md_text.encode("utf-8")).hexdigest()
+    assert expected_json_hash in sums_text
+    assert expected_md_hash in sums_text
+
+
+def test_calibration_signoff_evidence_export_hash_deterministic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output_dir1 = tmp_path / "signoff1"
+    output1 = io.StringIO()
+    with redirect_stdout(output1):
+        main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir1),
+        ])
+    result1 = json.loads(output1.getvalue())
+    hash1 = result1["signoff_hash"]
+
+    output_dir2 = tmp_path / "signoff2"
+    output2 = io.StringIO()
+    with redirect_stdout(output2):
+        main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir2),
+        ])
+    result2 = json.loads(output2.getvalue())
+    hash2 = result2["signoff_hash"]
+
+    assert hash1 == hash2
+
+
+def test_calibration_signoff_evidence_export_hash_stable_across_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output_dir1 = tmp_path / "signoff1"
+    output1 = io.StringIO()
+    with redirect_stdout(output1):
+        main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir1),
+        ])
+    result1 = json.loads(output1.getvalue())
+    hash1 = result1["signoff_hash"]
+
+    copied_evidence = tmp_path / "copied_evidence"
+    import shutil
+    shutil.copytree(evidence_dir, copied_evidence)
+
+    output_dir2 = tmp_path / "signoff2"
+    output2 = io.StringIO()
+    with redirect_stdout(output2):
+        main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(copied_evidence),
+            "--output-dir", str(output_dir2),
+        ])
+    result2 = json.loads(output2.getvalue())
+    hash2 = result2["signoff_hash"]
+
+    assert result1["evidence_dir"] != result2["evidence_dir"]
+    assert hash1 == hash2
+
+
+def test_calibration_signoff_evidence_export_overwrite_required(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output_dir = tmp_path / "signoff"
+    output_dir.mkdir()
+    (output_dir / "existing_file.txt").write_text("existing", encoding="utf-8")
+    output = io.StringIO()
+    with redirect_stdout(output):
+        rc = main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir),
+        ])
+    assert rc == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert "overwrite" in str(result["reasons"]).lower()
+
+
+def test_calibration_signoff_evidence_export_overwrite_preserves_unrelated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output_dir = tmp_path / "signoff"
+    output_dir.mkdir()
+    (output_dir / "existing_file.txt").write_text("existing", encoding="utf-8")
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir),
+            "--overwrite",
+        ]) == 0
+    assert (output_dir / "existing_file.txt").read_text(encoding="utf-8") == "existing"
+    assert (output_dir / "calibration_signoff_evidence.json").exists()
+
+
+def test_calibration_signoff_evidence_export_no_traceback_invalid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    (evidence_dir / "calibration_registry_snapshot_diff.json").unlink()
+    output_dir = tmp_path / "signoff"
+    output = io.StringIO()
+    err_output = io.StringIO()
+    with redirect_stdout(output), redirect_stderr(err_output):
+        rc = main([
+            "calibration-signoff-evidence-export",
+            "--evidence-dir", str(evidence_dir),
+            "--output-dir", str(output_dir),
+        ])
+    assert rc == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert "Traceback" not in err_output.getvalue()
+
+
+def test_calibration_signoff_evidence_export_backward_compatible_diff_export(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    db_path = tmp_path / "registry.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    repo = CalibrationArtifactRepository(db_path)
+    repo.save_artifact(_create_fake_artifact("hash1", "run-a", "ready"))
+
+    before_dir = tmp_path / "snapshot_before"
+    after_dir = tmp_path / "snapshot_after"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(before_dir)]) == 0
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["calibration-label-registry-export", "--output-dir", str(after_dir)]) == 0
+
+    monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
+    evidence_dir = tmp_path / "evidence"
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export",
+            "--before-snapshot-dir", str(before_dir),
+            "--after-snapshot-dir", str(after_dir),
+            "--output-dir", str(evidence_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "compared"
+
+
+def test_calibration_signoff_evidence_export_backward_compatible_verify(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-verify",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "valid"
+
+
+def test_calibration_signoff_evidence_export_backward_compatible_accept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-accept",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 0
+    result = json.loads(output.getvalue())
+    assert result["status"] == "accepted"

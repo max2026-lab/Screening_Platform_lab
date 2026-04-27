@@ -359,3 +359,11 @@ The release scripts prefer repo-local `.venv\Scripts\lawful-anomaly.exe`.
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase25_calibration_registry_diff_acceptance_gate_release.ps1
 ```
+
+## Phase 26 Calibration Sign-off Evidence Export
+
+Export a durable calibration sign-off evidence bundle from a verified and accepted diff evidence pack:
+
+```powershell
+lawful-anomaly calibration-signoff-evidence-export --evidence-dir <diff_evidence_dir> --output-dir <signoff_evidence_dir>
+```

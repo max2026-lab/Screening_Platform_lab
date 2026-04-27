@@ -2676,6 +2676,198 @@ def cmd_calibration_label_registry_snapshot_diff_export_accept(args: argparse.Na
     return 0 if result["status"] == "accepted" else 1
 
 
+def _compute_signoff_hash(
+    signoff_evidence_type: str,
+    signoff_evidence_version: int,
+    status: str,
+    reasons: list[str],
+    policy_id: str,
+    policy_version: int,
+    acceptance_status: str,
+    decision_hash: str | None,
+    diff_hash: str | None,
+    before_snapshot_hash: str | None,
+    after_snapshot_hash: str | None,
+    added_count: int,
+    removed_count: int,
+    changed_count: int,
+    unchanged_count: int,
+) -> str:
+    return _stable_hash(
+        {
+            "signoff_evidence_type": signoff_evidence_type,
+            "signoff_evidence_version": signoff_evidence_version,
+            "status": status,
+            "reasons": reasons,
+            "policy_id": policy_id,
+            "policy_version": policy_version,
+            "acceptance_status": acceptance_status,
+            "decision_hash": decision_hash,
+            "diff_hash": diff_hash,
+            "before_snapshot_hash": before_snapshot_hash,
+            "after_snapshot_hash": after_snapshot_hash,
+            "added_count": added_count,
+            "removed_count": removed_count,
+            "changed_count": changed_count,
+            "unchanged_count": unchanged_count,
+        }
+    )
+
+
+def _render_calibration_signoff_evidence_markdown(result: dict) -> str:
+    lines = [
+        "# Calibration Sign-off Evidence",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Acceptance status: `{result.get('acceptance_status', '')}`",
+        f"- Policy: `{result.get('policy_id', '')}` v{result.get('policy_version', '')}",
+        f"- Decision hash: `{result.get('decision_hash', '')}`",
+        f"- Sign-off hash: `{result.get('signoff_hash', '')}`",
+        f"- Diff hash: `{result.get('diff_hash', '')}`",
+        f"- Before snapshot hash: `{result.get('before_snapshot_hash', '')}`",
+        f"- After snapshot hash: `{result.get('after_snapshot_hash', '')}`",
+        f"- Added: `{result.get('added_count', 0)}`",
+        f"- Removed: `{result.get('removed_count', 0)}`",
+        f"- Changed: `{result.get('changed_count', 0)}`",
+        f"- Unchanged: `{result.get('unchanged_count', 0)}`",
+        "",
+        "## Files",
+        "",
+    ]
+    for f in result.get("files", []):
+        lines.append(f"- `{f}`")
+    lines.extend([
+        "",
+        "## Reasons",
+        "",
+    ])
+    lines.extend(f"- {reason}" for reason in result["reasons"])
+    return "\n".join(lines) + "\n"
+
+
+def _export_signoff_evidence(evidence_dir: Path, output_dir: Path) -> dict:
+    acceptance = _accept_diff_export_evidence(evidence_dir)
+    acceptance_status = acceptance["status"]
+
+    if acceptance_status == "accepted":
+        status = "ready"
+        reasons = ["Calibration sign-off evidence is ready"]
+    elif acceptance_status == "rejected":
+        status = "rejected"
+        reasons = acceptance["reasons"]
+    else:
+        status = "invalid"
+        reasons = acceptance["reasons"]
+
+    signoff_evidence_type = "calibration_signoff_evidence"
+    signoff_evidence_version = 1
+
+    signoff_hash = _compute_signoff_hash(
+        signoff_evidence_type=signoff_evidence_type,
+        signoff_evidence_version=signoff_evidence_version,
+        status=status,
+        reasons=reasons,
+        policy_id=acceptance.get("policy_id", ""),
+        policy_version=acceptance.get("policy_version", 1),
+        acceptance_status=acceptance_status,
+        decision_hash=acceptance.get("decision_hash"),
+        diff_hash=acceptance.get("diff_hash"),
+        before_snapshot_hash=acceptance.get("before_snapshot_hash"),
+        after_snapshot_hash=acceptance.get("after_snapshot_hash"),
+        added_count=acceptance.get("added_count", 0),
+        removed_count=acceptance.get("removed_count", 0),
+        changed_count=acceptance.get("changed_count", 0),
+        unchanged_count=acceptance.get("unchanged_count", 0),
+    )
+
+    return {
+        "signoff_evidence_type": signoff_evidence_type,
+        "signoff_evidence_version": signoff_evidence_version,
+        "status": status,
+        "reasons": reasons,
+        "evidence_dir": str(evidence_dir),
+        "source_evidence_dir": str(evidence_dir),
+        "policy_id": acceptance.get("policy_id", ""),
+        "policy_version": acceptance.get("policy_version", 1),
+        "acceptance_status": acceptance_status,
+        "acceptance_result": acceptance,
+        "decision_hash": acceptance.get("decision_hash"),
+        "diff_hash": acceptance.get("diff_hash"),
+        "before_snapshot_hash": acceptance.get("before_snapshot_hash"),
+        "after_snapshot_hash": acceptance.get("after_snapshot_hash"),
+        "added_count": acceptance.get("added_count", 0),
+        "removed_count": acceptance.get("removed_count", 0),
+        "changed_count": acceptance.get("changed_count", 0),
+        "unchanged_count": acceptance.get("unchanged_count", 0),
+        "evidence_valid": acceptance.get("evidence_valid", False),
+        "sha256sums_valid": acceptance.get("sha256sums_valid", False),
+        "json_valid": acceptance.get("json_valid", False),
+        "markdown_valid": acceptance.get("markdown_valid", False),
+        "diff_hash_valid": acceptance.get("diff_hash_valid", False),
+        "evidence_cross_checks_valid": acceptance.get("evidence_cross_checks_valid", False),
+        "files": [],
+        "file_hashes": {},
+        "signoff_hash": signoff_hash,
+    }
+
+
+def cmd_calibration_signoff_evidence_export(args: argparse.Namespace) -> int:
+    evidence_dir = Path(args.evidence_dir)
+    output_dir = Path(args.output_dir)
+
+    if output_dir.exists() and any(output_dir.iterdir()) and not args.overwrite:
+        result = {
+            "status": "invalid",
+            "reasons": ["Output directory exists and is not empty. Use --overwrite to replace."],
+            "evidence_dir": str(evidence_dir),
+            "source_evidence_dir": str(evidence_dir),
+            "output_dir": str(output_dir),
+        }
+        if args.output == "markdown":
+            print(_render_calibration_signoff_evidence_markdown(result), end="")
+        else:
+            print(json.dumps(result, indent=2))
+        return 1
+
+    result = _export_signoff_evidence(evidence_dir, output_dir)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    json_path = output_dir / "calibration_signoff_evidence.json"
+    md_path = output_dir / "calibration_signoff_evidence.md"
+    sums_path = output_dir / "SHA256SUMS.txt"
+
+    json_text = json.dumps(result, indent=2, sort_keys=True) + "\n"
+    md_text = _render_calibration_signoff_evidence_markdown(result)
+
+    json_path.write_text(json_text, encoding="utf-8", newline="\n")
+    md_path.write_text(md_text, encoding="utf-8", newline="\n")
+
+    json_hash = _sha256_text(json_text)
+    md_hash = _sha256_text(md_text)
+    sums_text = f"{json_hash}  calibration_signoff_evidence.json\n{md_hash}  calibration_signoff_evidence.md\n"
+    sums_path.write_text(sums_text, encoding="utf-8", newline="\n")
+
+    # Update result with files and file_hashes for output
+    result["files"] = [
+        "calibration_signoff_evidence.json",
+        "calibration_signoff_evidence.md",
+        "SHA256SUMS.txt",
+    ]
+    result["file_hashes"] = {
+        "calibration_signoff_evidence.json": json_hash,
+        "calibration_signoff_evidence.md": md_hash,
+        "SHA256SUMS.txt": _sha256_text(sums_text),
+    }
+
+    if args.output == "markdown":
+        print(_render_calibration_signoff_evidence_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+
+    return 0 if result["status"] == "ready" else 1
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -2876,6 +3068,13 @@ def _add_calibration_label_registry_snapshot_diff_export_accept_arguments(parser
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 
+def _add_calibration_signoff_evidence_export_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--evidence-dir", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+    parser.add_argument("--overwrite", action="store_true")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -2913,6 +3112,7 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-label-registry-snapshot-diff-export": cmd_calibration_label_registry_snapshot_diff_export,
         "calibration-label-registry-snapshot-diff-export-verify": cmd_calibration_label_registry_snapshot_diff_export_verify,
         "calibration-label-registry-snapshot-diff-export-accept": cmd_calibration_label_registry_snapshot_diff_export_accept,
+        "calibration-signoff-evidence-export": cmd_calibration_signoff_evidence_export,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -2973,6 +3173,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_registry_snapshot_diff_export_verify_arguments(p)
         if name == "calibration-label-registry-snapshot-diff-export-accept":
             _add_calibration_label_registry_snapshot_diff_export_accept_arguments(p)
+        if name == "calibration-signoff-evidence-export":
+            _add_calibration_signoff_evidence_export_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)
