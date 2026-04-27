@@ -1798,7 +1798,7 @@ def _render_calibration_label_registry_snapshot_diff_export_stdout_markdown(resu
     return "\n".join(lines) + "\n"
 
 
-def _render_calibration_label_registry_snapshot_diff_markdown(result: dict) -> str:
+def _render_calibration_label_registry_snapshot_diff_markdown(result: dict, files: list[str] | None = None) -> str:
     lines = [
         "# Calibration Registry Snapshot Diff",
         "",
@@ -1815,6 +1815,11 @@ def _render_calibration_label_registry_snapshot_diff_markdown(result: dict) -> s
         "",
     ]
     lines.extend(f"- {reason}" for reason in result["reasons"])
+
+    if files is not None:
+        lines.extend(["", "## Files", ""])
+        for file_name in files:
+            lines.append(f"- `{file_name}`")
 
     sections = [
         ("## Added Artifacts", result["added"]),
@@ -2122,7 +2127,7 @@ def cmd_calibration_label_registry_snapshot_diff_export(args: argparse.Namespace
     canonical_json_text = _stable_json_text(canonical_json_payload)
     canonical_json_hash = _sha256_text(canonical_json_text)
 
-    canonical_md_text = _render_calibration_label_registry_snapshot_diff_markdown(diff_result)
+    canonical_md_text = _render_calibration_label_registry_snapshot_diff_markdown(diff_result, files=evidence_files)
     canonical_md_hash = _sha256_text(canonical_md_text)
 
     canonical_sums_hashes = {
