@@ -577,6 +577,9 @@ try {
     if ([int]$fullDiff.removed_count -ne 0) { throw "Full diff expected removed_count=0" }
     if ([int]$fullDiff.changed_count -ne 0) { throw "Full diff expected changed_count=0" }
     if ([int]$fullDiff.unchanged_count -ne 3) { throw "Full diff expected unchanged_count=3" }
+    if ($fullDiff.before_valid -ne $true) { throw "Full diff expected before_valid=true" }
+    if ($fullDiff.after_valid -ne $true) { throw "Full diff expected after_valid=true" }
+    if (-not [string]$fullDiff.diff_hash) { throw "Full diff expected diff_hash non-empty" }
 
     $unchangedRunIds = @($fullDiff.unchanged | ForEach-Object { [string]$_.run_id })
     $expectedRunIds = @("phase22-snapshot-diff-denied-001", "phase22-snapshot-diff-incomplete-001", "phase22-snapshot-diff-ready-001")
