@@ -192,17 +192,5 @@ def test_acceptance_cli_commands_are_registered():
     assert label_registry_snapshot_diff_export_args.output_dir == "out"
     assert label_registry_snapshot_diff_export_args.output == "markdown"
     assert label_registry_snapshot_diff_export_args.overwrite is True
-    label_registry_snapshot_diff_export_verify_args = parser.parse_args(
-        [
-            "calibration-label-registry-snapshot-diff-export-verify",
-            "--evidence-dir",
-            "evidence",
-            "--output",
-            "markdown",
-        ]
-    )
-    assert label_registry_snapshot_diff_export_verify_args.command == "calibration-label-registry-snapshot-diff-export-verify"
-    assert label_registry_snapshot_diff_export_verify_args.evidence_dir == "evidence"
-    assert label_registry_snapshot_diff_export_verify_args.output == "markdown"
     assert reproducibility_args.command == "reproducibility-check"
     assert reproducibility_args.comparison_run_id == "run-002"

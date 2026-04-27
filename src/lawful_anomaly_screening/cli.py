@@ -2383,6 +2383,43 @@ def _verify_diff_export_evidence(evidence_dir: Path) -> dict:
                     evidence_cross_checks_valid = False
                     reasons.append(f"Changed row {i} changed_fields are not sorted alphabetically")
 
+        # diff_hash validation using Phase 22 canonical rules
+        if not diff_hash:
+            diff_hash_valid = False
+            reasons.append("diff_hash must be a non-empty string")
+        elif not isinstance(diff_hash, str):
+            diff_hash_valid = False
+            reasons.append("diff_hash must be a string")
+        elif (
+            json_valid
+            and evidence_cross_checks_valid
+            and isinstance(actual_added, list)
+            and isinstance(actual_removed, list)
+            and isinstance(actual_changed, list)
+            and isinstance(actual_unchanged, list)
+        ):
+            expected_hash = _compute_diff_hash(
+                before_snapshot_hash=before_snapshot_hash,
+                after_snapshot_hash=after_snapshot_hash,
+                added=actual_added,
+                removed=actual_removed,
+                changed=actual_changed,
+                unchanged=actual_unchanged,
+            )
+            if diff_hash != expected_hash:
+                diff_hash_valid = False
+                reasons.append("diff_hash does not match canonical hash of evidence contents")
+
+        # markdown diff_hash consistency
+        if md_text and diff_hash:
+            md_hash_match = re.search(r"Diff hash:\s*`([^`]+)`", md_text)
+            if md_hash_match is None:
+                markdown_valid = False
+                reasons.append("Evidence markdown missing diff_hash line")
+            elif md_hash_match.group(1) != diff_hash:
+                markdown_valid = False
+                reasons.append("Evidence markdown diff_hash does not match JSON diff_hash")
+
         # Safety checks: no full label payload or coordinate fields
         forbidden_label_fields = {"labels", "label_ids"}
         forbidden_coordinate_fields = {
@@ -2414,6 +2451,7 @@ def _verify_diff_export_evidence(evidence_dir: Path) -> dict:
             sha256sums_valid
             and json_valid
             and markdown_valid
+            and diff_hash_valid
             and evidence_cross_checks_valid
             and evidence_json is not None
             and "calibration_registry_snapshot_diff.md" in texts

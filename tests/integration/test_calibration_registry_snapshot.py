@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 import io
 import hashlib
@@ -2145,3 +2146,87 @@ def test_calibration_registry_snapshot_diff_export_verify_markdown_invalid(tmp_p
     assert "# Calibration Registry Snapshot Diff Export Verification" in md_text
     assert "- Status: `invalid`" in md_text
     assert "## Reasons" in md_text
+
+
+def test_calibration_registry_snapshot_diff_export_verify_tampered_diff_hash_matching_sums(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    json_path = evidence_dir / "calibration_registry_snapshot_diff.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["diff_hash"] = "tampered"
+    json_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+
+    # Recompute SHA256SUMS to match tampered JSON
+    md_path = evidence_dir / "calibration_registry_snapshot_diff.md"
+    md_text = md_path.read_text(encoding="utf-8")
+    md_text = re.sub(r"Diff hash:\s*`[^`]+`", "Diff hash: `tampered`", md_text)
+    md_path.write_text(md_text, encoding="utf-8", newline="\n")
+    new_json_hash = hashlib.sha256(json_path.read_bytes()).hexdigest()
+    new_md_hash = hashlib.sha256(md_path.read_bytes()).hexdigest()
+    sums_text = f"{new_json_hash}  calibration_registry_snapshot_diff.json\n{new_md_hash}  calibration_registry_snapshot_diff.md\n"
+    (evidence_dir / "SHA256SUMS.txt").write_text(sums_text, encoding="utf-8", newline="\n")
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-verify",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["diff_hash_valid"] is False
+    assert result["sha256sums_valid"] is True
+
+
+def test_calibration_registry_snapshot_diff_export_verify_md_diff_hash_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    md_path = evidence_dir / "calibration_registry_snapshot_diff.md"
+    md_text = md_path.read_text(encoding="utf-8")
+    md_text = re.sub(r"Diff hash:\s*`[^`]+`", "Diff hash: `wronghash`", md_text)
+    md_path.write_text(md_text, encoding="utf-8", newline="\n")
+
+    # Recompute SHA256SUMS to match tampered markdown
+    json_path = evidence_dir / "calibration_registry_snapshot_diff.json"
+    new_md_hash = hashlib.sha256(md_path.read_bytes()).hexdigest()
+    json_hash = hashlib.sha256(json_path.read_bytes()).hexdigest()
+    sums_text = f"{json_hash}  calibration_registry_snapshot_diff.json\n{new_md_hash}  calibration_registry_snapshot_diff.md\n"
+    (evidence_dir / "SHA256SUMS.txt").write_text(sums_text, encoding="utf-8", newline="\n")
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-verify",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["markdown_valid"] is False
+    assert any("diff_hash" in r for r in result["reasons"])
+
+
+def test_calibration_registry_snapshot_diff_export_verify_empty_diff_hash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    evidence_dir = _create_evidence_pack(tmp_path, monkeypatch)
+    json_path = evidence_dir / "calibration_registry_snapshot_diff.json"
+    data = json.loads(json_path.read_text(encoding="utf-8"))
+    data["diff_hash"] = ""
+    json_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+
+    # Recompute SHA256SUMS
+    md_path = evidence_dir / "calibration_registry_snapshot_diff.md"
+    md_text = md_path.read_text(encoding="utf-8")
+    md_text = re.sub(r"Diff hash:\s*`[^`]*`", "Diff hash: ``", md_text)
+    md_path.write_text(md_text, encoding="utf-8", newline="\n")
+    new_json_hash = hashlib.sha256(json_path.read_bytes()).hexdigest()
+    new_md_hash = hashlib.sha256(md_path.read_bytes()).hexdigest()
+    sums_text = f"{new_json_hash}  calibration_registry_snapshot_diff.json\n{new_md_hash}  calibration_registry_snapshot_diff.md\n"
+    (evidence_dir / "SHA256SUMS.txt").write_text(sums_text, encoding="utf-8", newline="\n")
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main([
+            "calibration-label-registry-snapshot-diff-export-verify",
+            "--evidence-dir", str(evidence_dir),
+        ]) == 1
+    result = json.loads(output.getvalue())
+    assert result["status"] == "invalid"
+    assert result["diff_hash_valid"] is False
+    assert any("diff_hash" in r for r in result["reasons"])
