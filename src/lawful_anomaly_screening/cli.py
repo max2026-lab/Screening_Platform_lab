@@ -2663,6 +2663,7 @@ def _accept_diff_export_evidence(evidence_dir: Path) -> dict:
         "evidence_cross_checks_valid": verify_result.get("evidence_cross_checks_valid", False),
         "decision_hash": decision_hash,
         "files": verify_result.get("files", []),
+        "file_hashes": verify_result.get("file_hashes", {}),
     }
 
 

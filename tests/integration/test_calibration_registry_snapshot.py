@@ -2736,6 +2736,10 @@ def test_calibration_registry_snapshot_diff_export_accept_empty_vs_empty(tmp_pat
     assert result["removed_count"] == 0
     assert result["changed_count"] == 0
     assert result["unchanged_count"] == 0
+    assert "file_hashes" in result
+    assert "calibration_registry_snapshot_diff.json" in result["file_hashes"]
+    assert "calibration_registry_snapshot_diff.md" in result["file_hashes"]
+    assert "SHA256SUMS.txt" in result["file_hashes"]
 
 
 def test_calibration_registry_snapshot_diff_export_accept_full_vs_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2753,6 +2757,10 @@ def test_calibration_registry_snapshot_diff_export_accept_full_vs_full(tmp_path:
     assert result["removed_count"] == 0
     assert result["changed_count"] == 0
     assert result["unchanged_count"] == 3
+    assert "file_hashes" in result
+    assert "calibration_registry_snapshot_diff.json" in result["file_hashes"]
+    assert "calibration_registry_snapshot_diff.md" in result["file_hashes"]
+    assert "SHA256SUMS.txt" in result["file_hashes"]
 
 
 def test_calibration_registry_snapshot_diff_export_accept_empty_vs_full(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
