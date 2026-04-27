@@ -1350,11 +1350,10 @@ def test_calibration_registry_snapshot_diff_export_plus_one(tmp_path: Path, monk
 
     monkeypatch.delenv("LAWFUL_ANOMALY_DB_PATH", raising=False)
 
-    # Full-vs-full baseline
+    # Full-vs-full baseline using copied snapshot (offline, no DB needed)
     same_as_before = tmp_path / "snapshot_same"
-    output = io.StringIO()
-    with redirect_stdout(output):
-        assert main(["calibration-label-registry-export", "--output-dir", str(same_as_before)]) == 0
+    import shutil
+    shutil.copytree(before_dir, same_as_before)
 
     baseline_dir = tmp_path / "diff_baseline"
     output = io.StringIO()
@@ -1367,6 +1366,9 @@ def test_calibration_registry_snapshot_diff_export_plus_one(tmp_path: Path, monk
         ]) == 0
     baseline_result = json.loads(output.getvalue())
     assert baseline_result["added_count"] == 0
+    assert baseline_result["removed_count"] == 0
+    assert baseline_result["changed_count"] == 0
+    assert baseline_result["unchanged_count"] == 1
 
     plus_one_dir = tmp_path / "diff_plus_one"
     output = io.StringIO()
@@ -1381,7 +1383,14 @@ def test_calibration_registry_snapshot_diff_export_plus_one(tmp_path: Path, monk
 
     assert plus_one_result["status"] == "compared"
     assert plus_one_result["added_count"] == 1
+    assert plus_one_result["removed_count"] == 0
+    assert plus_one_result["changed_count"] == 0
+    assert plus_one_result["unchanged_count"] == 1
     assert plus_one_result["diff_hash"] != baseline_result["diff_hash"]
+
+    evidence_json = json.loads((plus_one_dir / "calibration_registry_snapshot_diff.json").read_text(encoding="utf-8"))
+    assert evidence_json["added"][0]["artifact_hash"] == "hash2"
+    assert evidence_json["added"][0]["run_id"] == "run-b"
 
 
 def test_calibration_registry_snapshot_diff_export_deterministic_across_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
