@@ -1772,6 +1772,32 @@ def _compute_diff_hash(
     )
 
 
+def _render_calibration_label_registry_snapshot_diff_export_stdout_markdown(result: dict) -> str:
+    lines = [
+        "# Calibration Registry Snapshot Diff Export",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Output directory: `{result.get('output_dir', '')}`",
+        f"- Before snapshot directory: `{result.get('before_snapshot_dir', '')}`",
+        f"- After snapshot directory: `{result.get('after_snapshot_dir', '')}`",
+        f"- Diff hash: `{result.get('diff_hash', '')}`",
+        f"- Before snapshot hash: `{result.get('before_snapshot_hash', '')}`",
+        f"- After snapshot hash: `{result.get('after_snapshot_hash', '')}`",
+        f"- Added: `{result['added_count']}`",
+        f"- Removed: `{result['removed_count']}`",
+        f"- Changed: `{result['changed_count']}`",
+        f"- Unchanged: `{result['unchanged_count']}`",
+        "",
+        "## Files",
+        "",
+    ]
+    for file_name in result.get("files", []):
+        lines.append(f"- `{file_name}`")
+    lines.extend(["", "## Reasons", ""])
+    lines.extend(f"- {reason}" for reason in result["reasons"])
+    return "\n".join(lines) + "\n"
+
+
 def _render_calibration_label_registry_snapshot_diff_markdown(result: dict) -> str:
     lines = [
         "# Calibration Registry Snapshot Diff",
@@ -1994,6 +2020,176 @@ def cmd_calibration_label_registry_snapshot_diff(args: argparse.Namespace) -> in
     return 0 if result["status"] == "compared" else 1
 
 
+def cmd_calibration_label_registry_snapshot_diff_export(args: argparse.Namespace) -> int:
+    before_dir = Path(args.before_snapshot_dir)
+    after_dir = Path(args.after_snapshot_dir)
+    output_dir = Path(args.output_dir)
+
+    if output_dir.exists() and any(output_dir.iterdir()) and not getattr(args, "overwrite", False):
+        result = {
+            "status": "invalid",
+            "reasons": [f"Output directory is not empty: {output_dir}"],
+            "output_dir": str(output_dir),
+            "before_snapshot_dir": str(before_dir),
+            "after_snapshot_dir": str(after_dir),
+            "before_snapshot_hash": None,
+            "after_snapshot_hash": None,
+            "before_artifact_count": 0,
+            "after_artifact_count": 0,
+            "added_count": 0,
+            "removed_count": 0,
+            "changed_count": 0,
+            "unchanged_count": 0,
+            "diff_hash": None,
+            "files": [],
+            "file_hashes": {},
+            "before_valid": True,
+            "after_valid": True,
+        }
+        if args.output == "markdown":
+            print(_render_calibration_label_registry_snapshot_diff_export_stdout_markdown(result), end="")
+        else:
+            print(json.dumps(result, indent=2))
+        return 1
+
+    diff_result = _diff_calibration_registry_snapshots(before_dir, after_dir)
+
+    if diff_result["status"] != "compared":
+        result = {
+            "status": "invalid",
+            "reasons": diff_result["reasons"],
+            "output_dir": str(output_dir),
+            "before_snapshot_dir": str(before_dir),
+            "after_snapshot_dir": str(after_dir),
+            "before_snapshot_hash": diff_result.get("before_snapshot_hash"),
+            "after_snapshot_hash": diff_result.get("after_snapshot_hash"),
+            "before_artifact_count": diff_result["before_artifact_count"],
+            "after_artifact_count": diff_result["after_artifact_count"],
+            "added_count": 0,
+            "removed_count": 0,
+            "changed_count": 0,
+            "unchanged_count": 0,
+            "diff_hash": None,
+            "files": [],
+            "file_hashes": {},
+            "before_valid": diff_result["before_valid"],
+            "after_valid": diff_result["after_valid"],
+        }
+        if args.output == "markdown":
+            print(_render_calibration_label_registry_snapshot_diff_export_stdout_markdown(result), end="")
+        else:
+            print(json.dumps(result, indent=2))
+        return 1
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    evidence_files = [
+        "calibration_registry_snapshot_diff.json",
+        "calibration_registry_snapshot_diff.md",
+        "SHA256SUMS.txt",
+    ]
+
+    canonical_file_hashes = {
+        "calibration_registry_snapshot_diff.json": "<file_hash_excluded_from_hash_input>",
+        "calibration_registry_snapshot_diff.md": "<file_hash_excluded_from_hash_input>",
+        "SHA256SUMS.txt": "<file_hash_excluded_from_hash_input>",
+    }
+
+    canonical_json_payload = {
+        "snapshot_diff_type": "calibration_registry_snapshot_diff",
+        "snapshot_diff_version": 1,
+        "status": "compared",
+        "reasons": diff_result["reasons"],
+        "before_snapshot_hash": diff_result["before_snapshot_hash"],
+        "after_snapshot_hash": diff_result["after_snapshot_hash"],
+        "before_artifact_count": diff_result["before_artifact_count"],
+        "after_artifact_count": diff_result["after_artifact_count"],
+        "added_count": diff_result["added_count"],
+        "removed_count": diff_result["removed_count"],
+        "changed_count": diff_result["changed_count"],
+        "unchanged_count": diff_result["unchanged_count"],
+        "diff_hash": diff_result["diff_hash"],
+        "added": diff_result["added"],
+        "removed": diff_result["removed"],
+        "changed": diff_result["changed"],
+        "unchanged": diff_result["unchanged"],
+        "before_valid": diff_result["before_valid"],
+        "after_valid": diff_result["after_valid"],
+        "files": evidence_files,
+        "file_hashes": canonical_file_hashes,
+    }
+
+    canonical_json_text = _stable_json_text(canonical_json_payload)
+    canonical_json_hash = _sha256_text(canonical_json_text)
+
+    canonical_md_text = _render_calibration_label_registry_snapshot_diff_markdown(diff_result)
+    canonical_md_hash = _sha256_text(canonical_md_text)
+
+    canonical_sums_hashes = {
+        "calibration_registry_snapshot_diff.json": canonical_json_hash,
+        "calibration_registry_snapshot_diff.md": canonical_md_hash,
+    }
+    canonical_sha256sums = _render_sha256sums(canonical_sums_hashes)
+    canonical_sums_hash = _sha256_text(canonical_sha256sums)
+
+    final_json_payload = {
+        **canonical_json_payload,
+        "file_hashes": {
+            "calibration_registry_snapshot_diff.json": canonical_json_hash,
+            "calibration_registry_snapshot_diff.md": canonical_md_hash,
+            "SHA256SUMS.txt": canonical_sums_hash,
+        },
+    }
+    final_json_text = _stable_json_text(final_json_payload)
+    final_md_text = canonical_md_text
+
+    actual_json_hash = _sha256_text(final_json_text)
+    actual_md_hash = _sha256_text(final_md_text)
+
+    actual_sums_hashes = {
+        "calibration_registry_snapshot_diff.json": actual_json_hash,
+        "calibration_registry_snapshot_diff.md": actual_md_hash,
+    }
+    actual_sha256sums = _render_sha256sums(actual_sums_hashes)
+    actual_sums_hash = _sha256_text(actual_sha256sums)
+
+    file_contents = {
+        "calibration_registry_snapshot_diff.json": final_json_text,
+        "calibration_registry_snapshot_diff.md": final_md_text,
+        "SHA256SUMS.txt": actual_sha256sums,
+    }
+    for file_name, content in file_contents.items():
+        (output_dir / file_name).write_text(content, encoding="utf-8", newline="\n")
+
+    result = {
+        "status": "compared",
+        "reasons": diff_result["reasons"],
+        "output_dir": str(output_dir),
+        "before_snapshot_dir": str(before_dir),
+        "after_snapshot_dir": str(after_dir),
+        "before_snapshot_hash": diff_result["before_snapshot_hash"],
+        "after_snapshot_hash": diff_result["after_snapshot_hash"],
+        "before_artifact_count": diff_result["before_artifact_count"],
+        "after_artifact_count": diff_result["after_artifact_count"],
+        "added_count": diff_result["added_count"],
+        "removed_count": diff_result["removed_count"],
+        "changed_count": diff_result["changed_count"],
+        "unchanged_count": diff_result["unchanged_count"],
+        "diff_hash": diff_result["diff_hash"],
+        "files": evidence_files,
+        "file_hashes": {
+            "calibration_registry_snapshot_diff.json": actual_json_hash,
+            "calibration_registry_snapshot_diff.md": actual_md_hash,
+            "SHA256SUMS.txt": actual_sums_hash,
+        },
+    }
+    if args.output == "markdown":
+        print(_render_calibration_label_registry_snapshot_diff_export_stdout_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0
+
+
 def cmd_reproducibility_check(args: argparse.Namespace) -> int:
     repository = AcceptanceRepository(load_settings().db_path)
     baseline_run = repository.fetch_run(args.run_id)
@@ -2176,6 +2372,14 @@ def _add_calibration_label_registry_snapshot_diff_arguments(parser: argparse.Arg
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 
+def _add_calibration_label_registry_snapshot_diff_export_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--before-snapshot-dir", required=True)
+    parser.add_argument("--after-snapshot-dir", required=True)
+    parser.add_argument("--output-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+    parser.add_argument("--overwrite", action="store_true")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lawful-anomaly-screening")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -2210,6 +2414,7 @@ def build_parser() -> argparse.ArgumentParser:
         "calibration-label-registry-export": cmd_calibration_label_registry_export,
         "calibration-label-registry-snapshot-verify": cmd_calibration_label_registry_snapshot_verify,
         "calibration-label-registry-snapshot-diff": cmd_calibration_label_registry_snapshot_diff,
+        "calibration-label-registry-snapshot-diff-export": cmd_calibration_label_registry_snapshot_diff_export,
         "reproducibility-check": cmd_reproducibility_check,
     }
     for name, func in commands.items():
@@ -2264,6 +2469,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_calibration_label_registry_snapshot_verify_arguments(p)
         if name == "calibration-label-registry-snapshot-diff":
             _add_calibration_label_registry_snapshot_diff_arguments(p)
+        if name == "calibration-label-registry-snapshot-diff-export":
+            _add_calibration_label_registry_snapshot_diff_export_arguments(p)
         if name == "reproducibility-check":
             _add_reproducibility_check_arguments(p)
         p.set_defaults(func=func)

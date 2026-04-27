@@ -134,6 +134,20 @@ def test_acceptance_cli_commands_are_registered():
             "markdown",
         ]
     )
+    label_registry_snapshot_diff_export_args = parser.parse_args(
+        [
+            "calibration-label-registry-snapshot-diff-export",
+            "--before-snapshot-dir",
+            "before",
+            "--after-snapshot-dir",
+            "after",
+            "--output-dir",
+            "out",
+            "--output",
+            "markdown",
+            "--overwrite",
+        ]
+    )
 
     assert kpi_args.command == "kpi-summary"
     assert kpi_args.aoi_area_km2 == 100.0
@@ -172,5 +186,11 @@ def test_acceptance_cli_commands_are_registered():
     assert label_registry_snapshot_diff_args.before_snapshot_dir == "before"
     assert label_registry_snapshot_diff_args.after_snapshot_dir == "after"
     assert label_registry_snapshot_diff_args.output == "markdown"
+    assert label_registry_snapshot_diff_export_args.command == "calibration-label-registry-snapshot-diff-export"
+    assert label_registry_snapshot_diff_export_args.before_snapshot_dir == "before"
+    assert label_registry_snapshot_diff_export_args.after_snapshot_dir == "after"
+    assert label_registry_snapshot_diff_export_args.output_dir == "out"
+    assert label_registry_snapshot_diff_export_args.output == "markdown"
+    assert label_registry_snapshot_diff_export_args.overwrite is True
     assert reproducibility_args.command == "reproducibility-check"
     assert reproducibility_args.comparison_run_id == "run-002"
