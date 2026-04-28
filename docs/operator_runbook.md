@@ -384,3 +384,11 @@ Run the complete validated test and release suite through Phase 26. This is the 
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase27_full_release_verification_chain.ps1
 ```
+
+## Phase 28 Full Release Evidence Manifest
+
+Run the Phase 27 full chain and write a durable local evidence manifest.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase28_full_release_evidence_manifest.ps1
+```
