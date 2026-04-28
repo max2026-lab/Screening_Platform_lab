@@ -96,6 +96,7 @@ class ExportRepository:
                     artifact_name=artifact_name,
                     bundle_name=bundle_name,
                     candidates=sanitized_candidates,
+                    run_metadata=run_metadata,
                 ),
                 encoding="utf-8",
             )

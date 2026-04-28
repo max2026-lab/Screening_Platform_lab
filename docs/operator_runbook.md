@@ -41,6 +41,22 @@ lawful-anomaly review-show --candidate-id <top_candidate_id>
 lawful-anomaly export-create --run-id run-001 --audience report_pdf --requested-precision restricted
 ```
 
+### Zero-Candidate Report Export
+
+For completed or review-ready runs that produced no candidates, a restricted report can still be exported to prove the AOI/date window was screened:
+
+```powershell
+lawful-anomaly export-create --run-id run-001 --audience report_pdf --requested-precision restricted
+```
+
+This produces a markdown report with:
+- `Candidate count: 0`
+- A `No Exportable Candidates Found` section
+- Run metadata (AOI hash, date window, legal gate decision)
+- No exact candidate coordinates
+
+Other audiences will still fail with `no export candidates found for run` when the candidate count is zero.
+
 ## Provider Fallback Smoke
 
 Create a temporary endpoints config outside repo root and point `LAWFUL_ANOMALY_ENDPOINTS_PATH` to it.

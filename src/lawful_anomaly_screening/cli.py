@@ -27,6 +27,7 @@ from .exceptions import (
     ReviewStateError,
     SourceError,
 )
+from .exports.precision_policy import normalize_export_tier
 from .orchestration.scaffold_run import scaffold_run_for_run_id
 from .orchestration.run_pipeline import execute_run
 from .legal import (
@@ -325,6 +326,23 @@ def cmd_export_create(args: argparse.Namespace) -> int:
     repository = ExportRepository(load_settings().db_path)
     candidates = repository.fetch_export_candidates(args.run_id)
     if not candidates:
+        run_repository = RunRepository(load_settings().db_path)
+        run = run_repository.fetch_run(args.run_id)
+        normalized_audience = normalize_export_tier(args.audience)
+        if (
+            run is not None
+            and run.get("status") in {"completed", "review_ready"}
+            and normalized_audience == "report_pdf"
+            and args.requested_precision == "restricted"
+        ):
+            export_record = repository.persist_export(
+                run_id=args.run_id,
+                audience=args.audience,
+                requested_precision=args.requested_precision,
+                candidates=[],
+            )
+            print(json.dumps(export_record, indent=2))
+            return 0
         print(f"no export candidates found for run: {args.run_id}", file=sys.stderr)
         return 1
     export_record = repository.persist_export(
