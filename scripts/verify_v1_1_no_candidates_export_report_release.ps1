@@ -93,15 +93,35 @@ New-Item -ItemType Directory -Path $unsupportedRoot -Force | Out-Null
 
 $sampleAoiPath = Join-Path $repoRoot "tests\fixtures\sample_aoi.geojson"
 
+$zeroAoiJson = @'
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {},
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [35.1, 31.1],
+            [35.12, 31.1],
+            [35.12, 31.12],
+            [35.1, 31.12],
+            [35.1, 31.1]
+          ]
+        ]
+      }
+    }
+  ]
+}
+'@
+
 $zeroCandidateAoi = Join-Path $zeroCandidateRoot "zero_candidate_aoi.geojson"
-Write-GeoJsonNoBom -Path $zeroCandidateAoi -Content (@'
-{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[35.1,31.1],[35.12,31.1],[35.12,31.12],[35.1,31.12],[35.1,31.1]]]}}]}
-'@.Trim())
+Write-GeoJsonNoBom -Path $zeroCandidateAoi -Content $zeroAoiJson
 
 $unsupportedAoi = Join-Path $unsupportedRoot "unsupported_aoi.geojson"
-Write-GeoJsonNoBom -Path $unsupportedAoi -Content (@'
-{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[35.1,31.1],[35.12,31.1],[35.12,31.12],[35.1,31.12],[35.1,31.1]]]}}]}
-'@.Trim())
+Write-GeoJsonNoBom -Path $unsupportedAoi -Content $zeroAoiJson
 
 $originalLocation = Get-Location
 try {
