@@ -392,3 +392,13 @@ Run the Phase 27 full chain and write a durable local evidence manifest.
 ```powershell
 powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_phase28_full_release_evidence_manifest.ps1
 ```
+
+## V1 Release Candidate
+
+The V1 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_RELEASE_NOTES.md`.
+
+Validate the release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evidence_manifest.ps1 -Overwrite
+```
