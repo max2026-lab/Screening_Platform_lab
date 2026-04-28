@@ -418,3 +418,17 @@ Validate the release candidate from repo root with:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evidence_manifest.ps1 -Overwrite
 ```
+
+## V1.1 No-Candidates Export Report Release Verification
+
+Run the V1.1 release verification script to confirm zero-candidate export report behavior:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_v1_1_no_candidates_export_report_release.ps1
+```
+
+This script verifies:
+- Known-candidate export still works for `report_pdf restricted`
+- Zero-candidate runs produce a restricted markdown report instead of failing
+- Unsupported audiences (e.g., `public`) still fail for zero-candidate runs
+- Repo cleanliness and token-free remotes after verification
