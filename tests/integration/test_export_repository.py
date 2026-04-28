@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 
 from lawful_anomaly_screening.cli import main
@@ -175,10 +174,10 @@ def test_zero_candidate_report_export_restricted(tmp_path):
     assert "centroid" not in report_text.lower()
 
 
-def test_export_create_fails_for_invalid_run_id(capsys, tmp_path):
+def test_export_create_fails_for_invalid_run_id(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "invalid_run.sqlite3"
     init_db(db_path)
-    os.environ["LAWFUL_ANOMALY_DB_PATH"] = str(db_path)
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
 
     result = main([
         "export-create",
@@ -188,3 +187,91 @@ def test_export_create_fails_for_invalid_run_id(capsys, tmp_path):
     assert result == 1
     captured = capsys.readouterr()
     assert "no export candidates found for run: nonexistent-run" in captured.err
+
+
+def test_export_create_zero_candidates_report_pdf_restricted(monkeypatch, capsys, tmp_path):
+    db_path = tmp_path / "zero_cli.sqlite3"
+    init_db(db_path)
+    bootstrap_minimal_run(
+        db_path,
+        processing_baseline_id="baseline_v1_5_default",
+        score_formula_version="v1.5.1-phase0",
+        source_scene_manifest_hash="manifest-hash-003",
+        source_endpoint_id="earth_search",
+        run_id="run-003",
+        manifest_path="data/manifests/manifest-hash-003.json",
+        run_status="completed",
+        aoi_hash="aoi-hash-003",
+        start_date="2024-06-01",
+        end_date="2024-06-30",
+        legal_gate={
+            "attestation_status": "present",
+            "geofence_status": "clear",
+            "decision": "pass",
+            "reason": "",
+            "evaluated_at": "2024-06-01T00:00:00Z",
+        },
+    )
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    monkeypatch.chdir(tmp_path)
+
+    result = main([
+        "export-create",
+        "--run-id", "run-003",
+        "--audience", "report_pdf",
+        "--requested-precision", "restricted",
+    ])
+    assert result == 0
+
+    stdout_text = capsys.readouterr().out
+    export_payload = json.loads(stdout_text)
+    assert export_payload["candidates"] == []
+    assert export_payload["audit_manifest"]
+    assert export_payload["artifact_path"].endswith(".md")
+    assert export_payload["exact_coordinates_included"] is False
+
+    report_path = tmp_path / Path(export_payload["artifact_path"])
+    assert report_path.exists()
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "Candidate count: `0`" in report_text
+    assert "## No Exportable Candidates Found" in report_text
+    assert "This AOI/date window was screened and produced zero exportable candidates." in report_text
+    assert "centroid" not in report_text.lower()
+
+
+def test_export_create_zero_candidates_fails_for_public_audience(monkeypatch, capsys, tmp_path):
+    db_path = tmp_path / "zero_public.sqlite3"
+    init_db(db_path)
+    bootstrap_minimal_run(
+        db_path,
+        processing_baseline_id="baseline_v1_5_default",
+        score_formula_version="v1.5.1-phase0",
+        source_scene_manifest_hash="manifest-hash-004",
+        source_endpoint_id="earth_search",
+        run_id="run-004",
+        manifest_path="data/manifests/manifest-hash-004.json",
+        run_status="completed",
+        aoi_hash="aoi-hash-004",
+        start_date="2024-07-01",
+        end_date="2024-07-31",
+        legal_gate={
+            "attestation_status": "present",
+            "geofence_status": "clear",
+            "decision": "pass",
+            "reason": "",
+            "evaluated_at": "2024-07-01T00:00:00Z",
+        },
+    )
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+
+    result = main([
+        "export-create",
+        "--run-id", "run-004",
+        "--audience", "public",
+    ])
+    assert result != 0
+    captured = capsys.readouterr()
+    assert "no export candidates found for run: run-004" in captured.err
+    assert not (tmp_path / "exports" / "public").exists() or not any(
+        (tmp_path / "exports" / "public").rglob("*.json")
+    )
