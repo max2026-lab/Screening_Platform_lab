@@ -19,11 +19,6 @@ if ($null -eq $lawfulAnomalyCommand) {
 }
 Write-Host "Using lawful-anomaly: $($lawfulAnomalyCommand.Source)"
 
-$venvPython = Join-Path (Split-Path -Parent $repoLocalCliPath) "python.exe"
-if (-not (Test-Path $venvPython)) {
-    throw "venv python not found at $venvPython"
-}
-
 function Invoke-ProcessCapture {
     param(
         [Parameter(Mandatory = $true)]
@@ -77,45 +72,15 @@ function Invoke-LawfulJson {
     return ($result.StdOut | ConvertFrom-Json)
 }
 
-function Bootstrap-ZeroCandidateRun {
+function Write-GeoJsonNoBom {
     param(
         [Parameter(Mandatory = $true)]
-        [string] $DbPath,
+        [string] $Path,
         [Parameter(Mandatory = $true)]
-        [string] $RunId
+        [string] $Content
     )
-    $bootstrapScript = @"
-import sys
-from lawful_anomaly_screening.db.sqlite import bootstrap_minimal_run, init_db
-
-db_path = r'$DbPath'
-run_id = r'$RunId'
-init_db(db_path)
-bootstrap_minimal_run(
-    db_path,
-    processing_baseline_id='baseline_v1_5_default',
-    score_formula_version='v1.5.1-phase0',
-    source_scene_manifest_hash='manifest-hash-zero',
-    source_endpoint_id='earth_search',
-    run_id=run_id,
-    manifest_path='data/manifests/manifest-hash-zero.json',
-    run_status='completed',
-    aoi_hash='aoi-hash-zero',
-    start_date='2024-01-01',
-    end_date='2024-03-31',
-    legal_gate={
-        'attestation_status': 'present',
-        'geofence_status': 'clear',
-        'decision': 'pass',
-        'reason': '',
-        'evaluated_at': '2024-01-01T00:00:00Z',
-    },
-)
-"@
-    $bootstrapResult = Invoke-ProcessCapture -FilePath $venvPython -Arguments @("-c", $bootstrapScript)
-    if ($bootstrapResult.ExitCode -ne 0) {
-        throw "Bootstrap zero-candidate run failed.`n$($bootstrapResult.StdErr)"
-    }
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $utf8NoBom)
 }
 
 $baseTempRoot = Join-Path $env:TEMP ("v1_1-no-candidates-export-verify-" + [guid]::NewGuid().ToString())
@@ -129,14 +94,14 @@ New-Item -ItemType Directory -Path $unsupportedRoot -Force | Out-Null
 $sampleAoiPath = Join-Path $repoRoot "tests\fixtures\sample_aoi.geojson"
 
 $zeroCandidateAoi = Join-Path $zeroCandidateRoot "zero_candidate_aoi.geojson"
-@'
-{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[0.0,0.0],[0.0001,0.0],[0.0001,0.0001],[0.0,0.0001],[0.0,0.0]]]}}]}
-'@ | Set-Content -LiteralPath $zeroCandidateAoi -Encoding UTF8 -NoNewline
+Write-GeoJsonNoBom -Path $zeroCandidateAoi -Content (@'
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[35.1,31.1],[35.12,31.1],[35.12,31.12],[35.1,31.12],[35.1,31.1]]]}}]}
+'@.Trim())
 
 $unsupportedAoi = Join-Path $unsupportedRoot "unsupported_aoi.geojson"
-@'
-{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[0.0,0.0],[0.0001,0.0],[0.0001,0.0001],[0.0,0.0001],[0.0,0.0]]]}}]}
-'@ | Set-Content -LiteralPath $unsupportedAoi -Encoding UTF8 -NoNewline
+Write-GeoJsonNoBom -Path $unsupportedAoi -Content (@'
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[[35.1,31.1],[35.12,31.1],[35.12,31.12],[35.1,31.12],[35.1,31.1]]]}}]}
+'@.Trim())
 
 $originalLocation = Get-Location
 try {
@@ -193,7 +158,28 @@ try {
     Remove-Item Env:LAWFUL_ANOMALY_ENDPOINTS_PATH -ErrorAction SilentlyContinue
     $env:LAWFUL_ANOMALY_DB_PATH = Join-Path $zeroCandidateRoot "zero-candidate.sqlite3"
 
-    Bootstrap-ZeroCandidateRun -DbPath $env:LAWFUL_ANOMALY_DB_PATH -RunId "zero-candidate-001"
+    $zeroInitResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @("init-db")
+    if ($zeroInitResult.ExitCode -ne 0) {
+        throw "Zero-candidate init-db failed.`n$($zeroInitResult.StdErr)"
+    }
+
+    $zeroCreateRun = Invoke-LawfulJson -Arguments @(
+        "create-run",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--run-id", "zero-candidate-001",
+        "--aoi-path", $zeroCandidateAoi,
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31"
+    )
+    if ($zeroCreateRun.legal_gate.decision -ne "pass") {
+        throw "Zero-candidate create-run expected legal_gate.decision=pass"
+    }
+
+    $zeroExecuteRun = Invoke-LawfulJson -Arguments @("execute-run", "--run-id", "zero-candidate-001")
+    if ([int]$zeroExecuteRun.candidate_count -ne 0) {
+        throw "Zero-candidate execute-run expected candidate_count = 0, got $($zeroExecuteRun.candidate_count)"
+    }
 
     $exportZero = Invoke-LawfulJson -Arguments @(
         "export-create",
@@ -247,7 +233,28 @@ try {
     Remove-Item Env:LAWFUL_ANOMALY_ENDPOINTS_PATH -ErrorAction SilentlyContinue
     $env:LAWFUL_ANOMALY_DB_PATH = Join-Path $unsupportedRoot "unsupported-audience.sqlite3"
 
-    Bootstrap-ZeroCandidateRun -DbPath $env:LAWFUL_ANOMALY_DB_PATH -RunId "unsupported-audience-001"
+    $unsupportedInitResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @("init-db")
+    if ($unsupportedInitResult.ExitCode -ne 0) {
+        throw "Unsupported-audience init-db failed.`n$($unsupportedInitResult.StdErr)"
+    }
+
+    $unsupportedCreateRun = Invoke-LawfulJson -Arguments @(
+        "create-run",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--run-id", "unsupported-audience-001",
+        "--aoi-path", $unsupportedAoi,
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31"
+    )
+    if ($unsupportedCreateRun.legal_gate.decision -ne "pass") {
+        throw "Unsupported-audience create-run expected legal_gate.decision=pass"
+    }
+
+    $unsupportedExecuteRun = Invoke-LawfulJson -Arguments @("execute-run", "--run-id", "unsupported-audience-001")
+    if ([int]$unsupportedExecuteRun.candidate_count -ne 0) {
+        throw "Unsupported-audience execute-run expected candidate_count = 0, got $($unsupportedExecuteRun.candidate_count)"
+    }
 
     $unsupportedResult = Invoke-ProcessCapture -FilePath "lawful-anomaly" -Arguments @(
         "export-create",
