@@ -437,3 +437,19 @@ This script verifies:
 
 For the practical target-area-to-export workflow, including zero-candidate exports, see:
 `docs/V1_1_OPERATOR_MANUAL_TARGET_TO_EXPORT.md`
+
+## V1.1 Release Candidate
+
+The V1.1 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_1_RELEASE_NOTES.md`.
+
+Validate the V1.1 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_1_no_candidates_export_report_release.ps1
+```
+
+Validate the full release chain (through Phase 28) with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evidence_manifest.ps1 -Overwrite
+```
