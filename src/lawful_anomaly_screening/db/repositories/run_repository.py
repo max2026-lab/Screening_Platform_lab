@@ -60,6 +60,52 @@ class RunRepository:
         }
         return data
 
+    def count_tiles(self, run_id: str) -> int:
+        with connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM tiles WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    def count_selected_tiles(self, run_id: str) -> int:
+        with connect(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS cnt
+                FROM tiles t
+                JOIN tile_scores ts ON ts.tile_id = t.tile_id
+                WHERE t.run_id = ? AND ts.selected_for_polygonization = 1
+                """,
+                (run_id,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    def count_candidates(self, run_id: str) -> int:
+        with connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM candidate_polygons WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
+    def fetch_top_candidate_id(self, run_id: str) -> str | None:
+        with connect(self.db_path) as conn:
+            row = conn.execute(
+                """
+                SELECT cp.candidate_id
+                FROM candidate_polygons cp
+                JOIN candidate_scores cs
+                    ON cs.candidate_id = cp.candidate_id
+                    AND cs.run_id = cp.run_id
+                WHERE cp.run_id = ?
+                ORDER BY cs.candidate_score DESC, cs.parent_tile_score DESC, cp.candidate_id ASC
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+        return str(row[0]) if row else None
+
     def update_run_state(self, *, run_id: str, status: str, cache_status: str) -> None:
         with connect(self.db_path) as conn:
             conn.execute(

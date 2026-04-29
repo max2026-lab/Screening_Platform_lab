@@ -355,6 +355,53 @@ def cmd_export_create(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run_summary(args: argparse.Namespace) -> int:
+    run_repository = RunRepository(load_settings().db_path)
+    run = run_repository.fetch_run(args.run_id)
+    if run is None:
+        print(f"run not found: {args.run_id}", file=sys.stderr)
+        return 1
+    tile_count = run_repository.count_tiles(args.run_id)
+    selected_tile_count = run_repository.count_selected_tiles(args.run_id)
+    candidate_count = run_repository.count_candidates(args.run_id)
+    top_candidate_id = run_repository.fetch_top_candidate_id(args.run_id)
+
+    latest_export_record_id = None
+    latest_export_artifact_path = None
+    try:
+        from lawful_anomaly_screening.db.repositories.export_repository import ExportRepository
+        export_records = ExportRepository(load_settings().db_path).fetch_export_records(args.run_id)
+        if export_records:
+            latest = max(
+                export_records,
+                key=lambda r: (str(r.get("created_at") or ""), str(r["export_record_id"])),
+            )
+            latest_export_record_id = latest["export_record_id"]
+            latest_export_artifact_path = latest.get("artifact_path")
+    except Exception:
+        pass
+
+    summary = {
+        "run_id": run["run_id"],
+        "status": run.get("status"),
+        "aoi_hash": run.get("aoi_hash"),
+        "aoi_path": run.get("aoi_path"),
+        "start_date": run.get("start_date"),
+        "end_date": run.get("end_date"),
+        "legal_gate_decision": run.get("legal_gate", {}).get("decision"),
+        "source_endpoint_id": run.get("source_endpoint_id"),
+        "source_scene_manifest_hash": run.get("source_scene_manifest_hash"),
+        "tile_count": tile_count,
+        "selected_tile_count": selected_tile_count,
+        "candidate_count": candidate_count,
+        "top_candidate_id": top_candidate_id,
+        "latest_export_record_id": latest_export_record_id,
+        "latest_export_artifact_path": latest_export_artifact_path,
+    }
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
 def _build_quote_service() -> QuoteService:
     db_path = load_settings().db_path
     return QuoteService(
@@ -2931,6 +2978,10 @@ def _add_execute_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
 
 
+def _add_run_summary_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+
+
 def _add_review_show_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--candidate-id", required=True)
 
@@ -3103,6 +3154,7 @@ def build_parser() -> argparse.ArgumentParser:
         "review-show": cmd_review_show,
         "review-decide": cmd_review_decide,
         "export-create": cmd_export_create,
+        "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
         "paid-quote-show": cmd_paid_quote_show,
         "paid-order-create": cmd_paid_order_create,
@@ -3144,6 +3196,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_review_decide_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
+        if name == "run-summary":
+            _add_run_summary_arguments(p)
         if name == "paid-quote-create":
             _add_paid_quote_create_arguments(p)
         if name == "paid-quote-show":

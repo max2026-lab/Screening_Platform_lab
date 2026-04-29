@@ -38,6 +38,10 @@ lawful-anomaly create-run `
 
 lawful-anomaly execute-run --run-id run-001
 lawful-anomaly review-show --candidate-id <top_candidate_id>
+
+# Inspect run results without re-executing
+lawful-anomaly run-summary --run-id run-001
+
 lawful-anomaly export-create --run-id run-001 --audience report_pdf --requested-precision restricted
 ```
 

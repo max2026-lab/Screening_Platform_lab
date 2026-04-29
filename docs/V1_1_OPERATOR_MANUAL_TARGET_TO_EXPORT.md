@@ -89,12 +89,25 @@ lawful-anomaly create-run `
 lawful-anomaly execute-run --run-id run-001
 ```
 
-Capture the JSON output. Look for `candidate_count`:
+## Run Summary
+
+Inspect run results without re-executing:
 
 ```powershell
-$executeOutput = lawful-anomaly execute-run --run-id run-001 | ConvertFrom-Json
-$executeOutput.candidate_count
+lawful-anomaly run-summary --run-id run-001
 ```
+
+This returns a JSON summary with:
+- `run_id`
+- `status`
+- `candidate_count`
+- `top_candidate_id` (null if zero candidates)
+- `tile_count` and `selected_tile_count`
+- `latest_export_record_id` and `latest_export_artifact_path` (null if no export)
+- AOI hash, date window, legal gate decision, source endpoint, source scene manifest hash
+
+The `run-summary` command reads persisted data only and does not execute provider or network behavior. Use it as the recommended inspection step after `execute-run` to check `candidate_count`.
+`
 
 ## Candidate Count > 0 Path
 
