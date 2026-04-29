@@ -432,3 +432,8 @@ This script verifies:
 - Zero-candidate runs produce a restricted markdown report instead of failing
 - Unsupported audiences (e.g., `public`) still fail for zero-candidate runs
 - Repo cleanliness and token-free remotes after verification
+
+## V1.1 Operator Manual
+
+For the practical target-area-to-export workflow, including zero-candidate exports, see:
+`docs/V1_1_OPERATOR_MANUAL_TARGET_TO_EXPORT.md`
