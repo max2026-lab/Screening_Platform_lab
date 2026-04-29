@@ -3,39 +3,46 @@ import json
 from lawful_anomaly_screening.cli import main
 from lawful_anomaly_screening.db.repositories.export_repository import ExportRepository
 from lawful_anomaly_screening.db.sqlite import bootstrap_minimal_run, init_db
+from lawful_anomaly_screening.settings import REPO_ROOT
 
 
 def test_run_summary_returns_expected_json_for_run_with_candidates(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "summary_candidates.sqlite3"
-    init_db(db_path)
-    run_id = "run-summary-001"
-    bootstrap_minimal_run(
-        db_path,
-        processing_baseline_id="baseline_v1_5_default",
-        score_formula_version="v1.5.1-phase0",
-        source_scene_manifest_hash="manifest-hash-001",
-        source_endpoint_id="earth_search",
-        run_id=run_id,
-        manifest_path="data/manifests/manifest-hash-001.json",
-    )
-
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
-    result = main([
-        "run-summary",
-        "--run-id", run_id,
-    ])
-    assert result == 0
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
 
-    stdout_text = capsys.readouterr().out
-    summary = json.loads(stdout_text)
-    assert summary["run_id"] == run_id
-    assert summary["status"] == "new"
-    assert summary["candidate_count"] == 0
-    assert summary["top_candidate_id"] is None
-    assert summary["source_endpoint_id"] == "earth_search"
-    assert summary["source_scene_manifest_hash"] == "manifest-hash-001"
-    assert summary["tile_count"] == 0
-    assert summary["selected_tile_count"] == 0
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+
+    assert main([
+        "create-run",
+        "--run-id", "run-summary-candidates-001",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--aoi-path", str(aoi_path),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]) == 0
+    create_payload = json.loads(capsys.readouterr().out)
+
+    assert main(["execute-run", "--run-id", "run-summary-candidates-001"]) == 0
+    execute_payload = json.loads(capsys.readouterr().out)
+    assert execute_payload["candidate_count"] > 0
+    assert execute_payload["top_candidate_id"] is not None
+
+    assert main(["run-summary", "--run-id", "run-summary-candidates-001"]) == 0
+    summary = json.loads(capsys.readouterr().out)
+
+    assert summary["run_id"] == "run-summary-candidates-001"
+    assert summary["status"] == "review_ready"
+    assert summary["candidate_count"] > 0
+    assert summary["candidate_count"] == execute_payload["candidate_count"]
+    assert summary["top_candidate_id"] is not None
+    assert summary["top_candidate_id"] == execute_payload["top_candidate_id"]
+    assert summary["source_endpoint_id"] == create_payload["source_endpoint_id"]
+    assert summary["source_scene_manifest_hash"] == create_payload["source_scene_manifest_hash"]
+    assert summary["tile_count"] > 0
+    assert summary["selected_tile_count"] > 0
 
 
 def test_run_summary_zero_candidate_completed_run(monkeypatch, capsys, tmp_path):
