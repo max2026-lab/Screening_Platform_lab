@@ -107,7 +107,6 @@ This returns a JSON summary with:
 - AOI hash, date window, legal gate decision, source endpoint, source scene manifest hash
 
 The `run-summary` command reads persisted data only and does not execute provider or network behavior. Use it as the recommended inspection step after `execute-run` to check `candidate_count`.
-`
 
 ## Candidate Count > 0 Path
 

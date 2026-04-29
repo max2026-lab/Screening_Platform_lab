@@ -1,14 +1,11 @@
 import json
-import os
-from pathlib import Path
 
 from lawful_anomaly_screening.cli import main
 from lawful_anomaly_screening.db.repositories.export_repository import ExportRepository
-from lawful_anomaly_screening.db.repositories.run_repository import RunRepository
 from lawful_anomaly_screening.db.sqlite import bootstrap_minimal_run, init_db
 
 
-def test_run_summary_returns_expected_json_for_run_with_candidates(tmp_path):
+def test_run_summary_returns_expected_json_for_run_with_candidates(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "summary_candidates.sqlite3"
     init_db(db_path)
     run_id = "run-summary-001"
@@ -22,10 +19,23 @@ def test_run_summary_returns_expected_json_for_run_with_candidates(tmp_path):
         manifest_path="data/manifests/manifest-hash-001.json",
     )
 
-    repository = RunRepository(db_path)
-    run = repository.fetch_run(run_id)
-    assert run is not None
-    assert run["run_id"] == run_id
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    result = main([
+        "run-summary",
+        "--run-id", run_id,
+    ])
+    assert result == 0
+
+    stdout_text = capsys.readouterr().out
+    summary = json.loads(stdout_text)
+    assert summary["run_id"] == run_id
+    assert summary["status"] == "new"
+    assert summary["candidate_count"] == 0
+    assert summary["top_candidate_id"] is None
+    assert summary["source_endpoint_id"] == "earth_search"
+    assert summary["source_scene_manifest_hash"] == "manifest-hash-001"
+    assert summary["tile_count"] == 0
+    assert summary["selected_tile_count"] == 0
 
 
 def test_run_summary_zero_candidate_completed_run(monkeypatch, capsys, tmp_path):

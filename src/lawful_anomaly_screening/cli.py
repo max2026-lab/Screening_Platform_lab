@@ -368,18 +368,14 @@ def cmd_run_summary(args: argparse.Namespace) -> int:
 
     latest_export_record_id = None
     latest_export_artifact_path = None
-    try:
-        from lawful_anomaly_screening.db.repositories.export_repository import ExportRepository
-        export_records = ExportRepository(load_settings().db_path).fetch_export_records(args.run_id)
-        if export_records:
-            latest = max(
-                export_records,
-                key=lambda r: (str(r.get("created_at") or ""), str(r["export_record_id"])),
-            )
-            latest_export_record_id = latest["export_record_id"]
-            latest_export_artifact_path = latest.get("artifact_path")
-    except Exception:
-        pass
+    export_records = ExportRepository(load_settings().db_path).fetch_export_records(args.run_id)
+    if export_records:
+        latest = max(
+            export_records,
+            key=lambda r: (str(r.get("created_at") or ""), str(r["export_record_id"])),
+        )
+        latest_export_record_id = latest["export_record_id"]
+        latest_export_artifact_path = latest.get("artifact_path")
 
     summary = {
         "run_id": run["run_id"],
