@@ -53,11 +53,11 @@ When an endpoint has `active: true` and `base_url` set:
 
 1. `discover_scenes` delegates to `query_stac_search`
 2. The STAC `/search` endpoint is called with:
-   - `bbox` derived deterministically from `aoi_hash`
    - `datetime` from `start_date`/`end_date`
    - `collections` from config
    - `limit` from config
-3. Returned STAC items are normalized into:
+3. V1.3 does not yet wire real AOI bbox into the STAC request. Metadata filtering uses date/collection/limit only.
+4. Returned STAC items are normalized into:
    - `scene_id`
    - `acquired_at` (from `properties.datetime`)
    - `cloud_cover` (from `properties.eo:cloud_cover` or `properties.cloud_cover`)

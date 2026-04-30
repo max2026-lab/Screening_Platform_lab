@@ -19,18 +19,6 @@ def _has_active_stac_config(endpoint: SourceEndpoint) -> bool:
     )
 
 
-def _bbox_from_aoi_hash(aoi_hash: str | None) -> list[float] | None:
-    """Return a minimal bbox placeholder when aoi_hash is present."""
-    if not aoi_hash:
-        return None
-    # deterministic pseudo-bbox from hash for smoke stability
-    digest = sha256(aoi_hash.encode("utf-8")).hexdigest()
-    lon = -120.0 + (int(digest[:4], 16) % 40)
-    lat = 35.0 + (int(digest[4:8], 16) % 10)
-    size = 0.05 + (int(digest[8:12], 16) % 50) / 1000.0
-    return [round(lon, 6), round(lat, 6), round(lon + size, 6), round(lat + size, 6)]
-
-
 @dataclass(frozen=True)
 class SourceEndpoint:
     endpoint_id: str
@@ -117,7 +105,6 @@ def discover_scenes(
             base_url=extra["base_url"],
             search_path=extra.get("search_path", "search"),
             collections=extra.get("collections"),
-            bbox=_bbox_from_aoi_hash(aoi_hash),
             start_date=start_date,
             end_date=end_date,
             max_items=extra.get("max_items", 10),
