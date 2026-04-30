@@ -485,6 +485,21 @@ powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evi
 For the metadata-only real STAC provider smoke path, configuration, and live operator workflow, see:
 `docs/V1_3_REAL_STAC_PROVIDER_SMOKE.md`
 
+## V1.3 Real STAC Provider Smoke Release Verification
+
+Run the V1.3 release verification script to confirm mocked STAC provider behavior without network:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_v1_3_real_stac_provider_smoke_release.ps1
+```
+
+This script verifies:
+- Mocked STAC provider tests pass without internet
+- Default endpoints config keeps `earth_search` inactive
+- `metadata_only` is true in config
+- No raster download behavior in source
+- Docs state metadata-only, offline tests, and network-required live smoke
+
 ## V1.2 Run Summary Release Verification
 
 Run the V1.2 release verification script to confirm run-summary behavior for both candidate-backed and zero-candidate runs:
