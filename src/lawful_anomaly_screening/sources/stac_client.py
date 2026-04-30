@@ -36,7 +36,7 @@ def _normalize_stac_item(item: dict) -> dict | None:
     try:
         cloud_cover = float(cloud_cover)
     except (TypeError, ValueError):
-        cloud_cover = 100.0
+        cloud_cover = None
 
     return {
         "scene_id": item_id,

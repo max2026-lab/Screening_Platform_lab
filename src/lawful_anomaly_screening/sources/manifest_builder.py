@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from lawful_anomaly_screening.settings import load_settings
-from lawful_anomaly_screening.sources.earth_search import discover_scenes, load_endpoint_registry
+from lawful_anomaly_screening.sources.earth_search import discover_scenes, load_endpoint_registry, _SceneList
 from lawful_anomaly_screening.exceptions import SourceError
 
 RETAINED_TILE_SCORE_FIELDS = (
@@ -49,16 +49,20 @@ def _try_discover_and_validate(
             f"({endpoint.provider}) in window {start_date} to {end_date}"
         )
 
+    query_context = getattr(manifest_scenes, '__stac_query_context__', None)
     normalized_scenes = []
     for index, scene in enumerate(manifest_scenes):
         try:
-            normalized_scenes.append(
-                {
-                    "scene_id": scene["scene_id"],
-                    "acquired_at": scene["acquired_at"],
-                    "cloud_cover": scene["cloud_cover"],
-                }
-            )
+            normalized = {
+                "scene_id": scene["scene_id"],
+                "acquired_at": scene["acquired_at"],
+                "cloud_cover": scene["cloud_cover"],
+            }
+            if "collection" in scene:
+                normalized["collection"] = scene["collection"]
+            if "provider_item_id" in scene:
+                normalized["provider_item_id"] = scene["provider_item_id"]
+            normalized_scenes.append(normalized)
         except KeyError as exc:
             raise SourceError(
                 f"malformed scene record at index {index} from endpoint '{endpoint.endpoint_id}': "
@@ -66,7 +70,10 @@ def _try_discover_and_validate(
             )
 
     normalized_scenes.sort(key=lambda scene: scene["scene_id"])
-    return normalized_scenes
+    result = _SceneList(normalized_scenes)
+    if query_context:
+        result.__stac_query_context__ = query_context
+    return result
 
 
 def build_manifest(
@@ -93,6 +100,7 @@ def build_manifest(
     selected_endpoint_id = None
     last_error = None
 
+    query_context = None
     if scenes is not None:
         selected_endpoint_id = endpoints_to_try[0]
         attempted_endpoint_ids = [selected_endpoint_id]
@@ -104,19 +112,24 @@ def build_manifest(
             )
         for index, scene in enumerate(scenes):
             try:
-                normalized_scenes.append(
-                    {
-                        "scene_id": scene["scene_id"],
-                        "acquired_at": scene["acquired_at"],
-                        "cloud_cover": scene["cloud_cover"],
-                    }
-                )
+                normalized = {
+                    "scene_id": scene["scene_id"],
+                    "acquired_at": scene["acquired_at"],
+                    "cloud_cover": scene["cloud_cover"],
+                }
+                if "collection" in scene:
+                    normalized["collection"] = scene["collection"]
+                if "provider_item_id" in scene:
+                    normalized["provider_item_id"] = scene["provider_item_id"]
+                normalized_scenes.append(normalized)
             except KeyError as exc:
                 raise SourceError(
                     f"malformed scene record at index {index} from endpoint '{endpoint.endpoint_id}': "
                     f"missing expected field {exc}"
                 )
+        normalized_scenes = _SceneList(normalized_scenes)
         normalized_scenes.sort(key=lambda scene: scene["scene_id"])
+        query_context = getattr(scenes, '__stac_query_context__', None)
     else:
         for endpoint_id in endpoints_to_try:
             attempted_endpoint_ids.append(endpoint_id)
@@ -145,6 +158,8 @@ def build_manifest(
         if selected_endpoint_id is None:
             raise SourceError("no endpoints available to try")
 
+        query_context = getattr(normalized_scenes, '__stac_query_context__', None)
+
     endpoint = registry.endpoints[selected_endpoint_id]
     fallback_used = allow_fallback and selected_endpoint_id != registry.primary_endpoint_id
 
@@ -159,6 +174,15 @@ def build_manifest(
         "scene_count": len(normalized_scenes),
         "scenes": normalized_scenes,
     }
+    if query_context:
+        manifest_payload["query_parameters"] = query_context
+        collections_from_scenes = sorted({
+            s["collection"] for s in normalized_scenes if s.get("collection")
+        })
+        manifest_payload["collection_summary"] = {
+            "collections": collections_from_scenes or query_context.get("collections", []),
+            "scene_count": len(normalized_scenes),
+        }
     if fallback_used:
         manifest_payload["fallback_diagnostics"] = {
             "attempted_endpoint_ids": attempted_endpoint_ids,

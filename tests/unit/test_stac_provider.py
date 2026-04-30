@@ -55,10 +55,10 @@ def test_normalize_stac_item_extracts_required_fields():
     assert normalized["provider_item_id"] == "S2A_20240101"
 
 
-def test_normalize_stac_item_defaults_missing_cloud_cover():
+def test_normalize_stac_item_defaults_missing_cloud_cover_to_none():
     normalized = _normalize_stac_item(SAMPLE_STAC_ITEM_NO_CLOUD)
     assert normalized["scene_id"] == "S2B_20240102"
-    assert normalized["cloud_cover"] == 100.0
+    assert normalized["cloud_cover"] is None
 
 
 def test_normalize_stac_item_uses_alternate_cloud_cover_key():
@@ -117,7 +117,6 @@ def test_query_stac_search_with_mocked_http():
     })()
 
     captured = {}
-    original_urlopen = None
 
     def capture_urlopen(req, *args, **kwargs):
         captured["method"] = req.get_method()
@@ -137,7 +136,7 @@ def test_query_stac_search_with_mocked_http():
     assert scenes[0]["scene_id"] == "S2A_20240101"
     assert scenes[1]["scene_id"] == "S2B_20240102"
     assert scenes[0]["acquired_at"] == "2024-01-01T10:30:00Z"
-    assert scenes[1]["cloud_cover"] == 100.0
+    assert scenes[1]["cloud_cover"] is None
 
     # Inspect outgoing POST
     assert captured["method"] == "POST"
@@ -212,6 +211,7 @@ def test_discover_scenes_uses_real_stac_when_explicitly_active(tmp_path):
 
     assert len(scenes) == 2
     assert scenes[0]["scene_id"] == "S2A_20240101"
+    assert scenes.__stac_query_context__["datetime"] == "2024-01-01/2024-03-31"
 
 
 def test_discover_scenes_defaults_to_simulation_when_not_active():
@@ -300,6 +300,25 @@ def test_persist_manifest_with_mocked_stac_scenes(tmp_path):
     persisted_scenes = repo.list_scenes(record["source_scene_manifest_hash"])
     assert len(persisted_scenes) == 2
     assert {s["scene_id"] for s in persisted_scenes} == {"S2A_20240101", "S2B_20240102"}
+
+    # Assert manifest JSON contains STAC metadata and query context
+    manifest_file = Path(record["manifest_path"])
+    assert manifest_file.exists()
+    manifest_json = json.loads(manifest_file.read_text(encoding="utf-8"))
+
+    scene_by_id = {s["scene_id"]: s for s in manifest_json["scenes"]}
+    assert scene_by_id["S2A_20240101"]["collection"] == "sentinel-2-l2a"
+    assert scene_by_id["S2A_20240101"]["provider_item_id"] == "S2A_20240101"
+    assert scene_by_id["S2B_20240102"]["collection"] == "sentinel-2-l2a"
+    assert scene_by_id["S2B_20240102"]["provider_item_id"] == "S2B_20240102"
+
+    assert manifest_json["query_parameters"]["datetime"] == "2024-01-01/2024-03-31"
+    assert manifest_json["query_parameters"]["collections"] == ["sentinel-2-l2a"]
+    assert manifest_json["query_parameters"]["limit"] == 10
+    assert manifest_json["query_parameters"]["bbox"] is None
+
+    assert manifest_json["collection_summary"]["collections"] == ["sentinel-2-l2a"]
+    assert manifest_json["collection_summary"]["scene_count"] == 2
 
 
 def test_manifest_hash_deterministic_across_shuffled_stac_response(tmp_path):

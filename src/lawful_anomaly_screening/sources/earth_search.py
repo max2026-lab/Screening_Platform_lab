@@ -19,6 +19,11 @@ def _has_active_stac_config(endpoint: SourceEndpoint) -> bool:
     )
 
 
+class _SceneList(list):
+    """List subclass that can carry STAC query context as an attribute."""
+    pass
+
+
 @dataclass(frozen=True)
 class SourceEndpoint:
     endpoint_id: str
@@ -101,7 +106,7 @@ def discover_scenes(
     if _has_active_stac_config(endpoint):
         from .stac_client import query_stac_search
         extra = endpoint.extra
-        return query_stac_search(
+        scenes = _SceneList(query_stac_search(
             base_url=extra["base_url"],
             search_path=extra.get("search_path", "search"),
             collections=extra.get("collections"),
@@ -109,7 +114,14 @@ def discover_scenes(
             end_date=end_date,
             max_items=extra.get("max_items", 10),
             timeout_seconds=extra.get("timeout_seconds", 30),
-        )
+        ))
+        scenes.__stac_query_context__ = {
+            "datetime": f"{start_date or '..'}/{end_date or '..'}",
+            "collections": sorted(extra.get("collections") or []),
+            "limit": extra.get("max_items", 10),
+            "bbox": None,
+        }
+        return scenes
 
     # Simulation hook for empty results
     if aoi_hash == "all_fail_discovery_trigger":

@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS discovered_scenes (
     scene_id TEXT NOT NULL,
     source_endpoint_id TEXT NOT NULL,
     acquired_at TEXT NOT NULL,
-    cloud_cover REAL NOT NULL,
+    cloud_cover REAL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (source_scene_manifest_hash, scene_id)
 );
