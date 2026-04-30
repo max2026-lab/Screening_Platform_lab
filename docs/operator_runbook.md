@@ -480,6 +480,11 @@ Validate the full release chain (through Phase 28) with:
 powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evidence_manifest.ps1 -Overwrite
 ```
 
+## V1.3 Real STAC Provider Smoke
+
+For the metadata-only real STAC provider smoke path, configuration, and live operator workflow, see:
+`docs/V1_3_REAL_STAC_PROVIDER_SMOKE.md`
+
 ## V1.2 Run Summary Release Verification
 
 Run the V1.2 release verification script to confirm run-summary behavior for both candidate-backed and zero-candidate runs:

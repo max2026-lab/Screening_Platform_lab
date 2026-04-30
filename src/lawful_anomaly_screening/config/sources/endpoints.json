@@ -7,7 +7,16 @@
   "earth_search": {
     "provider": "earth-search",
     "role": "primary",
-    "synchronous_only": true
+    "synchronous_only": true,
+    "active": false,
+    "base_url": "https://earth-search.aws.element84.com/v1",
+    "search_path": "search",
+    "collections": [
+      "sentinel-2-l2a"
+    ],
+    "timeout_seconds": 30,
+    "max_items": 10,
+    "metadata_only": true
   },
   "cdse": {
     "provider": "cdse",
