@@ -457,3 +457,18 @@ Validate the full release chain (through Phase 28) with:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evidence_manifest.ps1 -Overwrite
 ```
+
+## V1.2 Run Summary Release Verification
+
+Run the V1.2 release verification script to confirm run-summary behavior for both candidate-backed and zero-candidate runs:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_v1_2_run_summary_release.ps1
+```
+
+This script verifies:
+- Candidate-backed runs produce run-summary with `candidate_count > 0` and `top_candidate_id` present
+- Zero-candidate runs produce run-summary with `candidate_count = 0` and `top_candidate_id` null
+- Export fields (`latest_export_record_id`, `latest_export_artifact_path`) appear after `export-create`
+- Missing run IDs return non-zero exit with `run not found` stderr
+- Repo cleanliness and token-free remotes after verification
