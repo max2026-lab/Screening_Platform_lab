@@ -36,13 +36,16 @@ class ManifestRepository:
                 manifest_path=manifest_path,
             )
             for scene in manifest.get("scenes", []):
+                # DB cloud_cover is legacy NOT NULL; fallback to 100.0 when unknown
+                # while manifest JSON preserves null for missing STAC cloud metadata
+                db_cloud_cover = scene["cloud_cover"] if scene.get("cloud_cover") is not None else 100.0
                 insert_discovered_scene(
                     conn,
                     source_scene_manifest_hash=manifest_hash,
                     scene_id=scene["scene_id"],
                     source_endpoint_id=manifest["source_endpoint_id"],
                     acquired_at=scene["acquired_at"],
-                    cloud_cover=scene["cloud_cover"],
+                    cloud_cover=db_cloud_cover,
                 )
             conn.commit()
 

@@ -113,7 +113,7 @@ def insert_discovered_scene(
     scene_id: str,
     source_endpoint_id: str,
     acquired_at: str,
-    cloud_cover: float | None,
+    cloud_cover: float,
 ) -> None:
     conn.execute(
         """

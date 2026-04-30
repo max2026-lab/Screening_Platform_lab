@@ -311,6 +311,8 @@ def test_persist_manifest_with_mocked_stac_scenes(tmp_path):
     assert scene_by_id["S2A_20240101"]["provider_item_id"] == "S2A_20240101"
     assert scene_by_id["S2B_20240102"]["collection"] == "sentinel-2-l2a"
     assert scene_by_id["S2B_20240102"]["provider_item_id"] == "S2B_20240102"
+    # manifest JSON preserves unknown cloud_cover as null
+    assert scene_by_id["S2B_20240102"]["cloud_cover"] is None
 
     assert manifest_json["query_parameters"]["datetime"] == "2024-01-01/2024-03-31"
     assert manifest_json["query_parameters"]["collections"] == ["sentinel-2-l2a"]
@@ -319,6 +321,10 @@ def test_persist_manifest_with_mocked_stac_scenes(tmp_path):
 
     assert manifest_json["collection_summary"]["collections"] == ["sentinel-2-l2a"]
     assert manifest_json["collection_summary"]["scene_count"] == 2
+
+    # DB row may show 100.0 fallback due to legacy NOT NULL column
+    persisted_no_cloud = next(s for s in persisted_scenes if s["scene_id"] == "S2B_20240102")
+    assert persisted_no_cloud["cloud_cover"] == 100.0
 
 
 def test_manifest_hash_deterministic_across_shuffled_stac_response(tmp_path):
