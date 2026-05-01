@@ -485,6 +485,39 @@ powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evi
 For the metadata-only real STAC provider smoke path, configuration, and live operator workflow, see:
 `docs/V1_3_REAL_STAC_PROVIDER_SMOKE.md`
 
+## V1.3 Release Candidate
+
+The V1.3 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_3_RELEASE_NOTES.md`.
+
+Validate the V1.3 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_3_real_stac_provider_smoke_release.ps1
+```
+
+Validate the V1.2 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_2_run_summary_release.ps1
+```
+
+Validate the V1.1 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_1_no_candidates_export_report_release.ps1
+```
+
+Validate the full release chain (through Phase 28) with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evidence_manifest.ps1 -Overwrite
+```
+
+## V1.3 Real STAC Provider Smoke
+
+For the metadata-only real STAC provider smoke path, configuration, and live operator workflow, see:
+`docs/V1_3_REAL_STAC_PROVIDER_SMOKE.md`
+
 ## V1.3 Real STAC Provider Smoke Release Verification
 
 Run the V1.3 release verification script to confirm mocked STAC provider behavior without network:
