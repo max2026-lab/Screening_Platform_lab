@@ -31,6 +31,7 @@ def _try_discover_and_validate(
     *,
     registry: EndpointRegistry,
     aoi_hash: str | None,
+    aoi_bbox: list[float] | None,
     start_date: str | None,
     end_date: str | None,
 ) -> list[dict]:
@@ -39,6 +40,7 @@ def _try_discover_and_validate(
         endpoint.endpoint_id,
         registry=registry,
         aoi_hash=aoi_hash,
+        aoi_bbox=aoi_bbox,
         start_date=start_date,
         end_date=end_date,
     )
@@ -81,6 +83,7 @@ def build_manifest(
     *,
     scenes: list[dict] | None = None,
     aoi_hash: str | None = None,
+    aoi_bbox: list[float] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> dict:
@@ -138,6 +141,7 @@ def build_manifest(
                     endpoint_id,
                     registry=registry,
                     aoi_hash=aoi_hash,
+                    aoi_bbox=aoi_bbox,
                     start_date=start_date,
                     end_date=end_date,
                 )

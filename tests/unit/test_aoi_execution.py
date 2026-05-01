@@ -1,7 +1,7 @@
 import pytest
 import json
 from pathlib import Path
-from lawful_anomaly_screening.aoi.validation import validate_aoi_file
+from lawful_anomaly_screening.aoi.validation import validate_aoi_file, extract_bbox_from_geojson
 from lawful_anomaly_screening.sources.manifest_builder import build_manifest, create_source_scene_manifest_hash
 
 def test_validate_aoi_file(tmp_path):
@@ -65,3 +65,36 @@ def test_manifest_hash_depends_on_aoi_and_dates():
     
     assert hash1 != hash2
     assert hash1 != hash3
+
+
+def test_bbox_extraction_from_polygon_geojson():
+    aoi_data = {
+        "type": "Polygon",
+        "coordinates": [[[10.0, 20.0], [30.0, 20.0], [30.0, 40.0], [10.0, 40.0], [10.0, 20.0]]]
+    }
+    bbox = extract_bbox_from_geojson(aoi_data)
+    assert bbox == [10.0, 20.0, 30.0, 40.0]
+
+
+def test_bbox_extraction_from_feature_collection_geojson():
+    aoi_data = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[5.0, 15.0], [25.0, 15.0], [25.0, 35.0], [5.0, 35.0], [5.0, 15.0]]]
+                }
+            }
+        ]
+    }
+    bbox = extract_bbox_from_geojson(aoi_data)
+    assert bbox == [5.0, 15.0, 25.0, 35.0]
+
+
+def test_malformed_aoi_no_coordinates_fails_clearly():
+    aoi_data = {"type": "Polygon", "coordinates": []}
+    with pytest.raises(ValueError, match="AOI geometry is empty"):
+        extract_bbox_from_geojson(aoi_data)

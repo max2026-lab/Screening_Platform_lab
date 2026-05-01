@@ -70,6 +70,21 @@ def _calculate_bbox(geom: dict[str, Any]) -> list[float]:
     return [float(min(lons)), float(min(lats)), float(max(lons)), float(max(lats))]
 
 
+def extract_bbox_from_geojson(data: dict[str, Any]) -> list[float]:
+    """Extract a [min_lon, min_lat, max_lon, max_lat] bbox from GeoJSON data.
+
+    Supports Polygon, MultiPolygon, Feature, and FeatureCollection.
+    Assumes WGS84 lon/lat. Raises ValueError for unsupported or empty geometry.
+    """
+    geom = _extract_geometry(data)
+    if geom["type"] not in ["Polygon", "MultiPolygon"]:
+        raise ValueError(f"AOI geometry must be Polygon or MultiPolygon, got {geom['type']}")
+    bbox = _calculate_bbox(geom)
+    if bbox == [0.0, 0.0, 0.0, 0.0]:
+        raise ValueError("AOI geometry is empty")
+    return bbox
+
+
 def validate_aoi(_: object) -> bool:
     # Keep the existing stub if needed, but we probably want to use validate_aoi_file
     return True

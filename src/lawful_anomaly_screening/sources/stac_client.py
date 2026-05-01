@@ -54,6 +54,7 @@ def query_stac_search(
     collections: list[str] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    bbox: list[float] | None = None,
     max_items: int = 10,
     timeout_seconds: int = 30,
 ) -> list[dict]:
@@ -67,6 +68,8 @@ def query_stac_search(
         payload["collections"] = collections
     if start_date or end_date:
         payload["datetime"] = f"{start_date or '..'}/{end_date or '..'}"
+    if bbox is not None:
+        payload["bbox"] = bbox
 
     data = json.dumps(payload).encode("utf-8")
     headers = {

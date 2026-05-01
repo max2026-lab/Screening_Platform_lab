@@ -205,6 +205,7 @@ def test_discover_scenes_uses_real_stac_when_explicitly_active(tmp_path):
             "earth_search",
             registry=registry,
             aoi_hash="test-aoi-001",
+            aoi_bbox=[30.0, 10.0, 40.0, 20.0],
             start_date="2024-01-01",
             end_date="2024-03-31",
         )
@@ -212,6 +213,7 @@ def test_discover_scenes_uses_real_stac_when_explicitly_active(tmp_path):
     assert len(scenes) == 2
     assert scenes[0]["scene_id"] == "S2A_20240101"
     assert scenes.__stac_query_context__["datetime"] == "2024-01-01/2024-03-31"
+    assert scenes.__stac_query_context__["bbox"] == [30.0, 10.0, 40.0, 20.0]
 
 
 def test_discover_scenes_defaults_to_simulation_when_not_active():
@@ -276,6 +278,7 @@ def test_persist_manifest_with_mocked_stac_scenes(tmp_path):
             "earth_search",
             registry=registry,
             aoi_hash="test-aoi-001",
+            aoi_bbox=[30.0, 10.0, 40.0, 20.0],
             start_date="2024-01-01",
             end_date="2024-03-31",
         )
@@ -284,6 +287,7 @@ def test_persist_manifest_with_mocked_stac_scenes(tmp_path):
         "earth_search",
         scenes=scenes,
         aoi_hash="test-aoi-001",
+        aoi_bbox=[30.0, 10.0, 40.0, 20.0],
         start_date="2024-01-01",
         end_date="2024-03-31",
     )
@@ -317,7 +321,7 @@ def test_persist_manifest_with_mocked_stac_scenes(tmp_path):
     assert manifest_json["query_parameters"]["datetime"] == "2024-01-01/2024-03-31"
     assert manifest_json["query_parameters"]["collections"] == ["sentinel-2-l2a"]
     assert manifest_json["query_parameters"]["limit"] == 10
-    assert manifest_json["query_parameters"]["bbox"] is None
+    assert manifest_json["query_parameters"]["bbox"] == [30.0, 10.0, 40.0, 20.0]
 
     assert manifest_json["collection_summary"]["collections"] == ["sentinel-2-l2a"]
     assert manifest_json["collection_summary"]["scene_count"] == 2
@@ -375,6 +379,7 @@ def test_manifest_hash_deterministic_across_shuffled_stac_response(tmp_path):
                 "earth_search",
                 registry=registry,
                 aoi_hash="test-aoi-001",
+                aoi_bbox=[30.0, 10.0, 40.0, 20.0],
                 start_date="2024-01-01",
                 end_date="2024-03-31",
             )
@@ -382,6 +387,7 @@ def test_manifest_hash_deterministic_across_shuffled_stac_response(tmp_path):
             "earth_search",
             scenes=scenes,
             aoi_hash="test-aoi-001",
+            aoi_bbox=[30.0, 10.0, 40.0, 20.0],
             start_date="2024-01-01",
             end_date="2024-03-31",
         )
@@ -427,3 +433,134 @@ def test_all_unusable_items_raises_source_error():
     with patch("lawful_anomaly_screening.sources.stac_client.request.urlopen", return_value=mock_response):
         with pytest.raises(SourceError, match="no usable scenes after normalization"):
             query_stac_search(base_url="https://example.com/v1")
+
+
+def test_query_stac_search_includes_bbox_in_post_body():
+    """Mocked STAC request test verifies outgoing POST body includes exact bbox."""
+    mock_response = type("MockResponse", (), {
+        "read": lambda *args: json.dumps(SAMPLE_STAC_FEATURECOLLECTION).encode("utf-8"),
+        "__enter__": lambda self: self,
+        "__exit__": lambda *args: None,
+    })()
+
+    captured = {}
+
+    def capture_urlopen(req, *args, **kwargs):
+        captured["body"] = req.data.decode("utf-8")
+        return mock_response
+
+    with patch("lawful_anomaly_screening.sources.stac_client.request.urlopen", side_effect=capture_urlopen):
+        query_stac_search(
+            base_url="https://example.com/v1",
+            collections=["sentinel-2-l2a"],
+            start_date="2024-01-01",
+            end_date="2024-03-31",
+            bbox=[30.0, 10.0, 40.0, 20.0],
+        )
+
+    payload = json.loads(captured["body"])
+    assert payload["bbox"] == [30.0, 10.0, 40.0, 20.0]
+
+
+def test_discover_scenes_active_stac_fails_without_bbox(tmp_path):
+    config_path = tmp_path / "active_stac_endpoints.json"
+    config_path.write_text(json.dumps({
+        "primary": "earth_search",
+        "fallbacks": [],
+        "earth_search": {
+            "provider": "earth-search",
+            "role": "primary",
+            "synchronous_only": True,
+            "active": True,
+            "base_url": "https://example.com/v1",
+            "search_path": "search",
+            "collections": ["sentinel-2-l2a"],
+            "timeout_seconds": 30,
+            "max_items": 10,
+            "metadata_only": True,
+        },
+    }))
+
+    registry = load_endpoint_registry(path=config_path)
+
+    with pytest.raises(SourceError, match="real STAC active but no AOI bbox provided"):
+        discover_scenes(
+            "earth_search",
+            registry=registry,
+            aoi_hash="test-aoi-001",
+            start_date="2024-01-01",
+            end_date="2024-03-31",
+        )
+
+
+def test_manifest_query_parameters_contains_bbox(tmp_path):
+    """Manifest persistence test verifies query_parameters.bbox exists and matches AOI bbox."""
+    db_path = tmp_path / "stac-bbox.sqlite3"
+    manifest_root = tmp_path / "manifests"
+    init_db(db_path)
+
+    config_path = tmp_path / "active_stac_endpoints.json"
+    config_path.write_text(json.dumps({
+        "primary": "earth_search",
+        "fallbacks": [],
+        "earth_search": {
+            "provider": "earth-search",
+            "role": "primary",
+            "synchronous_only": True,
+            "active": True,
+            "base_url": "https://example.com/v1",
+            "search_path": "search",
+            "collections": ["sentinel-2-l2a"],
+            "timeout_seconds": 30,
+            "max_items": 10,
+            "metadata_only": True,
+        },
+    }))
+
+    registry = load_endpoint_registry(path=config_path)
+    mock_response = type("MockResponse", (), {
+        "read": lambda *args: json.dumps(SAMPLE_STAC_FEATURECOLLECTION).encode("utf-8"),
+        "__enter__": lambda self: self,
+        "__exit__": lambda *args: None,
+    })()
+
+    with patch("lawful_anomaly_screening.sources.stac_client.request.urlopen", return_value=mock_response):
+        scenes = discover_scenes(
+            "earth_search",
+            registry=registry,
+            aoi_hash="test-aoi-001",
+            aoi_bbox=[25.0, 15.0, 35.0, 25.0],
+            start_date="2024-01-01",
+            end_date="2024-03-31",
+        )
+
+    manifest = build_manifest(
+        "earth_search",
+        scenes=scenes,
+        aoi_hash="test-aoi-001",
+        aoi_bbox=[25.0, 15.0, 35.0, 25.0],
+        start_date="2024-01-01",
+        end_date="2024-03-31",
+    )
+    repo = ManifestRepository(db_path, manifest_root=manifest_root)
+    record = repo.persist_manifest(manifest)
+
+    manifest_file = Path(record["manifest_path"])
+    manifest_json = json.loads(manifest_file.read_text(encoding="utf-8"))
+    assert manifest_json["query_parameters"]["bbox"] == [25.0, 15.0, 35.0, 25.0]
+
+
+def test_default_offline_discovery_ignores_bbox():
+    """Default/offline discovery still does not require bbox and remains unchanged."""
+    scenes = discover_scenes(
+        "earth_search",
+        aoi_hash="hash-001",
+        aoi_bbox=[30.0, 10.0, 40.0, 20.0],
+        start_date="2024-01-01",
+        end_date="2024-03-31",
+    )
+    assert len(scenes) == 3
+    for scene in scenes:
+        assert "scene_id" in scene
+        assert "acquired_at" in scene
+        assert "cloud_cover" in scene

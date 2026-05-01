@@ -518,6 +518,15 @@ powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evi
 For the metadata-only real STAC provider smoke path, configuration, and live operator workflow, see:
 `docs/V1_3_REAL_STAC_PROVIDER_SMOKE.md`
 
+## V1.4 Real AOI Bbox in STAC Smoke
+
+V1.4 wires the real AOI GeoJSON bbox into the STAC metadata-only `/search` payload when the endpoint is explicitly active.
+
+- Normal tests remain mocked/offline
+- Live smoke still requires network and explicit active endpoint config
+- No raster download
+- No scoring/calibration/DB schema changes
+
 ## V1.3 Real STAC Provider Smoke Release Verification
 
 Run the V1.3 release verification script to confirm mocked STAC provider behavior without network:

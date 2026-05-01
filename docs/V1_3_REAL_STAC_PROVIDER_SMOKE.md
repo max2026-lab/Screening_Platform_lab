@@ -56,7 +56,7 @@ When an endpoint has `active: true` and `base_url` set:
    - `datetime` from `start_date`/`end_date`
    - `collections` from config
    - `limit` from config
-3. V1.3 does not yet wire real AOI bbox into the STAC request. Metadata filtering uses date/collection/limit only.
+3. V1.4 wires real AOI bbox into the STAC `/search` request when real STAC is explicitly active.
 4. Returned STAC items are normalized into:
    - `scene_id`
    - `acquired_at` (from `properties.datetime`)
@@ -116,7 +116,27 @@ Also verify the manifest hash exists:
 sqlite3 C:\temp\stac-smoke.sqlite3 "SELECT source_scene_manifest_hash FROM source_scene_manifests;"
 ```
 
-## Scope Limits
+## V1.4 Real AOI Bbox in STAC /search
+
+In V1.4, when real STAC is explicitly active, the AOI GeoJSON bbox is parsed and included in the STAC `/search` POST payload:
+
+- `bbox = [min_lon, min_lat, max_lon, max_lat]`
+
+The same bbox is stored in `manifest.query_parameters.bbox`.
+
+If the AOI bbox cannot be derived and real STAC is active, `create-run` fails clearly instead of silently querying without a spatial filter.
+
+Offline/simulated discovery remains unchanged and does not require a bbox.
+
+### What Changed in V1.4
+
+- `discover_scenes` accepts `aoi_bbox` and passes it to `query_stac_search`
+- `query_stac_search` accepts `bbox` and includes it in the STAC payload
+- `build_manifest` accepts `aoi_bbox` and passes it through discovery
+- `cli.create-run` extracts `aoi_bbox` from the validated AOI file and passes it to `build_manifest`
+- Active real STAC without `aoi_bbox` raises `SourceError: real STAC active but no AOI bbox provided`
+
+### Scope Limits (V1.4)
 
 - No scoring changes
 - No threshold changes
@@ -125,3 +145,4 @@ sqlite3 C:\temp\stac-smoke.sqlite3 "SELECT source_scene_manifest_hash FROM sourc
 - No calibration changes
 - No DB schema changes
 - No UI changes
+- No raster download

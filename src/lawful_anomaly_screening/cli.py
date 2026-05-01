@@ -209,6 +209,7 @@ def cmd_create_run(_: argparse.Namespace) -> int:
     manifest = build_manifest(
         source_endpoint_id=_.source_endpoint_id,
         aoi_hash=aoi_metadata.get("aoi_hash"),
+        aoi_bbox=aoi_metadata.get("aoi_bbox"),
         start_date=start_date,
         end_date=end_date,
     )

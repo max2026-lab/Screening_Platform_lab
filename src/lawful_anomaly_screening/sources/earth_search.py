@@ -92,6 +92,7 @@ def discover_scenes(
     *,
     registry: EndpointRegistry | None = None,
     aoi_hash: str | None = None,
+    aoi_bbox: list[float] | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
 ) -> list[dict]:
@@ -105,6 +106,8 @@ def discover_scenes(
     # Real STAC path: only when explicitly active and metadata-only
     if _has_active_stac_config(endpoint):
         from .stac_client import query_stac_search
+        if aoi_bbox is None:
+            raise SourceError("real STAC active but no AOI bbox provided")
         extra = endpoint.extra
         scenes = _SceneList(query_stac_search(
             base_url=extra["base_url"],
@@ -112,6 +115,7 @@ def discover_scenes(
             collections=extra.get("collections"),
             start_date=start_date,
             end_date=end_date,
+            bbox=aoi_bbox,
             max_items=extra.get("max_items", 10),
             timeout_seconds=extra.get("timeout_seconds", 30),
         ))
@@ -119,7 +123,7 @@ def discover_scenes(
             "datetime": f"{start_date or '..'}/{end_date or '..'}",
             "collections": sorted(extra.get("collections") or []),
             "limit": extra.get("max_items", 10),
-            "bbox": None,
+            "bbox": aoi_bbox,
         }
         return scenes
 
