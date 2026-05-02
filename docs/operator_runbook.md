@@ -574,3 +574,37 @@ This script verifies:
 - Export fields (`latest_export_record_id`, `latest_export_artifact_path`) appear after `export-create`
 - Missing run IDs return non-zero exit with `run not found` stderr
 - Repo cleanliness and token-free remotes after verification
+
+## V1.4 Release Candidate
+
+The V1.4 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_4_RELEASE_NOTES.md`.
+
+Validate the V1.4 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_4_real_stac_aoi_bbox_smoke_release.ps1
+```
+
+Validate the V1.3 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_3_real_stac_provider_smoke_release.ps1
+```
+
+Validate the V1.2 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_2_run_summary_release.ps1
+```
+
+Validate the V1.1 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_1_no_candidates_export_report_release.ps1
+```
+
+Validate the full release chain (through Phase 28) with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_phase28_full_release_evidence_manifest.ps1 -Overwrite
+```
