@@ -527,6 +527,24 @@ V1.4 wires the real AOI GeoJSON bbox into the STAC metadata-only `/search` paylo
 - No raster download
 - No scoring/calibration/DB schema changes
 
+## V1.4 Real STAC AOI Bbox Release Verification
+
+Run the V1.4 release verification script to confirm AOI bbox wiring into STAC smoke without network:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_v1_4_real_stac_aoi_bbox_smoke_release.ps1
+```
+
+This script verifies:
+- AOI bbox extraction and coordinate validation tests pass
+- Mocked STAC provider tests include bbox in POST payload
+- Active real STAC fails clearly when no AOI bbox is provided
+- Docs state V1.4 wires real AOI bbox into STAC `/search`
+- Default endpoints config keeps `earth_search` inactive
+- `metadata_only` is true in config
+- No raster download behavior in source
+- Repo cleanliness and token-free remotes after verification
+
 ## V1.3 Real STAC Provider Smoke Release Verification
 
 Run the V1.3 release verification script to confirm mocked STAC provider behavior without network:
