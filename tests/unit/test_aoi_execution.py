@@ -98,3 +98,46 @@ def test_malformed_aoi_no_coordinates_fails_clearly():
     aoi_data = {"type": "Polygon", "coordinates": []}
     with pytest.raises(ValueError, match="AOI geometry is empty"):
         extract_bbox_from_geojson(aoi_data)
+
+
+def test_malformed_aoi_missing_latitude_fails_clearly():
+    aoi_data = {
+        "type": "Polygon",
+        "coordinates": [[[10.0, 20.0], [30.0]]]
+    }
+    with pytest.raises(ValueError, match="invalid AOI coordinate at index 1: expected at least 2 values"):
+        extract_bbox_from_geojson(aoi_data)
+
+
+def test_malformed_aoi_non_numeric_lon_lat_fails_clearly():
+    aoi_data = {
+        "type": "Polygon",
+        "coordinates": [[["10.0", 20.0], [30.0, 40.0], [10.0, 40.0], ["10.0", 20.0]]]
+    }
+    with pytest.raises(ValueError, match="invalid AOI coordinate at index 0: lon/lat must be numeric"):
+        extract_bbox_from_geojson(aoi_data)
+
+
+def test_malformed_aoi_null_coordinate_fails_clearly():
+    aoi_data = {
+        "type": "Polygon",
+        "coordinates": [[[10.0, None], [30.0, 40.0], [10.0, 40.0], [10.0, 20.0]]]
+    }
+    with pytest.raises(ValueError, match="invalid AOI coordinate at index 0: lon/lat must not be null"):
+        extract_bbox_from_geojson(aoi_data)
+
+
+def test_bbox_extraction_from_multipolygon_geojson():
+    aoi_data = {
+        "type": "MultiPolygon",
+        "coordinates": [
+            [
+                [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [0.0, 0.0]]
+            ],
+            [
+                [[20.0, 20.0], [30.0, 20.0], [30.0, 30.0], [20.0, 30.0], [20.0, 20.0]]
+            ]
+        ]
+    }
+    bbox = extract_bbox_from_geojson(aoi_data)
+    assert bbox == [0.0, 0.0, 30.0, 30.0]

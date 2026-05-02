@@ -52,19 +52,53 @@ def _extract_geometry(data: dict[str, Any]) -> dict[str, Any]:
     raise ValueError(f"AOI geometry must be Polygon or MultiPolygon, got {data_type}")
 
 
+def _collect_and_validate_coords(coordinates: list[Any]) -> list[tuple[float, float]]:
+    """Validate and return a flat list of (lon, lat) pairs from a coordinate array.
+
+    Raises ValueError with a clear message if any coordinate is malformed.
+    """
+    validated: list[tuple[float, float]] = []
+    for idx, coord in enumerate(coordinates):
+        if not isinstance(coord, (list, tuple)):
+            raise ValueError(
+                f"invalid AOI coordinate at index {idx}: expected list/tuple, got {type(coord).__name__}"
+            )
+        if len(coord) < 2:
+            raise ValueError(
+                f"invalid AOI coordinate at index {idx}: expected at least 2 values, got {len(coord)}"
+            )
+        lon, lat = coord[0], coord[1]
+        if lon is None or lat is None:
+            raise ValueError(
+                f"invalid AOI coordinate at index {idx}: lon/lat must not be null"
+            )
+        if isinstance(lon, str) or isinstance(lat, str):
+            raise ValueError(
+                f"invalid AOI coordinate at index {idx}: lon/lat must be numeric, got string"
+            )
+        try:
+            validated.append((float(lon), float(lat)))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"invalid AOI coordinate at index {idx}: lon/lat must be numeric ({exc})"
+            )
+    return validated
+
+
 def _calculate_bbox(geom: dict[str, Any]) -> list[float]:
-    coords = []
+    raw_coords: list[Any] = []
     if geom["type"] == "Polygon":
-        for ring in geom["coordinates"]:
-            coords.extend(ring)
+        for ring in geom.get("coordinates", []):
+            raw_coords.extend(ring)
     elif geom["type"] == "MultiPolygon":
-        for polygon in geom["coordinates"]:
+        for polygon in geom.get("coordinates", []):
             for ring in polygon:
-                coords.extend(ring)
-    
-    if not coords:
+                raw_coords.extend(ring)
+
+    if not raw_coords:
         return [0.0, 0.0, 0.0, 0.0]
 
+    coords = _collect_and_validate_coords(raw_coords)
     lons = [c[0] for c in coords]
     lats = [c[1] for c in coords]
     return [float(min(lons)), float(min(lats)), float(max(lons)), float(max(lats))]
