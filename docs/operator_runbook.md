@@ -575,6 +575,28 @@ This script verifies:
 - Missing run IDs return non-zero exit with `run not found` stderr
 - Repo cleanliness and token-free remotes after verification
 
+## V1.5 Live Real STAC Metadata Smoke
+
+V1.5 adds a network-required live STAC metadata-only smoke script. This is **not** part of normal offline pytest or release verification.
+
+```powershell
+$env:LAWFUL_ANOMALY_ALLOW_LIVE_STAC_SMOKE = "1"
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\smoke_live_v1_5_real_stac_metadata.ps1
+```
+
+What it does:
+- Queries the real Earth Search STAC `/search` endpoint for metadata only
+- Uses a real AOI GeoJSON bbox in the STAC POST payload
+- Uses RFC3339 datetime interval in the STAC POST payload
+- Verifies `discovered_scenes` and `source_scene_manifest_hash` are persisted
+- Verifies no raster assets are downloaded
+
+Requirements:
+- Network connectivity to `https://earth-search.aws.element84.com/v1`
+- Explicit opt-in via `$env:LAWFUL_ANOMALY_ALLOW_LIVE_STAC_SMOKE = "1"`
+
+For full details, see `docs/V1_5_LIVE_STAC_METADATA_SMOKE.md`.
+
 ## V1.4 Release Candidate
 
 The V1.4 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_4_RELEASE_NOTES.md`.
