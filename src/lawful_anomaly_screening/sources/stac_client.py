@@ -16,6 +16,16 @@ def _build_stac_search_url(
     return f"{base}/{path}"
 
 
+def _build_stac_datetime_interval(
+    start_date: str | None,
+    end_date: str | None,
+) -> str:
+    """Convert YYYY-MM-DD dates to RFC3339 STAC datetime interval string."""
+    start = f"{start_date}T00:00:00Z" if start_date else ".."
+    end = f"{end_date}T23:59:59Z" if end_date else ".."
+    return f"{start}/{end}"
+
+
 def _normalize_stac_item(item: dict) -> dict | None:
     """Normalize a single STAC item into the internal discovered-scene format.
 
@@ -67,7 +77,7 @@ def query_stac_search(
     if collections:
         payload["collections"] = collections
     if start_date or end_date:
-        payload["datetime"] = f"{start_date or '..'}/{end_date or '..'}"
+        payload["datetime"] = _build_stac_datetime_interval(start_date, end_date)
     if bbox is not None:
         payload["bbox"] = bbox
 

@@ -144,7 +144,7 @@ def test_query_stac_search_with_mocked_http():
     payload = json.loads(captured["body"])
     assert payload["limit"] == 10
     assert payload["collections"] == ["sentinel-2-l2a"]
-    assert payload["datetime"] == "2024-01-01/2024-03-31"
+    assert payload["datetime"] == "2024-01-01T00:00:00Z/2024-03-31T23:59:59Z"
     assert "bbox" not in payload
     # Ensure no raster asset download URLs are called
     assert "download" not in captured["url"]
@@ -212,7 +212,7 @@ def test_discover_scenes_uses_real_stac_when_explicitly_active(tmp_path):
 
     assert len(scenes) == 2
     assert scenes[0]["scene_id"] == "S2A_20240101"
-    assert scenes.__stac_query_context__["datetime"] == "2024-01-01/2024-03-31"
+    assert scenes.__stac_query_context__["datetime"] == "2024-01-01T00:00:00Z/2024-03-31T23:59:59Z"
     assert scenes.__stac_query_context__["bbox"] == [30.0, 10.0, 40.0, 20.0]
 
 
@@ -318,7 +318,7 @@ def test_persist_manifest_with_mocked_stac_scenes(tmp_path):
     # manifest JSON preserves unknown cloud_cover as null
     assert scene_by_id["S2B_20240102"]["cloud_cover"] is None
 
-    assert manifest_json["query_parameters"]["datetime"] == "2024-01-01/2024-03-31"
+    assert manifest_json["query_parameters"]["datetime"] == "2024-01-01T00:00:00Z/2024-03-31T23:59:59Z"
     assert manifest_json["query_parameters"]["collections"] == ["sentinel-2-l2a"]
     assert manifest_json["query_parameters"]["limit"] == 10
     assert manifest_json["query_parameters"]["bbox"] == [30.0, 10.0, 40.0, 20.0]
@@ -460,6 +460,136 @@ def test_query_stac_search_includes_bbox_in_post_body():
 
     payload = json.loads(captured["body"])
     assert payload["bbox"] == [30.0, 10.0, 40.0, 20.0]
+
+
+def test_query_stac_search_uses_rfc3339_datetime_interval():
+    """Mocked STAC request test verifies outgoing POST body uses RFC3339 datetime interval."""
+    mock_response = type("MockResponse", (), {
+        "read": lambda *args: json.dumps(SAMPLE_STAC_FEATURECOLLECTION).encode("utf-8"),
+        "__enter__": lambda self: self,
+        "__exit__": lambda *args: None,
+    })()
+
+    captured = {}
+
+    def capture_urlopen(req, *args, **kwargs):
+        captured["body"] = req.data.decode("utf-8")
+        return mock_response
+
+    with patch("lawful_anomaly_screening.sources.stac_client.request.urlopen", side_effect=capture_urlopen):
+        query_stac_search(
+            base_url="https://example.com/v1",
+            start_date="2024-01-01",
+            end_date="2024-03-31",
+        )
+
+    payload = json.loads(captured["body"])
+    assert payload["datetime"] == "2024-01-01T00:00:00Z/2024-03-31T23:59:59Z"
+
+
+def test_query_stac_search_start_only_datetime():
+    """Mocked STAC request test verifies start-only datetime format."""
+    mock_response = type("MockResponse", (), {
+        "read": lambda *args: json.dumps(SAMPLE_STAC_FEATURECOLLECTION).encode("utf-8"),
+        "__enter__": lambda self: self,
+        "__exit__": lambda *args: None,
+    })()
+
+    captured = {}
+
+    def capture_urlopen(req, *args, **kwargs):
+        captured["body"] = req.data.decode("utf-8")
+        return mock_response
+
+    with patch("lawful_anomaly_screening.sources.stac_client.request.urlopen", side_effect=capture_urlopen):
+        query_stac_search(
+            base_url="https://example.com/v1",
+            start_date="2024-01-01",
+        )
+
+    payload = json.loads(captured["body"])
+    assert payload["datetime"] == "2024-01-01T00:00:00Z/.."
+
+
+def test_query_stac_search_end_only_datetime():
+    """Mocked STAC request test verifies end-only datetime format."""
+    mock_response = type("MockResponse", (), {
+        "read": lambda *args: json.dumps(SAMPLE_STAC_FEATURECOLLECTION).encode("utf-8"),
+        "__enter__": lambda self: self,
+        "__exit__": lambda *args: None,
+    })()
+
+    captured = {}
+
+    def capture_urlopen(req, *args, **kwargs):
+        captured["body"] = req.data.decode("utf-8")
+        return mock_response
+
+    with patch("lawful_anomaly_screening.sources.stac_client.request.urlopen", side_effect=capture_urlopen):
+        query_stac_search(
+            base_url="https://example.com/v1",
+            end_date="2024-03-31",
+        )
+
+    payload = json.loads(captured["body"])
+    assert payload["datetime"] == "../2024-03-31T23:59:59Z"
+
+
+def test_manifest_query_parameters_uses_rfc3339_for_real_stac(tmp_path):
+    """Manifest query_parameters.datetime must use RFC3339 interval for real STAC active path."""
+    db_path = tmp_path / "stac-rfc3339.sqlite3"
+    manifest_root = tmp_path / "manifests"
+    init_db(db_path)
+
+    config_path = tmp_path / "active_stac_endpoints.json"
+    config_path.write_text(json.dumps({
+        "primary": "earth_search",
+        "fallbacks": [],
+        "earth_search": {
+            "provider": "earth-search",
+            "role": "primary",
+            "synchronous_only": True,
+            "active": True,
+            "base_url": "https://example.com/v1",
+            "search_path": "search",
+            "collections": ["sentinel-2-l2a"],
+            "timeout_seconds": 30,
+            "max_items": 10,
+            "metadata_only": True,
+        },
+    }))
+
+    registry = load_endpoint_registry(path=config_path)
+    mock_response = type("MockResponse", (), {
+        "read": lambda *args: json.dumps(SAMPLE_STAC_FEATURECOLLECTION).encode("utf-8"),
+        "__enter__": lambda self: self,
+        "__exit__": lambda *args: None,
+    })()
+
+    with patch("lawful_anomaly_screening.sources.stac_client.request.urlopen", return_value=mock_response):
+        scenes = discover_scenes(
+            "earth_search",
+            registry=registry,
+            aoi_hash="test-aoi-001",
+            aoi_bbox=[30.0, 10.0, 40.0, 20.0],
+            start_date="2024-01-01",
+            end_date="2024-03-31",
+        )
+
+    manifest = build_manifest(
+        "earth_search",
+        scenes=scenes,
+        aoi_hash="test-aoi-001",
+        aoi_bbox=[30.0, 10.0, 40.0, 20.0],
+        start_date="2024-01-01",
+        end_date="2024-03-31",
+    )
+    repo = ManifestRepository(db_path, manifest_root=manifest_root)
+    record = repo.persist_manifest(manifest)
+
+    manifest_file = Path(record["manifest_path"])
+    manifest_json = json.loads(manifest_file.read_text(encoding="utf-8"))
+    assert manifest_json["query_parameters"]["datetime"] == "2024-01-01T00:00:00Z/2024-03-31T23:59:59Z"
 
 
 def test_discover_scenes_active_stac_fails_without_bbox(tmp_path):

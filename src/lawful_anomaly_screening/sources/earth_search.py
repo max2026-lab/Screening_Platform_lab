@@ -119,8 +119,9 @@ def discover_scenes(
             max_items=extra.get("max_items", 10),
             timeout_seconds=extra.get("timeout_seconds", 30),
         ))
+        from .stac_client import _build_stac_datetime_interval
         scenes.__stac_query_context__ = {
-            "datetime": f"{start_date or '..'}/{end_date or '..'}",
+            "datetime": _build_stac_datetime_interval(start_date, end_date),
             "collections": sorted(extra.get("collections") or []),
             "limit": extra.get("max_items", 10),
             "bbox": aoi_bbox,
