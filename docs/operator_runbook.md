@@ -597,6 +597,27 @@ Requirements:
 
 For full details, see `docs/V1_5_LIVE_STAC_METADATA_SMOKE.md`.
 
+## V1.5 Live STAC Metadata Release Verification
+
+Run the V1.5 release verification script to confirm the live smoke script guard, contract, and RFC3339 datetime fix without network:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_v1_5_live_stac_metadata_release.ps1
+```
+
+This script verifies:
+- Offline mocked STAC/AOI tests pass
+- Live smoke script exists with explicit opt-in guard
+- Live smoke script refuses to run without `$env:LAWFUL_ANOMALY_ALLOW_LIVE_STAC_SMOKE = "1"`
+- Live smoke script uses Earth Search, `metadata_only`, `sentinel-2-l2a`
+- Live smoke script checks RFC3339 datetime, bbox, discovered_scenes, no raster download
+- Docs state live/network-required, metadata-only, no raster download
+- RFC3339 `_build_stac_datetime_interval` is present in `stac_client.py`
+- Default endpoints config keeps `earth_search` inactive
+- Repo cleanliness and token-free remotes after verification
+
+This script is **offline by default** and does not call real Earth Search. Live smoke remains explicit manual/operator validation only.
+
 ## V1.4 Release Candidate
 
 The V1.4 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_4_RELEASE_NOTES.md`.
