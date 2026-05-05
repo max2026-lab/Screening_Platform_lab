@@ -618,6 +618,23 @@ This script verifies:
 
 This script is **offline by default** and does not call real Earth Search. Live smoke remains explicit manual/operator validation only.
 
+## V1.5 Release Candidate
+
+The V1.5 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_5_RELEASE_NOTES.md`.
+
+Validate the V1.5 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_5_live_stac_metadata_release.ps1
+```
+
+Manual live smoke (network-required, opt-in only):
+
+```powershell
+$env:LAWFUL_ANOMALY_ALLOW_LIVE_STAC_SMOKE = "1"
+powershell -ExecutionPolicy Bypass -File scripts\smoke_live_v1_5_real_stac_metadata.ps1
+```
+
 ## V1.4 Release Candidate
 
 The V1.4 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_4_RELEASE_NOTES.md`.
