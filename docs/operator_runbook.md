@@ -618,6 +618,29 @@ This script verifies:
 
 This script is **offline by default** and does not call real Earth Search. Live smoke remains explicit manual/operator validation only.
 
+## V1.6 Export Bundle Release Verification
+
+Run the V1.6 release verification script to confirm report export ZIP bundles are created correctly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_v1_6_export_bundle_release.ps1
+```
+
+This script verifies:
+- Offline export repository tests pass
+- `export_repository.py` contains bundle implementation (`bundle_path`, `_write_report_bundle`, `audit_manifest.json`, `SHA256SUMS.txt`, `zipfile`)
+- Tests assert bundle creation for report exports
+- Tests assert zero-candidate bundles and non-report audiences skip bundles
+- CLI `export-create` for `report_pdf` produces `bundle_path` ending in `.zip`
+- ZIP contains exactly: markdown report, `audit_manifest.json`, `SHA256SUMS.txt`
+- `audit_manifest.json` inside ZIP matches output `audit_manifest`
+- `SHA256SUMS.txt` validates report and audit manifest hashes
+- Restricted reports do not leak exact coordinates
+- Zero-candidate restricted reports still create bundles
+- Repo cleanliness and token-free remotes after verification
+
+This script is **offline** and does not require network.
+
 ## V1.5 Release Candidate
 
 The V1.5 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_5_RELEASE_NOTES.md`.
