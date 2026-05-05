@@ -641,6 +641,18 @@ This script verifies:
 
 This script is **offline** and does not require network.
 
+## V1.6 Release Candidate
+
+The V1.6 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_6_RELEASE_NOTES.md`.
+
+Validate the V1.6 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_6_export_bundle_release.ps1
+```
+
+This verification is offline and validates report ZIP bundles, `audit_manifest.json`, and `SHA256SUMS.txt`. No DB schema, scoring, or provider changes.
+
 ## V1.5 Release Candidate
 
 The V1.5 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_5_RELEASE_NOTES.md`.
