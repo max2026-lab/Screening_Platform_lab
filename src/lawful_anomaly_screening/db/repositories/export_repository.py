@@ -4,6 +4,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import sqlite3
+import zipfile
 
 from lawful_anomaly_screening.db.sqlite import connect, insert_export_record
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
@@ -85,21 +86,20 @@ class ExportRepository:
             candidate_ids=[candidate["candidate_id"] for candidate in sanitized_candidates],
         )
 
+        report_text = None
         if normalized_audience == "report_pdf":
             resolved_path = self.export_root / artifact_path
             resolved_path.parent.mkdir(parents=True, exist_ok=True)
-            resolved_path.write_text(
-                render_markdown_report(
-                    run_id=run_id,
-                    audience=normalized_audience,
-                    policy=policy,
-                    artifact_name=artifact_name,
-                    bundle_name=bundle_name,
-                    candidates=sanitized_candidates,
-                    run_metadata=run_metadata,
-                ),
-                encoding="utf-8",
+            report_text = render_markdown_report(
+                run_id=run_id,
+                audience=normalized_audience,
+                policy=policy,
+                artifact_name=artifact_name,
+                bundle_name=bundle_name,
+                candidates=sanitized_candidates,
+                run_metadata=run_metadata,
             )
+            resolved_path.write_bytes(report_text.encode("utf-8"))
 
         with connect(self.db_path) as conn:
             insert_export_record(
@@ -124,6 +124,18 @@ class ExportRepository:
             sanitized_candidates=sanitized_candidates,
         )
 
+        bundle_path = None
+        if normalized_audience == "report_pdf" and report_text is not None:
+            bundle_relative_path = export_subdirectory(normalized_audience) / bundle_name
+            bundle_full_path = self.export_root / bundle_relative_path
+            self._write_report_bundle(
+                bundle_full_path,
+                artifact_name,
+                report_text,
+                audit_manifest,
+            )
+            bundle_path = str(bundle_relative_path).replace("\\", "/")
+
         return {
             "export_record_id": export_record_id,
             "run_id": run_id,
@@ -133,6 +145,7 @@ class ExportRepository:
             "artifact_name": artifact_name,
             "bundle_name": bundle_name,
             "artifact_path": str(artifact_path).replace("\\", "/"),
+            "bundle_path": bundle_path,
             "exact_coordinates_included": policy.exact_coordinates_included,
             "coordinate_resolution_m": policy.coordinate_resolution_m,
             "candidates": sanitized_candidates,
@@ -431,6 +444,29 @@ class ExportRepository:
             json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         return digest
+
+    @staticmethod
+    def _write_report_bundle(
+        bundle_path: Path,
+        artifact_name: str,
+        report_text: str,
+        audit_manifest: dict,
+    ) -> None:
+        bundle_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_text = json.dumps(audit_manifest, sort_keys=True, separators=(",", ":"))
+        report_hash = sha256(report_text.encode("utf-8")).hexdigest()
+        manifest_hash = sha256(manifest_text.encode("utf-8")).hexdigest()
+        sha256sums_text = f"{report_hash}  {artifact_name}\n{manifest_hash}  audit_manifest.json\n"
+        fixed_date_time = (1980, 1, 1, 0, 0, 0)
+        with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for name, content in [
+                (artifact_name, report_text),
+                ("audit_manifest.json", manifest_text),
+                ("SHA256SUMS.txt", sha256sums_text),
+            ]:
+                info = zipfile.ZipInfo(filename=name, date_time=fixed_date_time)
+                info.compress_type = zipfile.ZIP_DEFLATED
+                zf.writestr(info, content.encode("utf-8"))
 
     @staticmethod
     def _create_export_record_id(

@@ -1,5 +1,7 @@
+import hashlib
 import json
 from pathlib import Path
+import zipfile
 
 from lawful_anomaly_screening.cli import main
 from lawful_anomaly_screening.db.repositories.export_repository import ExportRepository
@@ -107,6 +109,30 @@ def test_export_repository_persists_precision_and_report_scaffold(tmp_path):
     assert "Lawful Anomaly Screening Report" in report_path.read_text(encoding="utf-8")
     assert "`restricted`" in report_path.read_text(encoding="utf-8")
 
+    assert report_record["bundle_path"] is not None
+    assert report_record["bundle_path"].endswith(".zip")
+    bundle_path = tmp_path / Path(report_record["bundle_path"])
+    assert bundle_path.exists()
+    assert bundle_path.name == report_record["bundle_name"]
+    with zipfile.ZipFile(bundle_path, "r") as zf:
+        names = sorted(zf.namelist())
+        assert names == sorted([
+            report_record["artifact_name"],
+            "audit_manifest.json",
+            "SHA256SUMS.txt",
+        ])
+        zip_report = zf.read(report_record["artifact_name"]).decode("utf-8")
+        assert zip_report == report_path.read_text(encoding="utf-8")
+        zip_manifest = json.loads(zf.read("audit_manifest.json").decode("utf-8"))
+        assert zip_manifest == report_record["audit_manifest"]
+        sha256sums = zf.read("SHA256SUMS.txt").decode("utf-8")
+        report_hash = hashlib.sha256(report_path.read_bytes()).hexdigest()
+        manifest_hash = hashlib.sha256(
+            json.dumps(report_record["audit_manifest"], sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        assert f"{report_hash}  {report_record['artifact_name']}" in sha256sums
+        assert f"{manifest_hash}  audit_manifest.json" in sha256sums
+
     assert [record["audience"] for record in records] == ["field", "public", "report_pdf", "reviewer"]
     repeated_report_record = repository.persist_export(
         run_id="run-001",
@@ -118,6 +144,8 @@ def test_export_repository_persists_precision_and_report_scaffold(tmp_path):
     assert repeated_report_record["audit_manifest"]["audit_manifest_hash"] == (
         report_record["audit_manifest"]["audit_manifest_hash"]
     )
+    assert repeated_report_record["bundle_name"] == report_record["bundle_name"]
+    assert repeated_report_record["bundle_path"] == report_record["bundle_path"]
 
 
 def test_zero_candidate_report_export_restricted(tmp_path):
@@ -172,6 +200,29 @@ def test_zero_candidate_report_export_restricted(tmp_path):
     assert "End date: `2024-03-31`" in report_text
     assert "Legal gate decision: `pass`" in report_text
     assert "centroid" not in report_text.lower()
+
+    assert export_record["bundle_path"] is not None
+    bundle_path = tmp_path / Path(export_record["bundle_path"])
+    assert bundle_path.exists()
+    assert bundle_path.name == export_record["bundle_name"]
+    with zipfile.ZipFile(bundle_path, "r") as zf:
+        names = sorted(zf.namelist())
+        assert names == sorted([
+            export_record["artifact_name"],
+            "audit_manifest.json",
+            "SHA256SUMS.txt",
+        ])
+        zip_report = zf.read(export_record["artifact_name"]).decode("utf-8")
+        assert zip_report == report_text
+        zip_manifest = json.loads(zf.read("audit_manifest.json").decode("utf-8"))
+        assert zip_manifest == export_record["audit_manifest"]
+        sha256sums = zf.read("SHA256SUMS.txt").decode("utf-8")
+        report_hash = hashlib.sha256(report_path.read_bytes()).hexdigest()
+        manifest_hash = hashlib.sha256(
+            json.dumps(export_record["audit_manifest"], sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        assert f"{report_hash}  {export_record['artifact_name']}" in sha256sums
+        assert f"{manifest_hash}  audit_manifest.json" in sha256sums
 
 
 def test_export_create_fails_for_invalid_run_id(monkeypatch, capsys, tmp_path):
@@ -237,6 +288,54 @@ def test_export_create_zero_candidates_report_pdf_restricted(monkeypatch, capsys
     assert "## No Exportable Candidates Found" in report_text
     assert "This AOI/date window was screened and produced zero exportable candidates." in report_text
     assert "centroid" not in report_text.lower()
+
+
+def test_non_report_audiences_do_not_create_bundles(tmp_path):
+    db_path = tmp_path / "non_report.sqlite3"
+    init_db(db_path)
+    bootstrap_minimal_run(
+        db_path,
+        processing_baseline_id="baseline_v1_5_default",
+        score_formula_version="v1.5.1-phase0",
+        source_scene_manifest_hash="manifest-hash-005",
+        source_endpoint_id="earth_search",
+        run_id="run-005",
+        manifest_path="data/manifests/manifest-hash-005.json",
+    )
+
+    repository = ExportRepository(db_path, export_root=tmp_path)
+    candidates = [
+        {
+            "candidate_id": "candidate-001",
+            "centroid": [1234.0, 2789.0],
+            "bounds": [1201.0, 2705.0, 1281.0, 2879.0],
+            "area_m2": 9600.0,
+            "possible_duplicate": False,
+        },
+    ]
+
+    public_record = repository.persist_export(
+        run_id="run-005",
+        audience="public",
+        candidates=candidates,
+    )
+    reviewer_record = repository.persist_export(
+        run_id="run-005",
+        audience="reviewer",
+        candidates=candidates,
+    )
+    field_record = repository.persist_export(
+        run_id="run-005",
+        audience="field",
+        candidates=candidates,
+    )
+
+    assert public_record["bundle_path"] is None
+    assert reviewer_record["bundle_path"] is None
+    assert field_record["bundle_path"] is None
+
+    reports_dir = tmp_path / "exports" / "reports"
+    assert not reports_dir.exists() or not any(reports_dir.rglob("*.zip"))
 
 
 def test_export_create_zero_candidates_fails_for_public_audience(monkeypatch, capsys, tmp_path):
