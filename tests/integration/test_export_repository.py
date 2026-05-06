@@ -133,6 +133,57 @@ def test_export_repository_persists_precision_and_report_scaffold(tmp_path):
         assert f"{report_hash}  {report_record['artifact_name']}" in sha256sums
         assert f"{manifest_hash}  audit_manifest.json" in sha256sums
 
+    assert report_record["bundle_manifest_path"] is not None
+    assert report_record["bundle_manifest_path"].endswith(".manifest.json")
+    manifest_path = tmp_path / Path(report_record["bundle_manifest_path"])
+    assert manifest_path.exists()
+    assert manifest_path.name == f"{report_record['bundle_name']}.manifest.json"
+    sidecar = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert sidecar["schema_version"] == "v1.7_report_bundle_manifest"
+    assert sidecar["run_id"] == "run-001"
+    assert sidecar["export_record_id"] == report_record["export_record_id"]
+    assert sidecar["audience"] == "report_pdf"
+    assert sidecar["precision_tier"] == "restricted"
+    assert sidecar["exact_coordinates_included"] is False
+    assert sidecar["coordinate_resolution_m"] == 100
+    assert sidecar["artifact_name"] == report_record["artifact_name"]
+    assert sidecar["artifact_path"] == report_record["artifact_path"]
+    assert sidecar["bundle_name"] == report_record["bundle_name"]
+    assert sidecar["bundle_path"] == report_record["bundle_path"]
+    assert sidecar["bundle_sha256"] == hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+    assert sidecar["bundle_members"] == sorted([
+        report_record["artifact_name"],
+        "audit_manifest.json",
+        "SHA256SUMS.txt",
+    ])
+    assert sidecar["audit_manifest_hash"] == report_record["audit_manifest"]["audit_manifest_hash"]
+    assert sidecar["source_endpoint_id"] == "earth_search"
+    assert sidecar["source_scene_manifest_hash"] == "manifest-hash-001"
+    assert sidecar["candidate_count"] == 2
+    assert len(sidecar["files"]) == 4
+    file_names = [f["name"] for f in sidecar["files"]]
+    assert report_record["artifact_name"] in file_names
+    assert report_record["bundle_name"] in file_names
+    assert "audit_manifest.json" in file_names
+    assert "SHA256SUMS.txt" in file_names
+    report_file_entry = next(f for f in sidecar["files"] if f["name"] == report_record["artifact_name"])
+    assert report_file_entry["kind"] == "report_markdown"
+    assert report_file_entry["sha256"] == report_hash
+    assert report_file_entry["path"] == report_record["artifact_path"]
+    bundle_file_entry = next(f for f in sidecar["files"] if f["name"] == report_record["bundle_name"])
+    assert bundle_file_entry["kind"] == "bundle_zip"
+    assert bundle_file_entry["sha256"] == sidecar["bundle_sha256"]
+    assert bundle_file_entry["path"] == report_record["bundle_path"]
+    audit_entry = next(f for f in sidecar["files"] if f["name"] == "audit_manifest.json")
+    assert audit_entry["kind"] == "audit_manifest"
+    assert audit_entry["sha256"] == manifest_hash
+    assert audit_entry["zip_member"] is True
+    sha_entry = next(f for f in sidecar["files"] if f["name"] == "SHA256SUMS.txt")
+    assert sha_entry["kind"] == "checksum_manifest"
+    assert sha_entry["sha256"] == hashlib.sha256(sha256sums.encode("utf-8")).hexdigest()
+    assert sha_entry["zip_member"] is True
+    assert "centroid" not in str(sidecar).lower()
+
     assert [record["audience"] for record in records] == ["field", "public", "report_pdf", "reviewer"]
     repeated_report_record = repository.persist_export(
         run_id="run-001",
@@ -146,6 +197,11 @@ def test_export_repository_persists_precision_and_report_scaffold(tmp_path):
     )
     assert repeated_report_record["bundle_name"] == report_record["bundle_name"]
     assert repeated_report_record["bundle_path"] == report_record["bundle_path"]
+    assert repeated_report_record["bundle_manifest_path"] == report_record["bundle_manifest_path"]
+    repeated_sidecar = json.loads((tmp_path / Path(repeated_report_record["bundle_manifest_path"])).read_text(encoding="utf-8"))
+    assert repeated_sidecar["bundle_sha256"] == sidecar["bundle_sha256"]
+    assert repeated_sidecar["audit_manifest_hash"] == sidecar["audit_manifest_hash"]
+    assert repeated_sidecar["files"] == sidecar["files"]
 
 
 def test_zero_candidate_report_export_restricted(tmp_path):
@@ -223,6 +279,22 @@ def test_zero_candidate_report_export_restricted(tmp_path):
         ).hexdigest()
         assert f"{report_hash}  {export_record['artifact_name']}" in sha256sums
         assert f"{manifest_hash}  audit_manifest.json" in sha256sums
+
+    assert export_record["bundle_manifest_path"] is not None
+    manifest_path = tmp_path / Path(export_record["bundle_manifest_path"])
+    assert manifest_path.exists()
+    assert manifest_path.name == f"{export_record['bundle_name']}.manifest.json"
+    sidecar = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert sidecar["schema_version"] == "v1.7_report_bundle_manifest"
+    assert sidecar["candidate_count"] == 0
+    assert sidecar["audit_manifest_hash"] == export_record["audit_manifest"]["audit_manifest_hash"]
+    assert "centroid" not in str(sidecar).lower()
+    assert sidecar["bundle_sha256"] == hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+    assert sidecar["bundle_members"] == sorted([
+        export_record["artifact_name"],
+        "audit_manifest.json",
+        "SHA256SUMS.txt",
+    ])
 
 
 def test_export_create_fails_for_invalid_run_id(monkeypatch, capsys, tmp_path):
@@ -333,9 +405,13 @@ def test_non_report_audiences_do_not_create_bundles(tmp_path):
     assert public_record["bundle_path"] is None
     assert reviewer_record["bundle_path"] is None
     assert field_record["bundle_path"] is None
+    assert public_record["bundle_manifest_path"] is None
+    assert reviewer_record["bundle_manifest_path"] is None
+    assert field_record["bundle_manifest_path"] is None
 
     reports_dir = tmp_path / "exports" / "reports"
     assert not reports_dir.exists() or not any(reports_dir.rglob("*.zip"))
+    assert not reports_dir.exists() or not any(reports_dir.rglob("*.manifest.json"))
 
 
 def test_export_create_zero_candidates_fails_for_public_audience(monkeypatch, capsys, tmp_path):

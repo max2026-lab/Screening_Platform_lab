@@ -125,6 +125,7 @@ class ExportRepository:
         )
 
         bundle_path = None
+        bundle_manifest_path = None
         if normalized_audience == "report_pdf" and report_text is not None:
             bundle_relative_path = export_subdirectory(normalized_audience) / bundle_name
             bundle_full_path = self.export_root / bundle_relative_path
@@ -136,6 +137,39 @@ class ExportRepository:
             )
             bundle_path = str(bundle_relative_path).replace("\\", "/")
 
+            bundle_sha256 = self._sha256_file(bundle_full_path)
+            manifest_text = json.dumps(audit_manifest, sort_keys=True, separators=(",", ":"))
+            report_hash = sha256(report_text.encode("utf-8")).hexdigest()
+            manifest_hash = sha256(manifest_text.encode("utf-8")).hexdigest()
+            sha256sums_text = f"{report_hash}  {artifact_name}\n{manifest_hash}  audit_manifest.json\n"
+            sha256sums_hash = sha256(sha256sums_text.encode("utf-8")).hexdigest()
+
+            manifest_relative_path = export_subdirectory(normalized_audience) / f"{bundle_name}.manifest.json"
+            manifest_full_path = self.export_root / manifest_relative_path
+            self._write_report_bundle_manifest(
+                manifest_full_path,
+                run_id=run_id,
+                export_record_id=export_record_id,
+                audience=normalized_audience,
+                precision_tier=policy.precision_tier,
+                exact_coordinates_included=policy.exact_coordinates_included,
+                coordinate_resolution_m=policy.coordinate_resolution_m,
+                artifact_name=artifact_name,
+                artifact_path=str(artifact_path).replace("\\", "/"),
+                bundle_name=bundle_name,
+                bundle_path=bundle_path,
+                bundle_sha256=bundle_sha256,
+                bundle_members=sorted([artifact_name, "audit_manifest.json", "SHA256SUMS.txt"]),
+                audit_manifest_hash=audit_manifest["audit_manifest_hash"],
+                source_endpoint_id=run_metadata.get("source_endpoint_id") if run_metadata else None,
+                source_scene_manifest_hash=run_metadata.get("source_scene_manifest_hash") if run_metadata else None,
+                candidate_count=len(sanitized_candidates),
+                report_sha256=report_hash,
+                audit_manifest_sha256=manifest_hash,
+                sha256sums_sha256=sha256sums_hash,
+            )
+            bundle_manifest_path = str(manifest_relative_path).replace("\\", "/")
+
         return {
             "export_record_id": export_record_id,
             "run_id": run_id,
@@ -146,6 +180,7 @@ class ExportRepository:
             "bundle_name": bundle_name,
             "artifact_path": str(artifact_path).replace("\\", "/"),
             "bundle_path": bundle_path,
+            "bundle_manifest_path": bundle_manifest_path,
             "exact_coordinates_included": policy.exact_coordinates_included,
             "coordinate_resolution_m": policy.coordinate_resolution_m,
             "candidates": sanitized_candidates,
@@ -467,6 +502,85 @@ class ExportRepository:
                 info = zipfile.ZipInfo(filename=name, date_time=fixed_date_time)
                 info.compress_type = zipfile.ZIP_DEFLATED
                 zf.writestr(info, content.encode("utf-8"))
+
+    @staticmethod
+    def _sha256_file(path: Path) -> str:
+        return sha256(path.read_bytes()).hexdigest()
+
+    @staticmethod
+    def _write_report_bundle_manifest(
+        manifest_path: Path,
+        *,
+        run_id: str,
+        export_record_id: str,
+        audience: str,
+        precision_tier: str,
+        exact_coordinates_included: bool,
+        coordinate_resolution_m: int | None,
+        artifact_name: str,
+        artifact_path: str,
+        bundle_name: str,
+        bundle_path: str,
+        bundle_sha256: str,
+        bundle_members: list[str],
+        audit_manifest_hash: str,
+        source_endpoint_id: str | None,
+        source_scene_manifest_hash: str | None,
+        candidate_count: int,
+        report_sha256: str,
+        audit_manifest_sha256: str,
+        sha256sums_sha256: str,
+    ) -> None:
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "schema_version": "v1.7_report_bundle_manifest",
+            "run_id": run_id,
+            "export_record_id": export_record_id,
+            "audience": audience,
+            "precision_tier": precision_tier,
+            "exact_coordinates_included": exact_coordinates_included,
+            "coordinate_resolution_m": coordinate_resolution_m,
+            "artifact_name": artifact_name,
+            "artifact_path": artifact_path,
+            "bundle_name": bundle_name,
+            "bundle_path": bundle_path,
+            "bundle_sha256": bundle_sha256,
+            "bundle_members": bundle_members,
+            "audit_manifest_hash": audit_manifest_hash,
+            "source_endpoint_id": source_endpoint_id,
+            "source_scene_manifest_hash": source_scene_manifest_hash,
+            "candidate_count": candidate_count,
+            "files": [
+                {
+                    "name": artifact_name,
+                    "kind": "report_markdown",
+                    "sha256": report_sha256,
+                    "path": artifact_path,
+                },
+                {
+                    "name": bundle_name,
+                    "kind": "bundle_zip",
+                    "sha256": bundle_sha256,
+                    "path": bundle_path,
+                },
+                {
+                    "name": "audit_manifest.json",
+                    "kind": "audit_manifest",
+                    "sha256": audit_manifest_sha256,
+                    "zip_member": True,
+                },
+                {
+                    "name": "SHA256SUMS.txt",
+                    "kind": "checksum_manifest",
+                    "sha256": sha256sums_sha256,
+                    "zip_member": True,
+                },
+            ],
+        }
+        manifest_path.write_text(
+            json.dumps(manifest, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
 
     @staticmethod
     def _create_export_record_id(
