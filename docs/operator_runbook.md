@@ -653,6 +653,26 @@ powershell -ExecutionPolicy Bypass -File scripts\verify_v1_6_export_bundle_relea
 
 This verification is offline and validates report ZIP bundles, `audit_manifest.json`, and `SHA256SUMS.txt`. No DB schema, scoring, or provider changes.
 
+## V1.7 Report Bundle Manifest Release Verification
+
+Run the V1.7 release verification script to confirm report export sidecar manifest JSON is created correctly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Dev\Screening_Platform_lab\scripts\verify_v1_7_report_bundle_manifest_release.ps1
+```
+
+This script verifies:
+- Offline export repository tests pass
+- `export_repository.py` contains sidecar manifest implementation (`bundle_manifest_path`, `_write_report_bundle_manifest`, `v1.7_report_bundle_manifest`, `bundle_sha256`, `bundle_members`, `files`)
+- Tests assert sidecar manifest creation for report exports
+- Tests assert zero-candidate sidecars and non-report audiences skip sidecars
+- CLI `export-create` for `report_pdf` produces `bundle_manifest_path` ending in `.manifest.json`
+- Sidecar manifest contains `schema_version`, `bundle_sha256`, `bundle_members`, `files` with SHA256 hashes
+- Sidecar manifest does not leak `centroid`, `clipped_geometry`, `bounds`, or `coordinates`
+- Repo cleanliness and token-free remotes after verification
+
+This script is **offline** and does not require network.
+
 ## V1.5 Release Candidate
 
 The V1.5 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_5_RELEASE_NOTES.md`.
