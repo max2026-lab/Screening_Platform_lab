@@ -691,21 +691,36 @@ State:
 - does not rerun `export-create`
 - does not change DB/schema/scoring/provider behavior
 
-## V1.8 Release Candidate
+## V1.9 Operator Export Bundle Batch Verification CLI
 
-The V1.8 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_8_RELEASE_NOTES.md`.
-
-Validate the V1.8 release candidate from repo root with:
+V1.9 adds an offline batch CLI command that verifies all report ZIP bundles and V1.7 sidecar manifests in a folder or from an explicit manifest list.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\verify_v1_8_export_bundle_verify_cli_release.ps1
+lawful-anomaly export-bundle-verify-batch --reports-dir exports/reports --export-root .
+lawful-anomaly export-bundle-verify-batch --manifest-list manifest-list.txt --export-root .
 ```
 
-This verification is offline and validates the `export-bundle-verify` CLI, `bundle_verifier.py`, and all targeted integration tests. No DB schema, scoring, or provider changes.
+State:
+- offline
+- no DB required for verification
+- no network required
+- verifies all report ZIP bundles and V1.7 sidecar manifests from disk
+- reuses V1.8 single-bundle verification logic
+- validates `bundle_sha256`, `bundle_members`, `SHA256SUMS.txt`, `audit_manifest.json`, and sidecar files hashes for every bundle
+- supports JSON and markdown output
+- supports `--fail-fast`
+- does not rerun `export-create`
+- does not change DB/schema/scoring/provider behavior
 
-## V1.8 Release Candidate
+## V1.9 Release Candidate
 
-The V1.8 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_8_RELEASE_NOTES.md`.
+The V1.9 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_9_RELEASE_NOTES.md`.
+
+Validate the V1.9 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_9_export_bundle_verify_batch_release.ps1
+```
 
 Validate the V1.8 release candidate from repo root with:
 
