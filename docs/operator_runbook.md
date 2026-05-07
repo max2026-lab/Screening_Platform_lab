@@ -673,6 +673,18 @@ This script verifies:
 
 This script is **offline** and does not require network.
 
+## V1.7 Release Candidate
+
+The V1.7 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_7_RELEASE_NOTES.md`.
+
+Validate the V1.7 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_7_report_bundle_manifest_release.ps1
+```
+
+This verification is offline and validates report bundle sidecar manifest JSON, `bundle_sha256`, `bundle_members`, and `files` hashes. It also verifies no `centroid`/geometry leakage. No DB schema, scoring, or provider changes.
+
 ## V1.5 Release Candidate
 
 The V1.5 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_5_RELEASE_NOTES.md`.
