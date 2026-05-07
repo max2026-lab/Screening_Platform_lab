@@ -27,7 +27,12 @@ from .exceptions import (
     ReviewStateError,
     SourceError,
 )
-from .exports.bundle_verifier import render_bundle_verify_markdown, verify_export_bundle
+from .exports.bundle_verifier import (
+    render_bundle_verify_markdown,
+    render_bundle_verify_batch_markdown,
+    verify_export_bundle,
+    verify_export_bundle_batch,
+)
 from .exports.precision_policy import normalize_export_tier
 from .orchestration.scaffold_run import scaffold_run_for_run_id
 from .orchestration.run_pipeline import execute_run
@@ -331,6 +336,33 @@ def cmd_export_bundle_verify(args: argparse.Namespace) -> int:
     )
     if args.output == "markdown":
         print(render_bundle_verify_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "pass" else 1
+
+
+def cmd_export_bundle_verify_batch(args: argparse.Namespace) -> int:
+    reports_dir = None
+    manifest_list = None
+    if getattr(args, "reports_dir", None) and getattr(args, "manifest_list", None):
+        print("Cannot use both --reports-dir and --manifest-list", file=sys.stderr)
+        return 1
+    if getattr(args, "reports_dir", None):
+        reports_dir = Path(args.reports_dir)
+    elif getattr(args, "manifest_list", None):
+        from .exports.bundle_verifier import load_manifest_list
+        manifest_list = load_manifest_list(Path(args.manifest_list))
+    else:
+        print("Either --reports-dir or --manifest-list is required", file=sys.stderr)
+        return 1
+    result = verify_export_bundle_batch(
+        reports_dir=reports_dir,
+        manifest_list=manifest_list,
+        export_root=Path(args.export_root) if getattr(args, "export_root", None) else None,
+        fail_fast=bool(getattr(args, "fail_fast", False)),
+    )
+    if args.output == "markdown":
+        print(render_bundle_verify_batch_markdown(result), end="")
     else:
         print(json.dumps(result, indent=2))
     return 0 if result["status"] == "pass" else 1
@@ -3050,6 +3082,14 @@ def _add_export_bundle_verify_arguments(parser: argparse.ArgumentParser) -> None
     parser.add_argument("--output", choices=["json", "markdown"], default="json")
 
 
+def _add_export_bundle_verify_batch_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--reports-dir", default=None)
+    parser.add_argument("--manifest-list", default=None)
+    parser.add_argument("--export-root", default=".")
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+    parser.add_argument("--fail-fast", action="store_true")
+
+
 def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--audience", required=True)
@@ -3170,6 +3210,7 @@ def build_parser() -> argparse.ArgumentParser:
         "review-show": cmd_review_show,
         "review-decide": cmd_review_decide,
         "export-bundle-verify": cmd_export_bundle_verify,
+        "export-bundle-verify-batch": cmd_export_bundle_verify_batch,
         "export-create": cmd_export_create,
         "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
@@ -3213,6 +3254,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_review_decide_arguments(p)
         if name == "export-bundle-verify":
             _add_export_bundle_verify_arguments(p)
+        if name == "export-bundle-verify-batch":
+            _add_export_bundle_verify_batch_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
         if name == "run-summary":

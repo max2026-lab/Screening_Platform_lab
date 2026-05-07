@@ -373,3 +373,131 @@ def render_bundle_verify_markdown(result: dict) -> str:
     if not result.get("reasons"):
         lines.append("- All checks passed")
     return "\n".join(lines) + "\n"
+
+
+def discover_bundle_manifests(reports_dir: Path) -> list[Path]:
+    if not reports_dir.exists():
+        return []
+    manifests = sorted(reports_dir.rglob("*.zip.manifest.json"))
+    return sorted(manifests, key=lambda p: str(p))
+
+
+def load_manifest_list(manifest_list_path: Path) -> list[str]:
+    if not manifest_list_path.exists():
+        return []
+    text = manifest_list_path.read_text(encoding="utf-8")
+    # Strip BOM if present
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    lines = text.splitlines()
+    paths: list[str] = []
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        paths.append(line)
+    return paths
+
+
+def verify_export_bundle_batch(
+    *,
+    reports_dir: Path | None = None,
+    manifest_list: list[str] | None = None,
+    export_root: Path | None = None,
+    fail_fast: bool = False,
+) -> dict:
+    export_root = export_root or Path.cwd()
+    reasons: list[str] = []
+
+    manifest_paths: list[Path] = []
+    reports_dir_resolved: Path | None = None
+
+    if reports_dir is not None:
+        reports_dir_resolved = _resolve_path(str(reports_dir), export_root)
+        manifest_paths = discover_bundle_manifests(reports_dir_resolved)
+    elif manifest_list is not None:
+        for path_str in manifest_list:
+            manifest_paths.append(_resolve_path(path_str, export_root))
+    else:
+        reasons.append("Either reports_dir or manifest_list must be provided")
+
+    if not reasons and not manifest_paths:
+        reasons.append("No sidecar manifests found")
+
+    results: list[dict] = []
+    passed_count = 0
+    failed_count = 0
+    checked_file_count = 0
+
+    for manifest_path in manifest_paths:
+        single_result = verify_export_bundle(
+            bundle_manifest_path=str(manifest_path),
+            export_root=export_root,
+        )
+        results.append(single_result)
+        checked_file_count += single_result.get("checked_file_count", 0)
+        if single_result["status"] == "pass":
+            passed_count += 1
+        else:
+            failed_count += 1
+            if fail_fast:
+                break
+
+    status = "pass" if failed_count == 0 and not reasons else "fail"
+    if failed_count > 0:
+        reasons.append(f"{failed_count} bundle verification failed")
+
+    return {
+        "status": status,
+        "export_root": str(export_root).replace("\\", "/"),
+        "reports_dir": str(reports_dir_resolved).replace("\\", "/") if reports_dir_resolved else None,
+        "manifest_list": manifest_list if manifest_list else None,
+        "manifest_count": len(results),
+        "passed_count": passed_count,
+        "failed_count": failed_count,
+        "checked_file_count": checked_file_count,
+        "fail_fast": fail_fast,
+        "results": results,
+        "reasons": reasons,
+    }
+
+
+def render_bundle_verify_batch_markdown(result: dict) -> str:
+    lines = [
+        "# Export Bundle Batch Verification",
+        "",
+        f"- Status: `{result['status']}`",
+        f"- Export root: `{result.get('export_root', '')}`",
+    ]
+    if result.get("reports_dir"):
+        lines.append(f"- Reports dir: `{result['reports_dir']}`")
+    if result.get("manifest_list"):
+        lines.append(f"- Manifest list: `{result['manifest_list']}`")
+    lines.extend([
+        f"- Manifest count: `{result.get('manifest_count', 0)}`",
+        f"- Passed count: `{result.get('passed_count', 0)}`",
+        f"- Failed count: `{result.get('failed_count', 0)}`",
+        f"- Checked file count: `{result.get('checked_file_count', 0)}`",
+        f"- Fail fast: `{result.get('fail_fast', False)}`",
+        "",
+        "## Failed Bundles",
+        "",
+    ])
+    failed = [r for r in result.get("results", []) if r["status"] != "pass"]
+    if failed:
+        for f in failed:
+            lines.append(f"- `{f.get('bundle_manifest_path', '')}`")
+            for reason in f.get("reasons", []):
+                lines.append(f"  - {reason}")
+    else:
+        lines.append("- None")
+    lines.extend([
+        "",
+        "## Reasons",
+        "",
+    ])
+    for reason in result.get("reasons", []):
+        lines.append(f"- {reason}")
+    if not result.get("reasons"):
+        lines.append("- All checks passed")
+    return "\n".join(lines) + "\n"
