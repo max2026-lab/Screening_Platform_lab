@@ -703,6 +703,22 @@ powershell -ExecutionPolicy Bypass -File scripts\verify_v1_8_export_bundle_verif
 
 This verification is offline and validates the `export-bundle-verify` CLI, `bundle_verifier.py`, and all targeted integration tests. No DB schema, scoring, or provider changes.
 
+## V1.8 Release Candidate
+
+The V1.8 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_8_RELEASE_NOTES.md`.
+
+Validate the V1.8 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_8_export_bundle_verify_cli_release.ps1
+```
+
+Validate the V1.7 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_7_report_bundle_manifest_release.ps1
+```
+
 ## V1.7 Release Candidate
 
 The V1.7 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_7_RELEASE_NOTES.md`.
