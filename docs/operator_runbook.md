@@ -673,6 +673,36 @@ This script verifies:
 
 This script is **offline** and does not require network.
 
+## V1.8 Operator Export Bundle Verification CLI
+
+V1.8 adds an offline operator CLI command that verifies an existing report ZIP bundle and V1.7 sidecar manifest from disk without DB access and without rerunning exports.
+
+```powershell
+lawful-anomaly export-bundle-verify --bundle-manifest-path exports/reports/<bundle>.zip.manifest.json --export-root .
+```
+
+State:
+- offline
+- no DB required
+- no network required
+- verifies ZIP bundle and V1.7 sidecar manifest from disk
+- validates `bundle_sha256`, `bundle_members`, `SHA256SUMS.txt`, `audit_manifest.json`, and sidecar files hashes
+- checks no `centroid`/geometry leakage in sidecar
+- does not rerun `export-create`
+- does not change DB/schema/scoring/provider behavior
+
+## V1.8 Release Candidate
+
+The V1.8 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_8_RELEASE_NOTES.md`.
+
+Validate the V1.8 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_8_export_bundle_verify_cli_release.ps1
+```
+
+This verification is offline and validates the `export-bundle-verify` CLI, `bundle_verifier.py`, and all targeted integration tests. No DB schema, scoring, or provider changes.
+
 ## V1.7 Release Candidate
 
 The V1.7 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_7_RELEASE_NOTES.md`.

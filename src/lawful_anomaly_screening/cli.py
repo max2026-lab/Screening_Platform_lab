@@ -27,6 +27,7 @@ from .exceptions import (
     ReviewStateError,
     SourceError,
 )
+from .exports.bundle_verifier import render_bundle_verify_markdown, verify_export_bundle
 from .exports.precision_policy import normalize_export_tier
 from .orchestration.scaffold_run import scaffold_run_for_run_id
 from .orchestration.run_pipeline import execute_run
@@ -321,6 +322,18 @@ def cmd_review_decide(args: argparse.Namespace) -> int:
     }
     print(json.dumps(payload, indent=2))
     return 0
+
+
+def cmd_export_bundle_verify(args: argparse.Namespace) -> int:
+    result = verify_export_bundle(
+        bundle_manifest_path=args.bundle_manifest_path,
+        export_root=Path(args.export_root) if args.export_root else None,
+    )
+    if args.output == "markdown":
+        print(render_bundle_verify_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "pass" else 1
 
 
 def cmd_export_create(args: argparse.Namespace) -> int:
@@ -3031,6 +3044,12 @@ def _add_paid_order_status_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_export_bundle_verify_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--bundle-manifest-path", required=True)
+    parser.add_argument("--export-root", default=".")
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--audience", required=True)
@@ -3150,6 +3169,7 @@ def build_parser() -> argparse.ArgumentParser:
         "review-queue": cmd_review_queue,
         "review-show": cmd_review_show,
         "review-decide": cmd_review_decide,
+        "export-bundle-verify": cmd_export_bundle_verify,
         "export-create": cmd_export_create,
         "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
@@ -3191,6 +3211,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_review_show_arguments(p)
         if name == "review-decide":
             _add_review_decide_arguments(p)
+        if name == "export-bundle-verify":
+            _add_export_bundle_verify_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
         if name == "run-summary":
