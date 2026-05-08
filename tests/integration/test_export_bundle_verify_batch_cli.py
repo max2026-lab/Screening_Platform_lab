@@ -62,6 +62,29 @@ def test_export_bundle_verify_batch_folder_all_pass(monkeypatch, capsys, tmp_pat
         assert r["status"] == "pass"
 
 
+def test_export_bundle_verify_batch_default_folder_all_pass(monkeypatch, capsys, tmp_path):
+    db_path = tmp_path / "batch_default.sqlite3"
+    export1 = _generate_report_bundle(tmp_path, db_path, "run-default-001")
+    export2 = _generate_report_bundle(tmp_path, db_path, "run-default-002")
+
+    result = main([
+        "export-bundle-verify-batch",
+        "--export-root", str(tmp_path),
+    ])
+    assert result == 0
+
+    stdout_text = capsys.readouterr().out
+    payload = json.loads(stdout_text)
+    assert payload["status"] == "pass"
+    assert payload["manifest_count"] == 2
+    assert payload["passed_count"] == 2
+    assert payload["failed_count"] == 0
+    assert payload["reports_dir"] is not None
+    assert "exports/reports" in payload["reports_dir"]
+    for r in payload["results"]:
+        assert r["status"] == "pass"
+
+
 def test_export_bundle_verify_batch_manifest_list_all_pass(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "batch_list.sqlite3"
     export1 = _generate_report_bundle(tmp_path, db_path, "run-list-001")
@@ -88,6 +111,9 @@ def test_export_bundle_verify_batch_manifest_list_all_pass(monkeypatch, capsys, 
     payload = json.loads(stdout_text)
     assert payload["status"] == "pass"
     assert payload["manifest_count"] == 2
+    assert isinstance(payload["manifest_list"], str)
+    assert payload["manifest_list"].endswith("manifest-list.txt")
+    assert not isinstance(payload["manifest_list"], list)
 
 
 def test_export_bundle_verify_batch_one_tampered_fails(monkeypatch, capsys, tmp_path):
