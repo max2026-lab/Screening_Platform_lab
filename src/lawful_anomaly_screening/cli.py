@@ -344,6 +344,7 @@ def cmd_export_bundle_verify(args: argparse.Namespace) -> int:
 def cmd_export_bundle_verify_batch(args: argparse.Namespace) -> int:
     reports_dir = None
     manifest_list = None
+    manifest_list_path = None
     if getattr(args, "reports_dir", None) and getattr(args, "manifest_list", None):
         print("Cannot use both --reports-dir and --manifest-list", file=sys.stderr)
         return 1
@@ -351,13 +352,14 @@ def cmd_export_bundle_verify_batch(args: argparse.Namespace) -> int:
         reports_dir = Path(args.reports_dir)
     elif getattr(args, "manifest_list", None):
         from .exports.bundle_verifier import load_manifest_list
-        manifest_list = load_manifest_list(Path(args.manifest_list))
+        manifest_list_path = args.manifest_list
+        manifest_list = load_manifest_list(Path(manifest_list_path))
     else:
-        print("Either --reports-dir or --manifest-list is required", file=sys.stderr)
-        return 1
+        reports_dir = Path("exports/reports")
     result = verify_export_bundle_batch(
         reports_dir=reports_dir,
         manifest_list=manifest_list,
+        manifest_list_path=manifest_list_path,
         export_root=Path(args.export_root) if getattr(args, "export_root", None) else None,
         fail_fast=bool(getattr(args, "fail_fast", False)),
     )

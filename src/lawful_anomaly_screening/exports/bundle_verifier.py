@@ -403,6 +403,7 @@ def verify_export_bundle_batch(
     *,
     reports_dir: Path | None = None,
     manifest_list: list[str] | None = None,
+    manifest_list_path: str | None = None,
     export_root: Path | None = None,
     fail_fast: bool = False,
 ) -> dict:
@@ -451,7 +452,7 @@ def verify_export_bundle_batch(
         "status": status,
         "export_root": str(export_root).replace("\\", "/"),
         "reports_dir": str(reports_dir_resolved).replace("\\", "/") if reports_dir_resolved else None,
-        "manifest_list": manifest_list if manifest_list else None,
+        "manifest_list": manifest_list_path,
         "manifest_count": len(results),
         "passed_count": passed_count,
         "failed_count": failed_count,
