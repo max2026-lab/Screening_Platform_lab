@@ -58,7 +58,7 @@ foreach ($pattern in @(
 }
 
 $phase28Script = Join-Path $repoRoot "scripts\verify_phase28_full_release_evidence_manifest.ps1"
-& powershell -ExecutionPolicy Bypass -File $phase28Script -Overwrite
+& powershell -ExecutionPolicy Bypass -File $phase28Script -AllowNonMain -Overwrite
 if ($LASTEXITCODE -ne 0) {
     throw "Phase 28 full release evidence manifest generation failed."
 }
