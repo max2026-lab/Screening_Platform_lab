@@ -33,6 +33,10 @@ from .exports.bundle_verifier import (
     verify_export_bundle,
     verify_export_bundle_batch,
 )
+from .releases.evidence_verifier import (
+    render_release_evidence_verify_markdown,
+    verify_release_evidence,
+)
 from .exports.precision_policy import normalize_export_tier
 from .orchestration.scaffold_run import scaffold_run_for_run_id
 from .orchestration.run_pipeline import execute_run
@@ -365,6 +369,15 @@ def cmd_export_bundle_verify_batch(args: argparse.Namespace) -> int:
     )
     if args.output == "markdown":
         print(render_bundle_verify_batch_markdown(result), end="")
+    else:
+        print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "pass" else 1
+
+
+def cmd_release_evidence_verify(args: argparse.Namespace) -> int:
+    result = verify_release_evidence(args.evidence_dir)
+    if args.output == "markdown":
+        print(render_release_evidence_verify_markdown(result), end="")
     else:
         print(json.dumps(result, indent=2))
     return 0 if result["status"] == "pass" else 1
@@ -3092,6 +3105,11 @@ def _add_export_bundle_verify_batch_arguments(parser: argparse.ArgumentParser) -
     parser.add_argument("--fail-fast", action="store_true")
 
 
+def _add_release_evidence_verify_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--evidence-dir", required=True)
+    parser.add_argument("--output", choices=["json", "markdown"], default="json")
+
+
 def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--audience", required=True)
@@ -3213,6 +3231,7 @@ def build_parser() -> argparse.ArgumentParser:
         "review-decide": cmd_review_decide,
         "export-bundle-verify": cmd_export_bundle_verify,
         "export-bundle-verify-batch": cmd_export_bundle_verify_batch,
+        "release-evidence-verify": cmd_release_evidence_verify,
         "export-create": cmd_export_create,
         "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
@@ -3258,6 +3277,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_export_bundle_verify_arguments(p)
         if name == "export-bundle-verify-batch":
             _add_export_bundle_verify_batch_arguments(p)
+        if name == "release-evidence-verify":
+            _add_release_evidence_verify_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
         if name == "run-summary":

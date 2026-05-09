@@ -712,6 +712,36 @@ State:
 - does not rerun `export-create`
 - does not change DB/schema/scoring/provider behavior
 
+## V1.10 Operator Release Evidence Verification CLI
+
+V1.10 adds an offline CLI command that verifies downloaded GitHub Release evidence artifacts from disk.
+
+```powershell
+lawful-anomaly release-evidence-verify --evidence-dir .release-evidence/phase28-full-release-evidence-manifest
+```
+
+State:
+- offline
+- no DB required
+- no network required
+- verifies downloaded GitHub Release evidence artifacts from disk
+- validates `full_release_evidence_manifest.json` parses
+- validates `full_release_evidence_manifest.md` is recognizable release evidence markdown
+- validates `SHA256SUMS.txt` hashes for json and markdown evidence files
+- does not call GitHub
+- does not rerun Phase 28
+- does not change DB/schema/scoring/provider behavior
+
+## V1.10 Release Candidate
+
+The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.
+
+Validate the V1.10 release candidate from repo root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify_v1_10_release_evidence_verifier_release.ps1
+```
+
 ## V1.9 Release Candidate
 
 The V1.9 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_9_RELEASE_NOTES.md`.
