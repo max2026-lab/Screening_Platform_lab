@@ -95,11 +95,12 @@ $markdownExit = $LASTEXITCODE
 if ($markdownExit -ne 0) {
     throw "release-evidence-verify markdown output failed with exit $markdownExit.`n$markdownResult"
 }
-if ($markdownResult -notmatch 'Release Evidence Verification') {
-    throw "Markdown output missing report header.`n$markdownResult"
+$markdownText = $markdownResult | Out-String
+if ($markdownText -notmatch 'Release Evidence Verification') {
+    throw "Markdown output missing report header.`n$markdownText"
 }
-if ($markdownResult -notmatch 'Status: `pass`') {
-    throw "Markdown output missing pass status.`n$markdownResult"
+if ($markdownText -notmatch 'Status: `pass`') {
+    throw "Markdown output missing pass status.`n$markdownText"
 }
 
 $env:LAWFUL_ANOMALY_DB_PATH = "C:\temp\screening-v1-10-nonexistent.sqlite3"
