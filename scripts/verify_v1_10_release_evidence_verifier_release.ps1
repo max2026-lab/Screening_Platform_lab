@@ -124,9 +124,10 @@ Copy-Item -Recurse -Force $evidenceDir $tempDir
 $tamperedJsonPath = Join-Path $tempDir "full_release_evidence_manifest.json"
 $tamperedJson = Get-Content -Path $tamperedJsonPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $tamperedJson.status = "tampered"
+$tamperedJsonText = (($tamperedJson | ConvertTo-Json -Depth 10) + "`n") -replace "`r`n", "`n"
 [System.IO.File]::WriteAllText(
     $tamperedJsonPath,
-    (($tamperedJson | ConvertTo-Json -Depth 10) + "`n") -replace "`r`n", "`n",
+    $tamperedJsonText,
     [System.Text.UTF8Encoding]::new($false)
 )
 
