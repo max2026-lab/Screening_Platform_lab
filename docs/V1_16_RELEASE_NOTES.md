@@ -38,9 +38,10 @@
   - **Safety config**: rejects `EXPORT_UNCONFIRMED_COORDINATE_MODE=exact`, warns if `EXPORT_UNCONFIRMED_GRID_KM` is not 1 unless pinned, warns if `UP42_ENABLED` is explicitly enabled
   - **Database/Redis**: reports `not_checked` with reason `no existing safe readiness probe` rather than adding broad new infrastructure
 - result status:
-  - `pass` only if required runtime/config/storage/safety checks pass
-  - `warn` if optional items are missing or not checked
+  - `pass` only if required runtime/config/storage/safety checks pass and there are no warnings
+  - `warn` if required checks pass but optional items are missing, not checked, or non-blocking issues exist (e.g. database/Redis `not_checked`)
   - `fail` if required safety settings are unsafe or required storage paths are missing/not writable
+- exit code 0 for `pass` and `warn`; nonzero for `fail`
 - does not require network
 - does not call GitHub
 - does not require paid provider credentials

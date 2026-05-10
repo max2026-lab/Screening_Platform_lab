@@ -524,7 +524,7 @@ def cmd_operator_readiness_check(args: argparse.Namespace) -> int:
         fmt=fmt,
     )
     print(json.dumps(result, indent=2))
-    return 0 if result["status"] == "pass" else 1
+    return 0 if result["status"] in ("pass", "warn") else 1
 
 
 def cmd_export_create(args: argparse.Namespace) -> int:

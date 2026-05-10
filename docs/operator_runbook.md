@@ -900,8 +900,12 @@ State:
 - `SHA256SUMS.txt` hashes only the JSON and Markdown report artifacts and never includes its own hash
 - checks include runtime, git context, config/environment presence, filesystem readiness, safety config, and database status
 - safety config rejects `EXPORT_UNCONFIRMED_COORDINATE_MODE=exact`, warns on non-default grid km, warns if UP42 is explicitly enabled
-- database/Redis reports `not_checked` without adding broad new infrastructure
-- exits nonzero if required safety settings are unsafe or required storage paths are missing/not writable
+- database/Redis reports `not_checked` as a warning without adding broad new infrastructure
+- result status semantics:
+  - `pass` only if required checks pass and there are no warnings
+  - `warn` if required checks pass but optional/not_checked warnings exist
+  - `fail` if required safety settings are unsafe or required storage paths are missing/not writable
+- exit code 0 for `pass` and `warn`; nonzero for `fail`
 - does not modify release evidence commands
 - does not modify V1.12 exporter behavior
 - does not modify V1.13 verifier behavior

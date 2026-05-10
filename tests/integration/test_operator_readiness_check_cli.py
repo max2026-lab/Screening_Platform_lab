@@ -31,7 +31,7 @@ def test_happy_path_all_passes(monkeypatch, tmp_path):
     monkeypatch.setattr(readiness, "load_settings", lambda: fake)
     out = tmp_path / "out"
     result = readiness.run_operator_readiness_check(output_dir=out, fmt="both")
-    assert result["status"] == "pass"
+    assert result["status"] == "warn"
     assert (out / "operator_readiness_check.json").exists()
     assert (out / "operator_readiness_check.md").exists()
     assert (out / "SHA256SUMS.txt").exists()
@@ -44,6 +44,8 @@ def test_happy_path_all_passes(monkeypatch, tmp_path):
     assert "artifact_manifest" in json_report
     assert isinstance(json_report["warnings"], list)
     assert isinstance(json_report["failures"], list)
+    assert any("database/redis" in w for w in json_report["warnings"])
+    assert json_report["failures"] == []
     manifest = json_report["artifact_manifest"]
     json_entry = next((a for a in manifest if a["name"] == "operator_readiness_check.json"), None)
     assert json_entry is not None
@@ -105,7 +107,7 @@ def test_format_json_only(monkeypatch, tmp_path):
     monkeypatch.setattr(readiness, "load_settings", lambda: fake)
     out = tmp_path / "out"
     result = readiness.run_operator_readiness_check(output_dir=out, fmt="json")
-    assert result["status"] == "pass"
+    assert result["status"] == "warn"
     assert (out / "operator_readiness_check.json").exists()
     assert not (out / "operator_readiness_check.md").exists()
     assert (out / "SHA256SUMS.txt").exists()
@@ -135,7 +137,7 @@ def test_format_markdown_only(monkeypatch, tmp_path):
     monkeypatch.setattr(readiness, "load_settings", lambda: fake)
     out = tmp_path / "out"
     result = readiness.run_operator_readiness_check(output_dir=out, fmt="markdown")
-    assert result["status"] == "pass"
+    assert result["status"] == "warn"
     assert not (out / "operator_readiness_check.json").exists()
     assert (out / "operator_readiness_check.md").exists()
     assert (out / "SHA256SUMS.txt").exists()
@@ -156,7 +158,7 @@ def test_format_both(monkeypatch, tmp_path):
     monkeypatch.setattr(readiness, "load_settings", lambda: fake)
     out = tmp_path / "out"
     result = readiness.run_operator_readiness_check(output_dir=out, fmt="both")
-    assert result["status"] == "pass"
+    assert result["status"] == "warn"
     assert (out / "operator_readiness_check.json").exists()
     assert (out / "operator_readiness_check.md").exists()
     assert (out / "SHA256SUMS.txt").exists()
@@ -188,7 +190,7 @@ def test_no_db_mutation(monkeypatch, tmp_path):
     assert not fake.db_path.exists()
     out = tmp_path / "out"
     result = readiness.run_operator_readiness_check(output_dir=out, fmt="json")
-    assert result["status"] == "pass"
+    assert result["status"] == "warn"
     # DB file should still not exist
     assert not fake.db_path.exists()
 
@@ -213,7 +215,7 @@ def test_cli_happy_path(capsys, monkeypatch, tmp_path):
     assert result == 0
     stdout = capsys.readouterr().out
     payload = json.loads(stdout)
-    assert payload["status"] == "pass"
+    assert payload["status"] == "warn"
     assert (out / "operator_readiness_check.json").exists()
     assert (out / "SHA256SUMS.txt").exists()
 
@@ -285,7 +287,7 @@ def test_cli_no_db_access(capsys, monkeypatch, tmp_path):
     assert result == 0
     stdout = capsys.readouterr().out
     payload = json.loads(stdout)
-    assert payload["status"] == "pass"
+    assert payload["status"] == "warn"
     assert not (tmp_path / "missing.sqlite3").exists()
 
 

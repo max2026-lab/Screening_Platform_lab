@@ -203,14 +203,15 @@ def run_operator_readiness_check(
     }
 
     # Database / Redis
+    db_warning = "database/redis readiness not checked: no existing safe readiness probe"
     db_check = {
         "status": "not_checked",
-        "reason": "no existing safe readiness probe",
+        "reason": db_warning,
     }
 
     # Overall status
     overall_status = "pass"
-    all_warnings = config_warnings + safety_warnings
+    all_warnings = config_warnings + safety_warnings + [db_warning]
     all_failures = runtime_failures + config_failures + safety_failures
     all_reasons = all_warnings + all_failures
 
@@ -219,6 +220,10 @@ def run_operator_readiness_check(
             overall_status = "fail"
         elif check_status == "warn" and overall_status == "pass":
             overall_status = "warn"
+
+    # If there are warnings and no failures, status is warn
+    if all_warnings and not all_failures and overall_status == "pass":
+        overall_status = "warn"
 
     write_json = fmt in ("json", "both")
     write_md = fmt in ("markdown", "both")
