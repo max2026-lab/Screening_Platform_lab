@@ -111,13 +111,14 @@ $mdExit = $LASTEXITCODE
 if ($mdExit -ne 0) {
     throw "Markdown smoke failed with exit $mdExit.`n$mdResult"
 }
-if ($mdResult -notmatch 'Release Evidence Index Verification') {
+$mdText = $mdResult | Out-String
+if ($mdText -notmatch 'Release Evidence Index Verification') {
     throw "Markdown smoke missing expected header"
 }
-if ($mdResult -notmatch 'Status: `pass`') {
+if ($mdText -notmatch 'Status: `pass`') {
     throw "Markdown smoke missing expected status"
 }
-if ($mdResult -notmatch 'Index hash') {
+if ($mdText -notmatch 'Index hash') {
     throw "Markdown smoke missing expected index hash"
 }
 
