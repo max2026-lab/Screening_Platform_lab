@@ -60,7 +60,7 @@ Copy-Item -Recurse $evidenceSource $v10Dir
 Copy-Item -Recurse $evidenceSource $v11Dir
 
 Write-Host "Running root mode smoke..."
-$rootResult = & lawful-anomaly release-evidence-index-verify --evidence-root $tempRoot 2>&1
+$rootResult = & $cliPath release-evidence-index-verify --evidence-root $tempRoot 2>&1
 $rootExit = $LASTEXITCODE
 if ($rootExit -ne 0) {
     throw "Root mode smoke failed with exit $rootExit.`n$rootResult"
@@ -91,7 +91,7 @@ $listLines = @("", "# comment", $v10Dir, $v11Dir)
 $listLines | Set-Content -Path $listPath -Encoding UTF8
 
 Write-Host "Running evidence-list smoke..."
-$listResult = & lawful-anomaly release-evidence-index-verify --evidence-list $listPath 2>&1
+$listResult = & $cliPath release-evidence-index-verify --evidence-list $listPath 2>&1
 $listExit = $LASTEXITCODE
 if ($listExit -ne 0) {
     throw "Evidence-list smoke failed with exit $listExit.`n$listResult"
@@ -106,7 +106,7 @@ if ($listJson.evidence_dir_count -ne 2) {
 
 # 6. Markdown smoke
 Write-Host "Running markdown smoke..."
-$mdResult = & lawful-anomaly release-evidence-index-verify --evidence-root $tempRoot --output markdown 2>&1
+$mdResult = & $cliPath release-evidence-index-verify --evidence-root $tempRoot --output markdown 2>&1
 $mdExit = $LASTEXITCODE
 if ($mdExit -ne 0) {
     throw "Markdown smoke failed with exit $mdExit.`n$mdResult"
@@ -124,7 +124,7 @@ if ($mdResult -notmatch 'Index hash') {
 # 7. No DB regression
 Write-Host "Running no-DB regression..."
 $env:LAWFUL_ANOMALY_DB_PATH = Join-Path $tempRoot "nonexistent.sqlite3"
-$noDbResult = & lawful-anomaly release-evidence-index-verify --evidence-root $tempRoot 2>&1
+$noDbResult = & $cliPath release-evidence-index-verify --evidence-root $tempRoot 2>&1
 $noDbExit = $LASTEXITCODE
 Remove-Item Env:\LAWFUL_ANOMALY_DB_PATH -ErrorAction SilentlyContinue
 if ($noDbExit -ne 0) {
@@ -141,7 +141,7 @@ $badSums = Join-Path $v11Dir "SHA256SUMS.txt"
 $badSumsContent = Get-Content $badSums -Raw
 $badSumsContent -replace '^[0-9a-f]{64}', ('0' * 64) | Set-Content $badSums -Encoding UTF8 -NoNewline
 
-$negResult = & lawful-anomaly release-evidence-index-verify --evidence-root $tempRoot 2>&1
+$negResult = & $cliPath release-evidence-index-verify --evidence-root $tempRoot 2>&1
 $negExit = $LASTEXITCODE
 if ($negExit -eq 0) {
     throw "Negative smoke expected non-zero exit, got 0.`n$negResult"
@@ -163,7 +163,7 @@ $dupPath = Join-Path $tempRoot "duplicate-list.txt"
 $dupLines = @($v10Dir, $v10Dir)
 $dupLines | Set-Content -Path $dupPath -Encoding UTF8
 
-$dupResult = & lawful-anomaly release-evidence-index-verify --evidence-list $dupPath 2>&1
+$dupResult = & $cliPath release-evidence-index-verify --evidence-list $dupPath 2>&1
 $dupExit = $LASTEXITCODE
 if ($dupExit -eq 0) {
     throw "Duplicate list smoke expected non-zero exit, got 0.`n$dupResult"
