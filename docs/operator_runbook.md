@@ -806,6 +806,36 @@ State:
 - does not modify V1.12 exporter behavior
 - does not change DB/schema/scoring/provider behavior
 
+## V1.14 Release Evidence Index Export Round-Trip Smoke
+
+V1.14 adds an offline CLI command that performs a complete local round-trip smoke of the V1.12 exporter and V1.13 verifier.
+
+```powershell
+lawful-anomaly release-evidence-index-export-smoke --evidence-root ./evidence --output-root ./smoke
+lawful-anomaly release-evidence-index-export-smoke --evidence-root ./evidence --format json
+lawful-anomaly release-evidence-index-export-smoke --evidence-root ./evidence --format all
+```
+
+State:
+- offline
+- no DB required
+- no network required
+- does not call GitHub
+- does not mutate source evidence directories
+- reuses existing V1.12 exporter and V1.13 verifier
+- `--format all` runs `json`, `markdown`, and `both`
+- default format: `all`
+- deterministic output directories:
+  - `<output-root>/release-evidence-index-export-smoke/json`
+  - `<output-root>/release-evidence-index-export-smoke/markdown`
+  - `<output-root>/release-evidence-index-export-smoke/both`
+- exits nonzero if any format fails export or verify
+- prints deterministic JSON result with `schema.version == v1.14.0`
+- result includes per-format export status, verify status, artifact names/hashes, and overall status
+- does not modify V1.12 exporter behavior
+- does not modify V1.13 verifier behavior
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.
