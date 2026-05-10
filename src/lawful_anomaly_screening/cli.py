@@ -39,6 +39,7 @@ from .releases.evidence_index_export_smoke import run_release_evidence_index_exp
 from .releases.evidence_index_export_smoke_report import (
     run_release_evidence_index_export_smoke_report,
 )
+from .ops.operator_readiness import run_operator_readiness_check
 from .releases.evidence_index_verifier import (
     load_evidence_list,
     render_release_evidence_index_markdown,
@@ -510,6 +511,17 @@ def cmd_release_evidence_index_export_smoke_report(args: argparse.Namespace) -> 
         evidence_root=evidence_root,
         output_root=output_root,
         formats=formats,  # type: ignore[arg-type]
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "pass" else 1
+
+
+def cmd_operator_readiness_check(args: argparse.Namespace) -> int:
+    output_dir = getattr(args, "output_dir", None)
+    fmt = getattr(args, "format", "both")
+    result = run_operator_readiness_check(
+        output_dir=output_dir,
+        fmt=fmt,
     )
     print(json.dumps(result, indent=2))
     return 0 if result["status"] == "pass" else 1
@@ -3272,6 +3284,11 @@ def _add_release_evidence_index_export_smoke_report_arguments(parser: argparse.A
     parser.add_argument("--format", choices=["json", "markdown", "both", "all"], default="all")
 
 
+def _add_operator_readiness_check_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
+
+
 def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--audience", required=True)
@@ -3399,6 +3416,7 @@ def build_parser() -> argparse.ArgumentParser:
         "release-evidence-index-export-verify": cmd_release_evidence_index_export_verify,
         "release-evidence-index-export-smoke": cmd_release_evidence_index_export_smoke,
         "release-evidence-index-export-smoke-report": cmd_release_evidence_index_export_smoke_report,
+        "operator-readiness-check": cmd_operator_readiness_check,
         "export-create": cmd_export_create,
         "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
@@ -3456,6 +3474,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_release_evidence_index_export_smoke_arguments(p)
         if name == "release-evidence-index-export-smoke-report":
             _add_release_evidence_index_export_smoke_report_arguments(p)
+        if name == "operator-readiness-check":
+            _add_operator_readiness_check_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
         if name == "run-summary":

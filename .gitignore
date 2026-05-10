@@ -28,3 +28,4 @@ exports/*
 .test-release-evidence-index-export-verify/
 .test-release-evidence-index-export-smoke/
 .test-release-evidence-index-export-smoke-report/
+.operator-readiness/

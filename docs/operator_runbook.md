@@ -871,6 +871,44 @@ State:
 - does not modify V1.14 smoke behavior
 - does not change DB/schema/scoring/provider behavior
 
+## V1.16 Operator Readiness Check
+
+V1.16 adds an offline operator readiness CLI command that produces a deterministic local readiness report before attempting real screening/review work.
+
+```powershell
+lawful-anomaly operator-readiness-check
+lawful-anomaly operator-readiness-check --output-dir ./readiness
+lawful-anomaly operator-readiness-check --format json
+lawful-anomaly operator-readiness-check --format both
+```
+
+State:
+- offline
+- no DB required
+- no network required
+- does not call GitHub
+- does not require paid provider credentials
+- does not mutate database or source data
+- does not start workers
+- does not run STAC/live provider smoke
+- `--output-dir` controls where report artifacts are written (default: `.operator-readiness/`)
+- `--format` supports `json`, `markdown`, `both` (default: `both`)
+- report artifacts:
+  - `operator_readiness_check.json`
+  - `operator_readiness_check.md`
+  - `SHA256SUMS.txt`
+- `SHA256SUMS.txt` hashes only the JSON and Markdown report artifacts and never includes its own hash
+- checks include runtime, git context, config/environment presence, filesystem readiness, safety config, and database status
+- safety config rejects `EXPORT_UNCONFIRMED_COORDINATE_MODE=exact`, warns on non-default grid km, warns if UP42 is explicitly enabled
+- database/Redis reports `not_checked` without adding broad new infrastructure
+- exits nonzero if required safety settings are unsafe or required storage paths are missing/not writable
+- does not modify release evidence commands
+- does not modify V1.12 exporter behavior
+- does not modify V1.13 verifier behavior
+- does not modify V1.14 smoke behavior
+- does not modify V1.15 smoke report behavior
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.
