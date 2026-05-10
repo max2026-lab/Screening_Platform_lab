@@ -24,3 +24,4 @@ exports/*
 !data/tmp/.gitkeep
 *.egg-info/
 .release-evidence/
+.test-release-evidence-index-export/
