@@ -22,7 +22,7 @@
   `lawful-anomaly release-evidence-index-export-smoke`
 - performs a complete local round-trip smoke of V1.12 exporter and V1.13 verifier
 - `--evidence-root` points to source evidence directories (not mutated)
-- `--output-root` controls where smoke outputs are written
+- `--output-root` controls where smoke outputs are written (required)
 - `--format` supports `json`, `markdown`, `both`, `all` (default `all`)
 - for each selected format:
   1. exports release evidence index artifacts into a deterministic format-specific directory

@@ -3232,7 +3232,7 @@ def _add_release_evidence_index_export_verify_arguments(parser: argparse.Argumen
 
 def _add_release_evidence_index_export_smoke_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--evidence-root", required=True)
-    parser.add_argument("--output-root", default=None)
+    parser.add_argument("--output-root", required=True)
     parser.add_argument("--format", choices=["json", "markdown", "both", "all"], default="all")
 
 

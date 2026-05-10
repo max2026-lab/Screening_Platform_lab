@@ -3,6 +3,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from lawful_anomaly_screening.releases import evidence_index_export_smoke as smoke
 from lawful_anomaly_screening.cli import main
 
@@ -62,7 +64,7 @@ def test_smoke_json_format_passes():
     _write_valid_evidence_dir(root / "v1.10.0")
     result = smoke.run_release_evidence_index_export_smoke(
         evidence_root=root,
-        output_root=root / "out",
+        output_root=_TEST_ROOT / "smoke_json_out",
         formats=["json"],
     )
     assert result["status"] == "pass"
@@ -82,7 +84,7 @@ def test_smoke_markdown_format_passes():
     _write_valid_evidence_dir(root / "v1.10.0")
     result = smoke.run_release_evidence_index_export_smoke(
         evidence_root=root,
-        output_root=root / "out",
+        output_root=_TEST_ROOT / "smoke_md_out",
         formats=["markdown"],
     )
     assert result["status"] == "pass"
@@ -100,7 +102,7 @@ def test_smoke_both_format_passes():
     _write_valid_evidence_dir(root / "v1.10.0")
     result = smoke.run_release_evidence_index_export_smoke(
         evidence_root=root,
-        output_root=root / "out",
+        output_root=_TEST_ROOT / "smoke_both_out",
         formats=["both"],
     )
     assert result["status"] == "pass"
@@ -118,7 +120,7 @@ def test_smoke_all_formats_passes():
     _write_valid_evidence_dir(root / "v1.10.0")
     result = smoke.run_release_evidence_index_export_smoke(
         evidence_root=root,
-        output_root=root / "out",
+        output_root=_TEST_ROOT / "smoke_all_out",
         formats=None,
     )
     assert result["status"] == "pass"
@@ -132,7 +134,9 @@ def test_smoke_all_formats_passes():
 def test_smoke_cleans_previous_run():
     root = _test_dir("smoke_clean")
     _write_valid_evidence_dir(root / "v1.10.0")
-    out = root / "out"
+    out = _TEST_ROOT / "smoke_clean_out"
+    if out.exists():
+        shutil.rmtree(out)
     smoke_dir = out / "release-evidence-index-export-smoke" / "json"
     smoke_dir.mkdir(parents=True)
     (smoke_dir / "old_file.txt").write_text("old", encoding="utf-8")
@@ -152,7 +156,7 @@ def test_smoke_fails_when_evidence_bad():
     # Missing required files
     result = smoke.run_release_evidence_index_export_smoke(
         evidence_root=root,
-        output_root=root / "out",
+        output_root=_TEST_ROOT / "smoke_bad_evidence_out",
         formats=["json"],
     )
     assert result["status"] == "fail"
@@ -163,17 +167,43 @@ def test_smoke_fails_when_evidence_bad():
     assert fmt_result["status"] == "fail"
 
 
+def test_smoke_fails_when_output_root_inside_evidence_root():
+    root = _test_dir("smoke_nested_out")
+    _write_valid_evidence_dir(root / "v1.10.0")
+    result = smoke.run_release_evidence_index_export_smoke(
+        evidence_root=root,
+        output_root=root / "out",
+        formats=["json"],
+    )
+    # root/out is inside root, so this should fail safety check
+    assert result["status"] == "fail"
+    assert any("output_root must not be the same as or inside evidence_root" in r for r in result["reasons"])
+    assert not (root / "out" / "release-evidence-index-export-smoke").exists()
+
+
+def test_smoke_fails_when_output_root_same_as_evidence_root():
+    root = _test_dir("smoke_same_out")
+    _write_valid_evidence_dir(root / "v1.10.0")
+    result = smoke.run_release_evidence_index_export_smoke(
+        evidence_root=root,
+        output_root=root,
+        formats=["json"],
+    )
+    assert result["status"] == "fail"
+    assert any("output_root must not be the same as or inside evidence_root" in r for r in result["reasons"])
+
+
 def test_smoke_deterministic_hash():
     root = _test_dir("smoke_deterministic")
     _write_valid_evidence_dir(root / "v1.10.0")
     result1 = smoke.run_release_evidence_index_export_smoke(
         evidence_root=root,
-        output_root=root / "out1",
+        output_root=_TEST_ROOT / "smoke_deterministic_out1",
         formats=["both"],
     )
     result2 = smoke.run_release_evidence_index_export_smoke(
         evidence_root=root,
-        output_root=root / "out2",
+        output_root=_TEST_ROOT / "smoke_deterministic_out2",
         formats=["both"],
     )
     assert result1["status"] == "pass"
@@ -193,7 +223,7 @@ def test_cli_smoke_all_pass(capsys, tmp_path):
     result = main([
         "release-evidence-index-export-smoke",
         "--evidence-root", str(root),
-        "--output-root", str(root / "out"),
+        "--output-root", str(tmp_path / "out"),
         "--format", "all",
     ])
     assert result == 0
@@ -210,7 +240,7 @@ def test_cli_smoke_json_pass(capsys, tmp_path):
     result = main([
         "release-evidence-index-export-smoke",
         "--evidence-root", str(root),
-        "--output-root", str(root / "out"),
+        "--output-root", str(tmp_path / "out"),
         "--format", "json",
     ])
     assert result == 0
@@ -227,7 +257,7 @@ def test_cli_smoke_fails_on_bad_evidence(capsys, tmp_path):
     result = main([
         "release-evidence-index-export-smoke",
         "--evidence-root", str(root),
-        "--output-root", str(root / "out"),
+        "--output-root", str(tmp_path / "out"),
         "--format", "json",
     ])
     assert result != 0
@@ -244,10 +274,38 @@ def test_cli_smoke_no_db_access(capsys, monkeypatch, tmp_path):
     result = main([
         "release-evidence-index-export-smoke",
         "--evidence-root", str(root),
-        "--output-root", str(root / "out"),
+        "--output-root", str(tmp_path / "out"),
         "--format", "all",
     ])
     assert result == 0
     stdout = capsys.readouterr().out
     payload = json.loads(stdout)
     assert payload["status"] == "pass"
+
+
+def test_cli_smoke_missing_output_root(tmp_path):
+    root = tmp_path / "evidence"
+    _write_valid_evidence_dir(root / "v1.10.0")
+    with pytest.raises(SystemExit) as exc_info:
+        main([
+            "release-evidence-index-export-smoke",
+            "--evidence-root", str(root),
+            "--format", "json",
+        ])
+    assert exc_info.value.code != 0
+
+
+def test_cli_smoke_output_root_inside_evidence_root(capsys, tmp_path):
+    root = tmp_path / "evidence"
+    _write_valid_evidence_dir(root / "v1.10.0")
+    result = main([
+        "release-evidence-index-export-smoke",
+        "--evidence-root", str(root),
+        "--output-root", str(root / "out"),
+        "--format", "json",
+    ])
+    assert result != 0
+    stdout = capsys.readouterr().out
+    payload = json.loads(stdout)
+    assert payload["status"] == "fail"
+    assert any("output_root must not be the same as or inside evidence_root" in r for r in payload["reasons"])

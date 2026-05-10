@@ -812,8 +812,8 @@ V1.14 adds an offline CLI command that performs a complete local round-trip smok
 
 ```powershell
 lawful-anomaly release-evidence-index-export-smoke --evidence-root ./evidence --output-root ./smoke
-lawful-anomaly release-evidence-index-export-smoke --evidence-root ./evidence --format json
-lawful-anomaly release-evidence-index-export-smoke --evidence-root ./evidence --format all
+lawful-anomaly release-evidence-index-export-smoke --evidence-root ./evidence --output-root ./smoke --format json
+lawful-anomaly release-evidence-index-export-smoke --evidence-root ./evidence --output-root ./smoke --format all
 ```
 
 State:

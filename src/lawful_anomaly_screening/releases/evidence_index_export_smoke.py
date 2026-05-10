@@ -13,7 +13,7 @@ _FormatLiteral = Literal["json", "markdown", "both"]
 
 def run_release_evidence_index_export_smoke(
     evidence_root: str | Path,
-    output_root: str | Path | None = None,
+    output_root: str | Path,
     formats: list[_FormatLiteral] | None = None,
 ) -> dict:
     """Run a local round-trip smoke of V1.12 export + V1.13 verify.
@@ -26,8 +26,27 @@ def run_release_evidence_index_export_smoke(
     The command is offline, requires no DB, no network, and does not
     mutate source evidence directories.
     """
-    evidence_path = Path(evidence_root)
-    out_root = Path(output_root) if output_root else evidence_path.parent
+    evidence_path = Path(evidence_root).resolve()
+    out_root = Path(output_root).resolve()
+
+    # Safety: output_root must not be evidence_root or inside it
+    try:
+        out_root.relative_to(evidence_path)
+        return {
+            "schema": {
+                "version": SCHEMA_VERSION,
+                "name": "release_evidence_index_export_smoke",
+            },
+            "evidence_root": str(evidence_path).replace("\\", "/"),
+            "output_root": str(out_root).replace("\\", "/"),
+            "formats_run": formats if formats else ["json", "markdown", "both"],
+            "results": [],
+            "status": "fail",
+            "reasons": ["output_root must not be the same as or inside evidence_root"],
+        }
+    except ValueError:
+        pass
+
     smoke_dir = out_root / "release-evidence-index-export-smoke"
 
     selected_formats: list[_FormatLiteral] = formats if formats else ["json", "markdown", "both"]
