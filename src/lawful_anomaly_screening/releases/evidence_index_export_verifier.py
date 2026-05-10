@@ -9,6 +9,11 @@ EXPECTED_SCHEMA_VERSION = "v1.12.0"
 
 SHA256_LINE_PATTERN = re.compile(r"^([0-9A-Fa-f]{64})  ([^\r\n]+)$")
 
+ALLOWED_SHA256SUMS_ARTIFACTS = {
+    "release_evidence_index.json",
+    "release_evidence_index.md",
+}
+
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -46,7 +51,10 @@ def verify_release_evidence_index_export(export_dir: str | Path) -> dict:
 
     # Check for self-reference
     for line in sums_lines:
-        _hash, name = _parse_sums_line(line)
+        parsed = _parse_sums_line(line)
+        if parsed is None:
+            continue
+        _hash, name = parsed
         if name == "SHA256SUMS.txt":
             reasons.append("SHA256SUMS.txt must not include its own hash")
             return _build_result(False, reasons, export_path)
@@ -59,6 +67,9 @@ def verify_release_evidence_index_export(export_dir: str | Path) -> dict:
             reasons.append(f"Malformed SHA256SUMS line: {line}")
             continue
         h, name = parsed
+        if name not in ALLOWED_SHA256SUMS_ARTIFACTS:
+            reasons.append(f"Unsupported artifact in SHA256SUMS.txt: {name}")
+            continue
         artifact_path = export_path / name
         if not artifact_path.is_file():
             reasons.append(f"Artifact listed in SHA256SUMS but missing on disk: {name}")

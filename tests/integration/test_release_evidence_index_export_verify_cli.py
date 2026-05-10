@@ -305,6 +305,31 @@ def test_verify_md_hash_cross_check_mismatch():
     assert any("Markdown hash mismatch" in r for r in result["reasons"])
 
 
+# --- malformed / unsupported SHA256SUMS tests ---
+
+
+def test_verify_malformed_sums_line():
+    export_dir = _create_export_both("malformed_line")
+    sums_path = export_dir / "SHA256SUMS.txt"
+    lines = sums_path.read_text(encoding="utf-8").strip().splitlines()
+    sums_path.write_text(f"{lines[0]}\nbadline\n{lines[1]}\n", encoding="utf-8")
+    result = verifier.verify_release_evidence_index_export(export_dir)
+    assert result["status"] == "fail"
+    assert any("Malformed SHA256SUMS line" in r for r in result["reasons"])
+
+
+def test_verify_unsupported_sums_entry():
+    export_dir = _create_export_both("unsupported_entry")
+    sums_path = export_dir / "SHA256SUMS.txt"
+    lines = sums_path.read_text(encoding="utf-8").strip().splitlines()
+    fake_hash = "a" * 64
+    sums_path.write_text(f"{lines[0]}\n{fake_hash}  extra.txt\n{lines[1]}\n", encoding="utf-8")
+    (export_dir / "extra.txt").write_text("extra", encoding="utf-8")
+    result = verifier.verify_release_evidence_index_export(export_dir)
+    assert result["status"] == "fail"
+    assert any("Unsupported artifact" in r for r in result["reasons"])
+
+
 # --- CLI tests ---
 
 
@@ -403,3 +428,49 @@ def test_cli_verify_no_db_access(capsys, monkeypatch, tmp_path):
     stdout = capsys.readouterr().out
     payload = json.loads(stdout)
     assert payload["status"] == "pass"
+
+
+def test_cli_verify_malformed_sums_line(capsys, tmp_path):
+    root = tmp_path / "evidence"
+    _write_valid_evidence_dir(root / "v1.10.0")
+    exporter.export_release_evidence_index(
+        evidence_root=root,
+        output_dir=root / "export",
+        fmt="both",
+    )
+    sums_path = root / "export" / "SHA256SUMS.txt"
+    lines = sums_path.read_text(encoding="utf-8").strip().splitlines()
+    sums_path.write_text(f"{lines[0]}\nbadline\n{lines[1]}\n", encoding="utf-8")
+    result = main([
+        "release-evidence-index-export-verify",
+        "--export-dir", str(root / "export"),
+    ])
+    assert result != 0
+    stdout = capsys.readouterr().out
+    payload = json.loads(stdout)
+    assert payload["status"] == "fail"
+    assert any("Malformed SHA256SUMS line" in r for r in payload["reasons"])
+
+
+def test_cli_verify_unsupported_sums_entry(capsys, tmp_path):
+    root = tmp_path / "evidence"
+    _write_valid_evidence_dir(root / "v1.10.0")
+    exporter.export_release_evidence_index(
+        evidence_root=root,
+        output_dir=root / "export",
+        fmt="both",
+    )
+    sums_path = root / "export" / "SHA256SUMS.txt"
+    lines = sums_path.read_text(encoding="utf-8").strip().splitlines()
+    fake_hash = "a" * 64
+    sums_path.write_text(f"{lines[0]}\n{fake_hash}  extra.txt\n{lines[1]}\n", encoding="utf-8")
+    (root / "export" / "extra.txt").write_text("extra", encoding="utf-8")
+    result = main([
+        "release-evidence-index-export-verify",
+        "--export-dir", str(root / "export"),
+    ])
+    assert result != 0
+    stdout = capsys.readouterr().out
+    payload = json.loads(stdout)
+    assert payload["status"] == "fail"
+    assert any("Unsupported artifact" in r for r in payload["reasons"])
