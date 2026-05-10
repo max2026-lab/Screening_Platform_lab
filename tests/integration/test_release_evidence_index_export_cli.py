@@ -3,8 +3,6 @@ import json
 import shutil
 from pathlib import Path
 
-import pytest
-
 from lawful_anomaly_screening.releases import evidence_index_exporter as exporter
 from lawful_anomaly_screening.cli import main
 
@@ -104,6 +102,13 @@ def test_export_release_evidence_index_root_all_pass():
     # The markdown references the first-pass JSON hash, so it should appear
     assert "release_evidence_index.json" in md_text
 
+    # SHA256SUMS.txt must list exactly json and md, not itself
+    sums_text = (out / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    lines = sums_text.strip().splitlines()
+    assert len(lines) == 2
+    names = {line.split("  ", 1)[1] for line in lines}
+    assert names == {"release_evidence_index.json", "release_evidence_index.md"}
+
 
 def test_export_release_evidence_index_fails_when_verification_fails():
     root = _test_dir("root_fail")
@@ -176,6 +181,81 @@ def test_export_release_evidence_index_deterministic_hash():
     json2 = (out2 / "release_evidence_index.json").read_text(encoding="utf-8")
     assert json1 == json2
 
+    # json mode must not produce markdown
+    assert not (out1 / "release_evidence_index.md").exists()
+    assert not (out2 / "release_evidence_index.md").exists()
+
+    # SHA256SUMS.txt must have exactly 1 line for JSON only
+    sums1 = (out1 / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    sums2 = (out2 / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    assert len(sums1.strip().splitlines()) == 1
+    assert len(sums2.strip().splitlines()) == 1
+
+
+def test_export_release_evidence_index_json_mode():
+    root = _test_dir("json_mode")
+    _write_valid_evidence_dir(root / "v1.10.0")
+
+    result = exporter.export_release_evidence_index(
+        evidence_root=root,
+        output_dir=root / "export",
+        fmt="json",
+    )
+
+    assert result["status"] == "pass"
+    out = Path(result["output_dir"])
+
+    assert (out / "release_evidence_index.json").exists()
+    assert not (out / "release_evidence_index.md").exists()
+    assert (out / "SHA256SUMS.txt").exists()
+
+    # SHA256SUMS must have exactly 1 line for JSON only
+    sums_text = (out / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    lines = sums_text.strip().splitlines()
+    assert len(lines) == 1
+    assert lines[0].endswith("  release_evidence_index.json")
+
+    # JSON export_artifacts must contain only JSON and SHA256SUMS
+    json_payload = json.loads((out / "release_evidence_index.json").read_text(encoding="utf-8"))
+    artifacts = json_payload.get("export_artifacts", [])
+    assert len(artifacts) == 2
+    names = {a["name"] for a in artifacts}
+    assert names == {"release_evidence_index.json", "SHA256SUMS.txt"}
+
+    # JSON self-hash must be None
+    json_artifact = next(a for a in artifacts if a["name"] == "release_evidence_index.json")
+    assert json_artifact["sha256"] is None
+
+
+def test_export_release_evidence_index_markdown_mode():
+    root = _test_dir("markdown_mode")
+    _write_valid_evidence_dir(root / "v1.10.0")
+
+    result = exporter.export_release_evidence_index(
+        evidence_root=root,
+        output_dir=root / "export",
+        fmt="markdown",
+    )
+
+    assert result["status"] == "pass"
+    out = Path(result["output_dir"])
+
+    assert (out / "release_evidence_index.md").exists()
+    assert not (out / "release_evidence_index.json").exists()
+    assert (out / "SHA256SUMS.txt").exists()
+
+    # SHA256SUMS must have exactly 1 line for markdown only
+    sums_text = (out / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    lines = sums_text.strip().splitlines()
+    assert len(lines) == 1
+    assert lines[0].endswith("  release_evidence_index.md")
+
+    # Markdown must contain Exported Artifacts section
+    md_text = (out / "release_evidence_index.md").read_text(encoding="utf-8")
+    assert "## Exported Artifacts" in md_text
+    # Markdown mode must not mention JSON artifact
+    assert "release_evidence_index.json" not in md_text
+
 
 def test_export_release_evidence_index_sha256sums_valid():
     root = _test_dir("sha256sums")
@@ -218,6 +298,7 @@ def test_cli_release_evidence_index_export_root(capsys, tmp_path):
     payload = json.loads(stdout_text)
     assert payload["status"] == "pass"
     assert (tmp_path / "export" / "release_evidence_index.json").exists()
+    assert not (tmp_path / "export" / "release_evidence_index.md").exists()
 
 
 def test_cli_release_evidence_index_export_fails_on_bad_evidence(capsys, tmp_path):

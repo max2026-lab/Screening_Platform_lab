@@ -30,16 +30,16 @@ def export_release_evidence_index(
     Steps:
     1. Verify all evidence directories using V1.11 logic.
     2. If any verification fails, fail without producing artifacts.
-    3. If all pass, write deterministic export artifacts.
+    3. If all pass, write deterministic export artifacts respecting ``fmt``.
 
     Self-reference rule:
     - release_evidence_index.json is written first and cannot include its own
       final hash without creating a circular dependency. Its own sha256 is set
       to None in the JSON export_artifacts section.
-    - release_evidence_index.md is written second and may reference the JSON
-      hash from the first write.
+    - release_evidence_index.md is written second (in ``both`` mode) and may
+      reference the JSON hash from the first write.
     - SHA256SUMS.txt is written last and is the canonical source for the final
-      hashes of all export artifacts.
+      hashes of all export artifacts. It never includes its own hash.
     """
     # Step 1: verify
     verify_result = verify_release_evidence_index(
@@ -68,6 +68,9 @@ def export_release_evidence_index(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    write_json = fmt in ("json", "both")
+    write_md = fmt in ("markdown", "both")
+
     # Build deterministic index payload (no wall-clock timestamps)
     index_payload: dict = {
         "schema": {
@@ -82,23 +85,7 @@ def export_release_evidence_index(
         "failed_count": verify_result.get("failed_count", 0),
         "checked_file_count": verify_result.get("checked_file_count", 0),
         "evidence_directories": [],
-        "export_artifacts": [
-            {
-                "name": "release_evidence_index.json",
-                "sha256": None,
-                "note": "self-hash omitted to avoid circular dependency",
-            },
-            {
-                "name": "release_evidence_index.md",
-                "sha256": None,
-                "note": "hash populated after markdown is finalized",
-            },
-            {
-                "name": "SHA256SUMS.txt",
-                "sha256": None,
-                "note": "canonical hash list for all export artifacts",
-            },
-        ],
+        "export_artifacts": [],
     }
 
     for single in verify_result.get("results", []):
@@ -116,41 +103,78 @@ def export_release_evidence_index(
             })
         index_payload["evidence_directories"].append(dir_entry)
 
+    # Populate export_artifacts based on selected format
+    if write_json:
+        index_payload["export_artifacts"].append({
+            "name": "release_evidence_index.json",
+            "sha256": None,
+            "note": "self-hash omitted to avoid circular dependency",
+        })
+    if write_md:
+        index_payload["export_artifacts"].append({
+            "name": "release_evidence_index.md",
+            "sha256": None,
+            "note": "hash populated after markdown is finalized",
+        })
+    index_payload["export_artifacts"].append({
+        "name": "SHA256SUMS.txt",
+        "sha256": None,
+        "note": "canonical hash list for all export artifacts",
+    })
+
     # Step 3: write JSON (first pass, no artifact hashes)
-    json_path = output_dir / "release_evidence_index.json"
-    json_path.write_text(_stable_json(index_payload), encoding="utf-8")
-    json_hash_first = _sha256_file(json_path)
+    json_hash_first: str | None = None
+    json_hash_final: str | None = None
+    md_hash: str | None = None
 
-    # Step 4: write markdown (references first JSON hash to avoid circularity)
-    md_path = output_dir / "release_evidence_index.md"
-    md_text = _render_index_markdown(index_payload, json_hash=json_hash_first)
-    md_path.write_text(md_text, encoding="utf-8")
-    md_hash = _sha256_file(md_path)
+    if write_json:
+        json_path = output_dir / "release_evidence_index.json"
+        json_path.write_text(_stable_json(index_payload), encoding="utf-8")
+        json_hash_first = _sha256_file(json_path)
 
-    # Step 5: rewrite JSON with finalized markdown hash
-    for artifact_entry in index_payload["export_artifacts"]:
-        if artifact_entry["name"] == "release_evidence_index.md":
-            artifact_entry["sha256"] = md_hash
-            artifact_entry["note"] = "hash finalized after markdown write"
-    json_path.write_text(_stable_json(index_payload), encoding="utf-8")
-    json_hash_final = _sha256_file(json_path)
+        if write_md:
+            # both mode: write markdown referencing first-pass JSON hash
+            md_path = output_dir / "release_evidence_index.md"
+            md_text = _render_index_markdown(index_payload, json_hash=json_hash_first)
+            md_path.write_text(md_text, encoding="utf-8")
+            md_hash = _sha256_file(md_path)
 
-    # Step 6: write SHA256SUMS.txt (canonical source for all final hashes)
-    # Note: SHA256SUMS.txt does not include its own hash to avoid self-reference.
-    sums_lines = [
-        f"{json_hash_final}  release_evidence_index.json",
-        f"{md_hash}  release_evidence_index.md",
-    ]
+            # rewrite JSON with finalized markdown hash
+            for artifact_entry in index_payload["export_artifacts"]:
+                if artifact_entry["name"] == "release_evidence_index.md":
+                    artifact_entry["sha256"] = md_hash
+                    artifact_entry["note"] = "hash finalized after markdown write"
+            json_path.write_text(_stable_json(index_payload), encoding="utf-8")
+            json_hash_final = _sha256_file(json_path)
+        else:
+            # json-only mode: no markdown to finalize
+            json_hash_final = json_hash_first
+
+    elif write_md:
+        # markdown-only mode: no JSON artifact
+        md_path = output_dir / "release_evidence_index.md"
+        md_text = _render_index_markdown(index_payload, json_hash=None)
+        md_path.write_text(md_text, encoding="utf-8")
+        md_hash = _sha256_file(md_path)
+
+    # Step 4: write SHA256SUMS.txt (only for artifacts actually written, never self)
+    sums_lines: list[str] = []
+    if write_json and json_hash_final is not None:
+        sums_lines.append(f"{json_hash_final}  release_evidence_index.json")
+    if write_md and md_hash is not None:
+        sums_lines.append(f"{md_hash}  release_evidence_index.md")
+
     sums_text = "\n".join(sums_lines) + "\n"
     sums_path = output_dir / "SHA256SUMS.txt"
     sums_path.write_text(sums_text, encoding="utf-8")
 
-    # Step 7: compute final artifact hashes for return payload
-    artifact_hashes = [
-        {"name": json_path.name, "sha256": json_hash_final},
-        {"name": md_path.name, "sha256": md_hash},
-        {"name": sums_path.name, "sha256": _sha256_file(sums_path)},
-    ]
+    # Step 5: compute final artifact hashes for return payload
+    artifact_hashes: list[dict] = []
+    if write_json and json_hash_final is not None:
+        artifact_hashes.append({"name": json_path.name, "sha256": json_hash_final})
+    if write_md and md_hash is not None:
+        artifact_hashes.append({"name": md_path.name, "sha256": md_hash})
+    artifact_hashes.append({"name": sums_path.name, "sha256": _sha256_file(sums_path)})
 
     return {
         "status": "pass",

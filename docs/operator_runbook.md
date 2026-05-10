@@ -774,7 +774,10 @@ State:
 - reuses V1.11 release evidence index verifier logic
 - verifies all evidence directories before producing artifacts
 - fails nonzero without producing artifacts if verification fails
-- produces deterministic `release_evidence_index.json`, `release_evidence_index.md`, and `SHA256SUMS.txt`
+- produces deterministic `release_evidence_index.json`, `release_evidence_index.md`, and `SHA256SUMS.txt` when format is `both`
+- `--format json` produces only `release_evidence_index.json` and `SHA256SUMS.txt`
+- `--format markdown` produces only `release_evidence_index.md` and `SHA256SUMS.txt`
+- `SHA256SUMS.txt` lists only the artifacts produced for the selected format and never includes its own hash
 - JSON includes schema/version field for V1.12, index_hash, and per-directory status
 - markdown summarizes the index in operator-readable form
 - default format: both

@@ -36,6 +36,9 @@
 - supports `--output-dir`
 - supports `--format json|markdown|both`
 - default format: both
+- `--format json` writes only `release_evidence_index.json` and `SHA256SUMS.txt`
+- `--format markdown` writes only `release_evidence_index.md` and `SHA256SUMS.txt`
+- `SHA256SUMS.txt` lists only the artifacts produced for the selected format and never includes its own hash
 - does not require DB access
 - does not require network
 - does not call GitHub
