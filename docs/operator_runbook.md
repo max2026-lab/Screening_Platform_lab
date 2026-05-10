@@ -732,6 +732,29 @@ State:
 - does not rerun Phase 28
 - does not change DB/schema/scoring/provider behavior
 
+## V1.11 Operator Release Evidence Index Verification CLI
+
+V1.11 adds an offline CLI command that verifies multiple downloaded GitHub Release evidence directories from disk in one command.
+
+```powershell
+lawful-anomaly release-evidence-index-verify --evidence-root downloaded-releases
+lawful-anomaly release-evidence-index-verify --evidence-list evidence-list.txt
+```
+
+State:
+- offline
+- no DB required
+- no network required
+- does not call GitHub
+- does not rerun Phase 28
+- recursively discovers release evidence directories by required files
+- verifies every evidence directory using V1.10 single evidence verifier
+- supports JSON and markdown output
+- supports fail-fast
+- produces deterministic index_hash
+- detects duplicate evidence-list paths
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.
