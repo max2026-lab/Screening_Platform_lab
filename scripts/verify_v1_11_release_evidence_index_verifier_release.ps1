@@ -87,8 +87,8 @@ if (-not $rootJson.index_hash) {
 
 # 5. Evidence-list smoke
 $listPath = Join-Path $tempRoot "evidence-list.txt"
-$listLines = @("", "# comment", $v10Dir, $v11Dir)
-$listLines | Set-Content -Path $listPath -Encoding UTF8
+$listContent = "`n# comment`n$v10Dir`n$v11Dir`n"
+Set-Content -Path $listPath -Value $listContent -Encoding UTF8 -NoNewline
 
 Write-Host "Running evidence-list smoke..."
 $listResult = & $cliPath release-evidence-index-verify --evidence-list $listPath 2>&1
@@ -160,8 +160,8 @@ $badSumsContent | Set-Content $badSums -Encoding UTF8 -NoNewline
 # 9. Duplicate list smoke
 Write-Host "Running duplicate list smoke..."
 $dupPath = Join-Path $tempRoot "duplicate-list.txt"
-$dupLines = @($v10Dir, $v10Dir)
-$dupLines | Set-Content -Path $dupPath -Encoding UTF8
+$dupContent = "$v10Dir`n$v10Dir`n"
+Set-Content -Path $dupPath -Value $dupContent -Encoding UTF8 -NoNewline
 
 $dupResult = & $cliPath release-evidence-index-verify --evidence-list $dupPath 2>&1
 $dupExit = $LASTEXITCODE

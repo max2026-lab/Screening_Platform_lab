@@ -30,6 +30,9 @@ def discover_evidence_dirs(root: Path) -> list[Path]:
 def load_evidence_list(list_path: Path) -> list[Path]:
     """Load evidence directory paths from a text file."""
     text = list_path.read_text(encoding="utf-8")
+    # Strip UTF-8 BOM if present
+    if text.startswith("\ufeff"):
+        text = text[1:]
     lines = text.splitlines()
     paths: list[Path] = []
     for raw in lines:
