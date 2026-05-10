@@ -836,6 +836,41 @@ State:
 - does not modify V1.13 verifier behavior
 - does not change DB/schema/scoring/provider behavior
 
+## V1.15 Release Evidence Export Smoke Report
+
+V1.15 adds an offline CLI command that runs the V1.14 round-trip smoke and writes durable evidence report artifacts.
+
+```powershell
+lawful-anomaly release-evidence-index-export-smoke-report --evidence-root ./evidence --output-root ./report
+lawful-anomaly release-evidence-index-export-smoke-report --evidence-root ./evidence --output-root ./report --format json
+lawful-anomaly release-evidence-index-export-smoke-report --evidence-root ./evidence --output-root ./report --format all
+```
+
+State:
+- offline
+- no DB required
+- no network required
+- does not call GitHub
+- does not mutate source evidence directories
+- reuses existing V1.14 smoke implementation
+- `--output-root` is required
+- `--format all` runs `json`, `markdown`, and `both`
+- default format: `all`
+- fails deterministically if `output_root` is the same as or inside `evidence_root`
+- report artifacts are written under `<output-root>/release-evidence-index-export-smoke-report/`:
+  - `release_evidence_index_export_smoke_report.json`
+  - `release_evidence_index_export_smoke_report.md`
+  - `SHA256SUMS.txt`
+- `SHA256SUMS.txt` hashes only the JSON and Markdown report artifacts and never includes its own hash
+- JSON report includes `schema.version == v1.15.0`, embedded V1.14 smoke result, per-format status, artifact names/hashes, and overall status
+- Markdown report summarizes the same result in operator-readable form
+- if smoke fails, report artifacts are still written describing the failure, then exits nonzero
+- no timestamps in hashed or report content
+- does not modify V1.12 exporter behavior
+- does not modify V1.13 verifier behavior
+- does not modify V1.14 smoke behavior
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.
