@@ -23,10 +23,6 @@ def _stable_json(payload: object) -> str:
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def _git_context() -> dict:
     cwd = Path.cwd()
     git_dir = cwd / ".git"
@@ -96,14 +92,14 @@ def run_operator_readiness_check(
 
     # Runtime checks
     runtime_status = "pass"
-    runtime_reasons: list[str] = []
+    runtime_failures: list[str] = []
     try:
         import lawful_anomaly_screening  # noqa: F401
         package_import = "pass"
     except Exception as exc:
         package_import = f"fail: {exc}"
         runtime_status = "fail"
-        runtime_reasons.append(f"Package import failed: {exc}")
+        runtime_failures.append(f"Package import failed: {exc}")
 
     runtime_check = {
         "status": runtime_status,
@@ -130,11 +126,12 @@ def run_operator_readiness_check(
     }
 
     config_status = "pass"
-    config_reasons: list[str] = []
+    config_warnings: list[str] = []
+    config_failures: list[str] = []
     for key in ("APP_ENV", "LAWFUL_ANOMALY_DB_PATH"):
         if env_vars[key] is None:
             config_status = "warn"
-            config_reasons.append(f"{key} is not set")
+            config_warnings.append(f"{key} is not set")
 
     config_check = {
         "status": config_status,
@@ -162,10 +159,10 @@ def run_operator_readiness_check(
         fs_results.append(entry)
         if not entry["exists"]:
             fs_status = "fail"
-            config_reasons.append(f"{label} path does not exist: {entry['path']}")
+            config_failures.append(f"{label} path does not exist: {entry['path']}")
         elif not entry["writable"]:
             fs_status = "fail"
-            config_reasons.append(f"{label} path is not writable: {entry['path']}")
+            config_failures.append(f"{label} path is not writable: {entry['path']}")
 
     filesystem_check = {
         "status": fs_status,
@@ -174,12 +171,13 @@ def run_operator_readiness_check(
 
     # Safety config
     safety_status = "pass"
-    safety_reasons: list[str] = []
+    safety_failures: list[str] = []
+    safety_warnings: list[str] = []
 
     coord_mode = env_vars.get("EXPORT_UNCONFIRMED_COORDINATE_MODE") or ""
     if coord_mode.lower() == "exact":
         safety_status = "fail"
-        safety_reasons.append("EXPORT_UNCONFIRMED_COORDINATE_MODE is 'exact'; expected obfuscated")
+        safety_failures.append("EXPORT_UNCONFIRMED_COORDINATE_MODE is 'exact'; expected obfuscated")
 
     grid_km_str = env_vars.get("EXPORT_UNCONFIRMED_GRID_KM") or ""
     if grid_km_str:
@@ -187,18 +185,15 @@ def run_operator_readiness_check(
             grid_km = float(grid_km_str)
             if grid_km != 1.0:
                 safety_status = "warn"
-                safety_reasons.append(f"EXPORT_UNCONFIRMED_GRID_KM is {grid_km}; expected 1 unless explicitly pinned")
+                safety_warnings.append(f"EXPORT_UNCONFIRMED_GRID_KM is {grid_km}; expected 1 unless explicitly pinned")
         except ValueError:
             safety_status = "warn"
-            safety_reasons.append(f"EXPORT_UNCONFIRMED_GRID_KM is not a valid number: {grid_km_str}")
-    else:
-        # default is effectively 1 when not set, which is safe
-        pass
+            safety_warnings.append(f"EXPORT_UNCONFIRMED_GRID_KM is not a valid number: {grid_km_str}")
 
     up42_val = env_vars.get("UP42_ENABLED") or ""
     if up42_val.lower() in ("1", "true", "yes", "on"):
         safety_status = "warn"
-        safety_reasons.append("UP42_ENABLED is explicitly enabled")
+        safety_warnings.append("UP42_ENABLED is explicitly enabled")
 
     safety_check = {
         "status": safety_status,
@@ -215,16 +210,42 @@ def run_operator_readiness_check(
 
     # Overall status
     overall_status = "pass"
-    all_reasons: list[str] = []
-    all_reasons.extend(runtime_reasons)
-    all_reasons.extend(config_reasons)
-    all_reasons.extend(safety_reasons)
+    all_warnings = config_warnings + safety_warnings
+    all_failures = runtime_failures + config_failures + safety_failures
+    all_reasons = all_warnings + all_failures
 
     for check_status in (runtime_check["status"], filesystem_check["status"], safety_check["status"]):
         if check_status == "fail":
             overall_status = "fail"
         elif check_status == "warn" and overall_status == "pass":
             overall_status = "warn"
+
+    write_json = fmt in ("json", "both")
+    write_md = fmt in ("markdown", "both")
+
+    json_path = out_path / "operator_readiness_check.json"
+    md_path = out_path / "operator_readiness_check.md"
+    sums_path = out_path / "SHA256SUMS.txt"
+
+    # Build artifact manifest (no hashes yet to avoid circular dependency)
+    artifact_manifest: list[dict] = []
+    if write_json:
+        artifact_manifest.append({
+            "name": "operator_readiness_check.json",
+            "sha256": None,
+            "note": "self-hash omitted to avoid circular dependency",
+        })
+    if write_md:
+        artifact_manifest.append({
+            "name": "operator_readiness_check.md",
+            "sha256": None,
+            "note": "hash populated after markdown is finalized",
+        })
+    artifact_manifest.append({
+        "name": "SHA256SUMS.txt",
+        "sha256": None,
+        "note": "canonical hash list for all report artifacts",
+    })
 
     # Build report payload
     report_payload = {
@@ -241,44 +262,63 @@ def run_operator_readiness_check(
             "safety": safety_check,
             "database": db_check,
         },
+        "warnings": all_warnings,
+        "failures": all_failures,
         "reasons": all_reasons,
+        "artifact_manifest": artifact_manifest,
     }
 
-    write_json = fmt in ("json", "both")
-    write_md = fmt in ("markdown", "both")
+    json_hash_first: str | None = None
+    json_hash_final: str | None = None
+    md_hash: str | None = None
 
-    json_path = out_path / "operator_readiness_check.json"
-    md_path = out_path / "operator_readiness_check.md"
-
+    # Step 1: write JSON first pass (no artifact hashes)
     if write_json:
         json_path.write_text(_stable_json(report_payload), encoding="utf-8")
-    if write_md:
-        md_path.write_text(_render_report_markdown(report_payload), encoding="utf-8")
+        json_hash_first = _sha256_file(json_path)
 
-    # SHA256SUMS.txt for report artifacts only
+        if write_md:
+            # both mode: write markdown, then rewrite JSON with md hash
+            md_path.write_text(_render_report_markdown(report_payload), encoding="utf-8")
+            md_hash = _sha256_file(md_path)
+
+            for entry in report_payload["artifact_manifest"]:
+                if entry["name"] == "operator_readiness_check.md":
+                    entry["sha256"] = md_hash
+                    entry["note"] = "hash finalized after markdown write"
+            json_path.write_text(_stable_json(report_payload), encoding="utf-8")
+            json_hash_final = _sha256_file(json_path)
+        else:
+            json_hash_final = json_hash_first
+    elif write_md:
+        # markdown-only mode: no JSON artifact
+        md_path.write_text(_render_report_markdown(report_payload), encoding="utf-8")
+        md_hash = _sha256_file(md_path)
+
+    # Step 2: write SHA256SUMS.txt (only for JSON/Markdown artifacts, never self)
     sums_lines: list[str] = []
-    if write_json:
-        sums_lines.append(f"{_sha256_file(json_path)}  operator_readiness_check.json")
-    if write_md:
-        sums_lines.append(f"{_sha256_file(md_path)}  operator_readiness_check.md")
+    if write_json and json_hash_final is not None:
+        sums_lines.append(f"{json_hash_final}  operator_readiness_check.json")
+    if write_md and md_hash is not None:
+        sums_lines.append(f"{md_hash}  operator_readiness_check.md")
     sums_text = "\n".join(sorted(sums_lines)) + "\n"
-    sums_path = out_path / "SHA256SUMS.txt"
     sums_path.write_text(sums_text, encoding="utf-8")
 
-    sums_hash = _sha256_file(sums_path)
-
-    artifacts: list[dict] = []
-    if write_json:
-        artifacts.append({"name": json_path.name, "sha256": _sha256_file(json_path)})
-    if write_md:
-        artifacts.append({"name": md_path.name, "sha256": _sha256_file(md_path)})
-    artifacts.append({"name": sums_path.name, "sha256": sums_hash})
+    # Step 3: compute final artifact hashes for return payload
+    result_artifacts: list[dict] = []
+    if write_json and json_hash_final is not None:
+        result_artifacts.append({"name": json_path.name, "sha256": json_hash_final})
+    if write_md and md_hash is not None:
+        result_artifacts.append({"name": md_path.name, "sha256": md_hash})
+    result_artifacts.append({"name": sums_path.name, "sha256": _sha256_file(sums_path)})
 
     return {
         "schema": report_payload["schema"],
         "status": overall_status,
         "output_dir": str(out_path).replace("\\", "/"),
-        "artifacts": artifacts,
+        "artifacts": result_artifacts,
+        "warnings": all_warnings,
+        "failures": all_failures,
         "reasons": all_reasons,
     }
 
@@ -352,6 +392,22 @@ def _render_report_markdown(payload: dict) -> str:
     if db.get("reason"):
         lines.append(f"- Reason: {db['reason']}")
     lines.append("")
+
+    warnings = payload.get("warnings", [])
+    if warnings:
+        lines.append("## Warnings")
+        lines.append("")
+        for warning in warnings:
+            lines.append(f"- {warning}")
+        lines.append("")
+
+    failures = payload.get("failures", [])
+    if failures:
+        lines.append("## Failures")
+        lines.append("")
+        for failure in failures:
+            lines.append(f"- {failure}")
+        lines.append("")
 
     reasons = payload.get("reasons", [])
     if reasons:

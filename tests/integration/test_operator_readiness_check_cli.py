@@ -39,6 +39,22 @@ def test_happy_path_all_passes(monkeypatch, tmp_path):
     assert len(sums_lines) == 2
     assert not any("SHA256SUMS.txt" in line for line in sums_lines)
 
+    # JSON report must include artifact manifest and warnings/failures
+    json_report = json.loads((out / "operator_readiness_check.json").read_text(encoding="utf-8"))
+    assert "artifact_manifest" in json_report
+    assert isinstance(json_report["warnings"], list)
+    assert isinstance(json_report["failures"], list)
+    manifest = json_report["artifact_manifest"]
+    json_entry = next((a for a in manifest if a["name"] == "operator_readiness_check.json"), None)
+    assert json_entry is not None
+    assert json_entry["sha256"] is None
+    md_entry = next((a for a in manifest if a["name"] == "operator_readiness_check.md"), None)
+    assert md_entry is not None
+    assert md_entry["sha256"] is not None
+    sums_entry = next((a for a in manifest if a["name"] == "SHA256SUMS.txt"), None)
+    assert sums_entry is not None
+    assert sums_entry["sha256"] is None
+
 
 def test_missing_storage_path_fails(monkeypatch, tmp_path):
     fake = _fake_settings(tmp_path)
@@ -96,6 +112,15 @@ def test_format_json_only(monkeypatch, tmp_path):
     sums_lines = (out / "SHA256SUMS.txt").read_text(encoding="utf-8").strip().splitlines()
     assert len(sums_lines) == 1
 
+    json_report = json.loads((out / "operator_readiness_check.json").read_text(encoding="utf-8"))
+    manifest = json_report["artifact_manifest"]
+    names = [a["name"] for a in manifest]
+    assert "operator_readiness_check.json" in names
+    assert "operator_readiness_check.md" not in names
+    assert "SHA256SUMS.txt" in names
+    json_entry = next(a for a in manifest if a["name"] == "operator_readiness_check.json")
+    assert json_entry["sha256"] is None
+
 
 def test_format_markdown_only(monkeypatch, tmp_path):
     fake = _fake_settings(tmp_path)
@@ -137,6 +162,15 @@ def test_format_both(monkeypatch, tmp_path):
     assert (out / "SHA256SUMS.txt").exists()
     sums_lines = (out / "SHA256SUMS.txt").read_text(encoding="utf-8").strip().splitlines()
     assert len(sums_lines) == 2
+
+    json_report = json.loads((out / "operator_readiness_check.json").read_text(encoding="utf-8"))
+    manifest = json_report["artifact_manifest"]
+    json_entry = next(a for a in manifest if a["name"] == "operator_readiness_check.json")
+    assert json_entry["sha256"] is None
+    md_entry = next(a for a in manifest if a["name"] == "operator_readiness_check.md")
+    assert md_entry["sha256"] is not None
+    sums_entry = next(a for a in manifest if a["name"] == "SHA256SUMS.txt")
+    assert sums_entry["sha256"] is None
 
 
 def test_no_db_mutation(monkeypatch, tmp_path):
