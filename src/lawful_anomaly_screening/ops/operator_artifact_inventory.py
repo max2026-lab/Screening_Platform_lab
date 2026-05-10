@@ -23,10 +23,6 @@ def _stable_json(payload: object) -> str:
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def _check_readable(path: Path) -> bool:
     try:
         return os.access(path, os.R_OK)
@@ -49,6 +45,7 @@ def _scan_directory(root: Path) -> dict:
     temp_count = 0
     sha_files: list[str] = []
     malformed_checksum_lines: list[str] = []
+    nonlocal_checksum_refs: list[str] = []
     hash_mismatches: list[str] = []
     missing_checksum_targets: list[str] = []
     safety_warnings: list[str] = []
@@ -76,6 +73,7 @@ def _scan_directory(root: Path) -> dict:
                 _process_sha256sums(
                     item, root, rel,
                     malformed_checksum_lines,
+                    nonlocal_checksum_refs,
                     hash_mismatches,
                     missing_checksum_targets,
                 )
@@ -123,6 +121,7 @@ def _scan_directory(root: Path) -> dict:
         },
         "sha256sums_files": sorted(sha_files),
         "malformed_checksum_lines": malformed_checksum_lines,
+        "nonlocal_checksum_refs": nonlocal_checksum_refs,
         "hash_mismatches": hash_mismatches,
         "missing_checksum_targets": missing_checksum_targets,
         "safety_warnings": safety_warnings,
@@ -134,6 +133,7 @@ def _process_sha256sums(
     root: Path,
     rel: Path,
     malformed_lines: list[str],
+    nonlocal_refs: list[str],
     hash_mismatches: list[str],
     missing_targets: list[str],
 ) -> None:
@@ -151,20 +151,33 @@ def _process_sha256sums(
             continue
         expected_hash = match.group(1)
         target_name = match.group(2)
-        target_path = sha_path.parent / target_name
-        try:
-            target_path.relative_to(root)
-        except ValueError:
-            # target outside root
+        # Same-directory check: filename must have no path separators or parent refs
+        target_path = Path(target_name)
+        if (
+            len(target_path.parts) != 1
+            or target_path.is_absolute()
+            or ".." in target_path.parts
+        ):
+            nonlocal_refs.append(
+                f"{rel}: nonlocal checksum reference not followed: {target_name}"
+            )
             continue
-        if not target_path.is_file():
+        target_file = sha_path.parent / target_name
+        try:
+            target_file.relative_to(root)
+        except ValueError:
+            nonlocal_refs.append(
+                f"{rel}: nonlocal checksum reference not followed: {target_name}"
+            )
+            continue
+        if not target_file.is_file():
             missing_targets.append(f"{rel} references missing target: {target_name}")
             continue
-        size = target_path.stat().st_size
+        size = target_file.stat().st_size
         if size > _MAX_SAME_DIR_VERIFY_BYTES:
             # too large, skip verification
             continue
-        actual_hash = _sha256_file(target_path)
+        actual_hash = _sha256_file(target_file)
         if actual_hash.lower() != expected_hash.lower():
             hash_mismatches.append(
                 f"{rel}: hash mismatch for {target_name}: expected {expected_hash}, got {actual_hash}"
@@ -209,11 +222,12 @@ def run_operator_artifact_inventory(
     scan = _scan_directory(root_path) if root_exists and root_is_dir and root_readable else {}
 
     malformed_checksum_lines = scan.get("malformed_checksum_lines", [])
+    nonlocal_checksum_refs = scan.get("nonlocal_checksum_refs", [])
     hash_mismatches = scan.get("hash_mismatches", [])
     missing_checksum_targets = scan.get("missing_checksum_targets", [])
     safety_warnings = scan.get("safety_warnings", [])
 
-    warnings = root_warnings + malformed_checksum_lines + safety_warnings
+    warnings = root_warnings + malformed_checksum_lines + nonlocal_checksum_refs + safety_warnings
     failures = root_failures + hash_mismatches + missing_checksum_targets
 
     overall_status = "pass"

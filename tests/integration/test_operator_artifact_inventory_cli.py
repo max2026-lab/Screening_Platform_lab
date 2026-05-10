@@ -5,28 +5,6 @@ from lawful_anomaly_screening.ops import operator_artifact_inventory as inventor
 from lawful_anomaly_screening.cli import main
 
 
-def _make_happy_root(tmp_path: Path) -> Path:
-    root = tmp_path / "workspace"
-    root.mkdir()
-    (root / "cache").mkdir()
-    (root / "manifests").mkdir()
-    (root / "artifacts").mkdir()
-    (root / "exports" / "public").mkdir(parents=True)
-    (root / "exports" / "reviewer").mkdir(parents=True)
-    (root / "logs").mkdir()
-    (root / "data").mkdir()
-
-    # Create a small file with SHA256SUMS
-    artifact_dir = root / "artifacts"
-    small_file = artifact_dir / "manifest.json"
-    small_file.write_text('{"ok": true}', encoding="utf-8")
-    sha = inventory._sha256_file(small_file)
-    sums_file = artifact_dir / "SHA256SUMS.txt"
-    sums_file.write_text(f"{sha}  manifest.json\n", encoding="utf-8")
-
-    return root
-
-
 def test_happy_path_passes():
     root = Path(".test-operator-artifact-inventory/happy")
     if root.exists():
@@ -129,6 +107,71 @@ def test_malformed_checksum_line_warns():
     result = inventory.run_operator_artifact_inventory(root=root, output_dir=out, fmt="json")
     assert result["status"] == "warn"
     assert any("badline" in w for w in result["warnings"])
+    assert result["failures"] == []
+
+
+def test_checksum_subdir_ref_warns():
+    root = Path(".test-operator-artifact-inventory/subdir_ref")
+    if root.exists():
+        import shutil
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    artifact_dir = root / "artifacts"
+    artifact_dir.mkdir()
+    subdir = artifact_dir / "subdir"
+    subdir.mkdir()
+    target = subdir / "file.json"
+    target.write_text("{}", encoding="utf-8")
+    sums_file = artifact_dir / "SHA256SUMS.txt"
+    sha = inventory._sha256_file(target)
+    sums_file.write_text(f"{sha}  subdir/file.json\n", encoding="utf-8")
+
+    out = root / ".operator-artifact-inventory"
+    result = inventory.run_operator_artifact_inventory(root=root, output_dir=out, fmt="json")
+    assert result["status"] == "warn"
+    assert any("nonlocal" in w.lower() and "subdir/file.json" in w for w in result["warnings"])
+    assert result["failures"] == []
+
+
+def test_checksum_parent_ref_warns():
+    root = Path(".test-operator-artifact-inventory/parent_ref")
+    if root.exists():
+        import shutil
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    artifact_dir = root / "artifacts"
+    artifact_dir.mkdir()
+    target = root / "file.json"
+    target.write_text("{}", encoding="utf-8")
+    sums_file = artifact_dir / "SHA256SUMS.txt"
+    sha = inventory._sha256_file(target)
+    sums_file.write_text(f"{sha}  ../file.json\n", encoding="utf-8")
+
+    out = root / ".operator-artifact-inventory"
+    result = inventory.run_operator_artifact_inventory(root=root, output_dir=out, fmt="json")
+    assert result["status"] == "warn"
+    assert any("nonlocal" in w.lower() and "../file.json" in w for w in result["warnings"])
+    assert result["failures"] == []
+
+
+def test_checksum_absolute_ref_warns():
+    root = Path(".test-operator-artifact-inventory/abs_ref")
+    if root.exists():
+        import shutil
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    artifact_dir = root / "artifacts"
+    artifact_dir.mkdir()
+    target = root / "file.json"
+    target.write_text("{}", encoding="utf-8")
+    sums_file = artifact_dir / "SHA256SUMS.txt"
+    sha = inventory._sha256_file(target)
+    sums_file.write_text(f"{sha}  /absolute/path/file.json\n", encoding="utf-8")
+
+    out = root / ".operator-artifact-inventory"
+    result = inventory.run_operator_artifact_inventory(root=root, output_dir=out, fmt="json")
+    assert result["status"] == "warn"
+    assert any("nonlocal" in w.lower() and "/absolute/path/file.json" in w for w in result["warnings"])
     assert result["failures"] == []
 
 
@@ -285,6 +328,74 @@ def test_cli_malformed_checksum_line_warns(capsys, tmp_path):
     payload = json.loads(stdout)
     assert payload["status"] == "warn"
     assert any("badline" in w for w in payload["warnings"])
+
+
+def test_cli_checksum_subdir_ref_warns(capsys, tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    artifact_dir = root / "artifacts"
+    artifact_dir.mkdir()
+    subdir = artifact_dir / "subdir"
+    subdir.mkdir()
+    target = subdir / "file.json"
+    target.write_text("{}", encoding="utf-8")
+    sums_file = artifact_dir / "SHA256SUMS.txt"
+    sha = inventory._sha256_file(target)
+    sums_file.write_text(f"{sha}  subdir/file.json\n", encoding="utf-8")
+    result = main([
+        "operator-artifact-inventory",
+        "--root", str(root),
+        "--format", "json",
+    ])
+    assert result == 0
+    stdout = capsys.readouterr().out
+    payload = json.loads(stdout)
+    assert payload["status"] == "warn"
+    assert any("nonlocal" in w.lower() and "subdir/file.json" in w for w in payload["warnings"])
+
+
+def test_cli_checksum_parent_ref_warns(capsys, tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    artifact_dir = root / "artifacts"
+    artifact_dir.mkdir()
+    target = root / "file.json"
+    target.write_text("{}", encoding="utf-8")
+    sums_file = artifact_dir / "SHA256SUMS.txt"
+    sha = inventory._sha256_file(target)
+    sums_file.write_text(f"{sha}  ../file.json\n", encoding="utf-8")
+    result = main([
+        "operator-artifact-inventory",
+        "--root", str(root),
+        "--format", "json",
+    ])
+    assert result == 0
+    stdout = capsys.readouterr().out
+    payload = json.loads(stdout)
+    assert payload["status"] == "warn"
+    assert any("nonlocal" in w.lower() and "../file.json" in w for w in payload["warnings"])
+
+
+def test_cli_checksum_absolute_ref_warns(capsys, tmp_path):
+    root = tmp_path / "workspace"
+    root.mkdir()
+    artifact_dir = root / "artifacts"
+    artifact_dir.mkdir()
+    target = root / "file.json"
+    target.write_text("{}", encoding="utf-8")
+    sums_file = artifact_dir / "SHA256SUMS.txt"
+    sha = inventory._sha256_file(target)
+    sums_file.write_text(f"{sha}  /absolute/path/file.json\n", encoding="utf-8")
+    result = main([
+        "operator-artifact-inventory",
+        "--root", str(root),
+        "--format", "json",
+    ])
+    assert result == 0
+    stdout = capsys.readouterr().out
+    payload = json.loads(stdout)
+    assert payload["status"] == "warn"
+    assert any("nonlocal" in w.lower() and "/absolute/path/file.json" in w for w in payload["warnings"])
 
 
 def test_cli_export_safety_warning(capsys, tmp_path):
