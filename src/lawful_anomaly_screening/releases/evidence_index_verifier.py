@@ -20,6 +20,9 @@ def _is_evidence_dir(path: Path) -> bool:
 def discover_evidence_dirs(root: Path) -> list[Path]:
     """Recursively discover evidence directories under root."""
     dirs: list[Path] = []
+    # Check root itself first
+    if _is_evidence_dir(root):
+        dirs.append(root)
     for candidate in root.rglob("*"):
         if _is_evidence_dir(candidate):
             dirs.append(candidate)
