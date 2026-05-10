@@ -40,6 +40,7 @@ from .releases.evidence_index_export_smoke_report import (
     run_release_evidence_index_export_smoke_report,
 )
 from .ops.operator_readiness import run_operator_readiness_check
+from .ops.operator_artifact_inventory import run_operator_artifact_inventory
 from .releases.evidence_index_verifier import (
     load_evidence_list,
     render_release_evidence_index_markdown,
@@ -520,6 +521,22 @@ def cmd_operator_readiness_check(args: argparse.Namespace) -> int:
     output_dir = getattr(args, "output_dir", None)
     fmt = getattr(args, "format", "both")
     result = run_operator_readiness_check(
+        output_dir=output_dir,
+        fmt=fmt,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] in ("pass", "warn") else 1
+
+
+def cmd_operator_artifact_inventory(args: argparse.Namespace) -> int:
+    root = getattr(args, "root", None)
+    output_dir = getattr(args, "output_dir", None)
+    fmt = getattr(args, "format", "both")
+    if not root:
+        print("--root is required", file=sys.stderr)
+        return 1
+    result = run_operator_artifact_inventory(
+        root=root,
         output_dir=output_dir,
         fmt=fmt,
     )
@@ -3289,6 +3306,12 @@ def _add_operator_readiness_check_arguments(parser: argparse.ArgumentParser) -> 
     parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
 
 
+def _add_operator_artifact_inventory_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--root", required=True)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
+
+
 def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--audience", required=True)
@@ -3417,6 +3440,7 @@ def build_parser() -> argparse.ArgumentParser:
         "release-evidence-index-export-smoke": cmd_release_evidence_index_export_smoke,
         "release-evidence-index-export-smoke-report": cmd_release_evidence_index_export_smoke_report,
         "operator-readiness-check": cmd_operator_readiness_check,
+        "operator-artifact-inventory": cmd_operator_artifact_inventory,
         "export-create": cmd_export_create,
         "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
@@ -3476,6 +3500,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_release_evidence_index_export_smoke_report_arguments(p)
         if name == "operator-readiness-check":
             _add_operator_readiness_check_arguments(p)
+        if name == "operator-artifact-inventory":
+            _add_operator_artifact_inventory_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
         if name == "run-summary":

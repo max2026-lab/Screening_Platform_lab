@@ -913,6 +913,51 @@ State:
 - does not modify V1.15 smoke report behavior
 - does not change DB/schema/scoring/provider behavior
 
+## V1.17 Operator Artifact Inventory
+
+V1.17 adds an offline operator artifact inventory CLI command that produces a deterministic local inventory of run/artifact/export folders.
+
+```powershell
+lawful-anomaly operator-artifact-inventory --root ./workspace
+lawful-anomaly operator-artifact-inventory --root ./workspace --output-dir ./inventory
+lawful-anomaly operator-artifact-inventory --root ./workspace --format json
+lawful-anomaly operator-artifact-inventory --root ./workspace --format both
+```
+
+State:
+- offline
+- no DB required
+- no network required
+- does not call GitHub
+- does not require paid provider credentials
+- does not mutate source artifact directories
+- does not delete or rewrite user files
+- `--root` is required and points to the workspace directory to inventory
+- `--output-dir` controls where report artifacts are written (default: `<root>/.operator-artifact-inventory/`)
+- `--format` supports `json`, `markdown`, `both` (default: `both`)
+- report artifacts:
+  - `operator_artifact_inventory.json`
+  - `operator_artifact_inventory.md`
+  - `SHA256SUMS.txt`
+- `SHA256SUMS.txt` hashes only the JSON and Markdown report artifacts and never includes its own hash
+- checks include root summary, expected folder presence, file counts, SHA256SUMS detection/verification, and export safety signals
+- warns if exact/precise/reviewer-like artifacts appear under public/obfuscated export folders
+- warns if exports folder exists but no public/obfuscated/reviewer subfolders detected
+- verifies same-directory checksum references up to 25 MB
+- result status:
+  - `pass` if root exists, no failures, no warnings
+  - `warn` if no failures but warnings exist
+  - `fail` if root missing, not directory, unreadable, hash mismatch, or missing same-directory checksum target
+- exit code 0 for `pass` and `warn`; nonzero for `fail`
+- does not modify release evidence commands
+- does not modify operator-readiness behavior
+- does not modify V1.12 exporter behavior
+- does not modify V1.13 verifier behavior
+- does not modify V1.14 smoke behavior
+- does not modify V1.15 smoke report behavior
+- does not modify V1.16 operator readiness behavior
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.
