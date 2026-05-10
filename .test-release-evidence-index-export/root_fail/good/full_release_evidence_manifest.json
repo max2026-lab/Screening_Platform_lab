@@ -1,0 +1,16 @@
+{
+  "artifacts": [
+    "full_release_evidence_manifest.json",
+    "full_release_evidence_manifest.md",
+    "SHA256SUMS.txt"
+  ],
+  "evidence_type": "full_release_evidence_manifest",
+  "phases_verified": [
+    "phase27",
+    "phase28"
+  ],
+  "release_status": "passed",
+  "results": {
+    "pytest_status": "passed"
+  }
+}

@@ -1,12 +1,11 @@
+import hashlib
 import json
 import shutil
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
 from lawful_anomaly_screening.releases import evidence_index_exporter as exporter
-from lawful_anomaly_screening.releases import evidence_index_verifier as verifier
 from lawful_anomaly_screening.cli import main
 
 
@@ -36,7 +35,6 @@ def _write_valid_evidence_dir(evidence_dir: Path) -> None:
     json_path.write_text(json_text, encoding="utf-8", newline="\n")
     md_path.write_text(md_text, encoding="utf-8", newline="\n")
 
-    import hashlib
     def _sha256_text(text: str) -> str:
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -84,6 +82,27 @@ def test_export_release_evidence_index_root_all_pass():
     assert json_payload["evidence_dir_count"] == 2
     assert json_payload["passed_count"] == 2
     assert json_payload["failed_count"] == 0
+
+    # export_artifacts manifest must exist with 3 entries
+    artifacts = json_payload.get("export_artifacts", [])
+    assert len(artifacts) == 3
+    names = {a["name"] for a in artifacts}
+    assert names == {"release_evidence_index.json", "release_evidence_index.md", "SHA256SUMS.txt"}
+
+    # JSON self-hash must be None to avoid circular dependency
+    json_artifact = next(a for a in artifacts if a["name"] == "release_evidence_index.json")
+    assert json_artifact["sha256"] is None
+
+    # MD hash must be populated after markdown is finalized
+    md_artifact = next(a for a in artifacts if a["name"] == "release_evidence_index.md")
+    assert md_artifact["sha256"] is not None
+    assert len(md_artifact["sha256"]) == 64
+
+    # Markdown must contain Exported Artifacts section with JSON hash reference
+    md_text = (out / "release_evidence_index.md").read_text(encoding="utf-8")
+    assert "## Exported Artifacts" in md_text
+    # The markdown references the first-pass JSON hash, so it should appear
+    assert "release_evidence_index.json" in md_text
 
 
 def test_export_release_evidence_index_fails_when_verification_fails():
@@ -172,8 +191,13 @@ def test_export_release_evidence_index_sha256sums_valid():
     out = Path(result["output_dir"])
     sums_text = (out / "SHA256SUMS.txt").read_text(encoding="utf-8")
 
-    import hashlib
-    for line in sums_text.strip().splitlines():
+    lines = sums_text.strip().splitlines()
+    # SHA256SUMS.txt must list exactly json and md, not itself
+    assert len(lines) == 2
+    names = {line.split("  ", 1)[1] for line in lines}
+    assert names == {"release_evidence_index.json", "release_evidence_index.md"}
+
+    for line in lines:
         h, name = line.split("  ", 1)
         artifact = out / name
         assert hashlib.sha256(artifact.read_bytes()).hexdigest() == h

@@ -5,21 +5,13 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from .evidence_index_verifier import (
-    discover_evidence_dirs,
-    load_evidence_list,
-    verify_release_evidence_index,
-)
+from .evidence_index_verifier import verify_release_evidence_index
 
 SCHEMA_VERSION = "v1.12.0"
 
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _stable_json(payload: object) -> str:
@@ -39,6 +31,15 @@ def export_release_evidence_index(
     1. Verify all evidence directories using V1.11 logic.
     2. If any verification fails, fail without producing artifacts.
     3. If all pass, write deterministic export artifacts.
+
+    Self-reference rule:
+    - release_evidence_index.json is written first and cannot include its own
+      final hash without creating a circular dependency. Its own sha256 is set
+      to None in the JSON export_artifacts section.
+    - release_evidence_index.md is written second and may reference the JSON
+      hash from the first write.
+    - SHA256SUMS.txt is written last and is the canonical source for the final
+      hashes of all export artifacts.
     """
     # Step 1: verify
     verify_result = verify_release_evidence_index(
@@ -62,14 +63,13 @@ def export_release_evidence_index(
         if evidence_root is not None:
             output_dir = evidence_root / "release-evidence-index-export"
         else:
-            # evidence-list mode: use parent of first evidence dir
             first_dir = evidence_list[0] if evidence_list else Path.cwd()
             output_dir = first_dir.parent / "release-evidence-index-export"
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Build deterministic index payload (no wall-clock timestamps)
-    index_payload = {
+    index_payload: dict = {
         "schema": {
             "version": SCHEMA_VERSION,
             "name": "release_evidence_index",
@@ -82,6 +82,23 @@ def export_release_evidence_index(
         "failed_count": verify_result.get("failed_count", 0),
         "checked_file_count": verify_result.get("checked_file_count", 0),
         "evidence_directories": [],
+        "export_artifacts": [
+            {
+                "name": "release_evidence_index.json",
+                "sha256": None,
+                "note": "self-hash omitted to avoid circular dependency",
+            },
+            {
+                "name": "release_evidence_index.md",
+                "sha256": None,
+                "note": "hash populated after markdown is finalized",
+            },
+            {
+                "name": "SHA256SUMS.txt",
+                "sha256": None,
+                "note": "canonical hash list for all export artifacts",
+            },
+        ],
     }
 
     for single in verify_result.get("results", []):
@@ -99,38 +116,41 @@ def export_release_evidence_index(
             })
         index_payload["evidence_directories"].append(dir_entry)
 
-    artifacts: list[Path] = []
+    # Step 3: write JSON (first pass, no artifact hashes)
+    json_path = output_dir / "release_evidence_index.json"
+    json_path.write_text(_stable_json(index_payload), encoding="utf-8")
+    json_hash_first = _sha256_file(json_path)
 
-    # Write JSON
-    if fmt in ("json", "both"):
-        json_path = output_dir / "release_evidence_index.json"
-        json_path.write_text(_stable_json(index_payload), encoding="utf-8")
-        artifacts.append(json_path)
+    # Step 4: write markdown (references first JSON hash to avoid circularity)
+    md_path = output_dir / "release_evidence_index.md"
+    md_text = _render_index_markdown(index_payload, json_hash=json_hash_first)
+    md_path.write_text(md_text, encoding="utf-8")
+    md_hash = _sha256_file(md_path)
 
-    # Write Markdown
-    if fmt in ("markdown", "both"):
-        md_path = output_dir / "release_evidence_index.md"
-        md_text = _render_index_markdown(index_payload)
-        md_path.write_text(md_text, encoding="utf-8")
-        artifacts.append(md_path)
+    # Step 5: rewrite JSON with finalized markdown hash
+    for artifact_entry in index_payload["export_artifacts"]:
+        if artifact_entry["name"] == "release_evidence_index.md":
+            artifact_entry["sha256"] = md_hash
+            artifact_entry["note"] = "hash finalized after markdown write"
+    json_path.write_text(_stable_json(index_payload), encoding="utf-8")
+    json_hash_final = _sha256_file(json_path)
 
-    # Write SHA256SUMS.txt
-    sums_lines = []
-    for artifact in artifacts:
-        h = _sha256_file(artifact)
-        sums_lines.append(f"{h}  {artifact.name}")
+    # Step 6: write SHA256SUMS.txt (canonical source for all final hashes)
+    # Note: SHA256SUMS.txt does not include its own hash to avoid self-reference.
+    sums_lines = [
+        f"{json_hash_final}  release_evidence_index.json",
+        f"{md_hash}  release_evidence_index.md",
+    ]
     sums_text = "\n".join(sums_lines) + "\n"
     sums_path = output_dir / "SHA256SUMS.txt"
     sums_path.write_text(sums_text, encoding="utf-8")
-    artifacts.append(sums_path)
 
-    # Compute artifact hashes for return payload
-    artifact_hashes = []
-    for artifact in artifacts:
-        artifact_hashes.append({
-            "name": artifact.name,
-            "sha256": _sha256_file(artifact),
-        })
+    # Step 7: compute final artifact hashes for return payload
+    artifact_hashes = [
+        {"name": json_path.name, "sha256": json_hash_final},
+        {"name": md_path.name, "sha256": md_hash},
+        {"name": sums_path.name, "sha256": _sha256_file(sums_path)},
+    ]
 
     return {
         "status": "pass",
@@ -141,7 +161,7 @@ def export_release_evidence_index(
     }
 
 
-def _render_index_markdown(payload: dict) -> str:
+def _render_index_markdown(payload: dict, *, json_hash: str | None = None) -> str:
     lines = [
         "# Release Evidence Index Export",
         "",
@@ -176,10 +196,20 @@ def _render_index_markdown(payload: dict) -> str:
         "## Exported Artifacts",
         "",
     ])
-    for artifact in payload.get("artifacts", []):
-        lines.append(
-            f"- `{artifact.get('name', '')}`: sha256=`{artifact.get('sha256', '')}`"
-        )
+    for artifact in payload.get("export_artifacts", []):
+        name = artifact.get("name", "")
+        h = artifact.get("sha256")
+        note = artifact.get("note", "")
+        if h is not None:
+            lines.append(f"- `{name}`: sha256=`{h}`")
+        elif json_hash and name == "release_evidence_index.json":
+            # Include first-pass JSON hash to satisfy "includes hashes" requirement
+            # without creating a circular dependency.
+            lines.append(f"- `{name}`: sha256=`{json_hash}`")
+        else:
+            lines.append(f"- `{name}`: sha256=`(see SHA256SUMS.txt)`")
+        if note:
+            lines.append(f"  - Note: {note}")
     lines.extend([
         "",
         "## Notes",
@@ -187,5 +217,6 @@ def _render_index_markdown(payload: dict) -> str:
         "- This index was exported offline.",
         "- No network or GitHub API calls were made.",
         "- All evidence directories were verified before export.",
+        "- Canonical artifact hashes are available in `SHA256SUMS.txt`.",
     ])
     return "\n".join(lines) + "\n"

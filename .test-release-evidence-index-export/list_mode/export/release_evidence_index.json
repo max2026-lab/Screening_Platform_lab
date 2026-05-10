@@ -1,0 +1,66 @@
+{
+  "checked_file_count": 4,
+  "evidence_dir_count": 2,
+  "evidence_directories": [
+    {
+      "checked_file_count": 2,
+      "evidence_dir": "C:/Dev/Screening_Platform_lab/.test-release-evidence-index-export/list_mode/evidence1",
+      "files": [
+        {
+          "name": "full_release_evidence_manifest.json",
+          "sha256": "16b2ee6f5e36acb0fcdb3a60c82406252e35e583cecf223d5b78c400d85c0261",
+          "sha256_valid": true
+        },
+        {
+          "name": "full_release_evidence_manifest.md",
+          "sha256": "8609a95d014855247deb4197c7f7cea0e5e3891170e24870f009cf2f8710ad9f",
+          "sha256_valid": true
+        }
+      ],
+      "status": "pass"
+    },
+    {
+      "checked_file_count": 2,
+      "evidence_dir": "C:/Dev/Screening_Platform_lab/.test-release-evidence-index-export/list_mode/evidence2",
+      "files": [
+        {
+          "name": "full_release_evidence_manifest.json",
+          "sha256": "16b2ee6f5e36acb0fcdb3a60c82406252e35e583cecf223d5b78c400d85c0261",
+          "sha256_valid": true
+        },
+        {
+          "name": "full_release_evidence_manifest.md",
+          "sha256": "8609a95d014855247deb4197c7f7cea0e5e3891170e24870f009cf2f8710ad9f",
+          "sha256_valid": true
+        }
+      ],
+      "status": "pass"
+    }
+  ],
+  "evidence_list": ".test-release-evidence-index-export\\list_mode\\evidence-list.txt",
+  "evidence_root": null,
+  "export_artifacts": [
+    {
+      "name": "release_evidence_index.json",
+      "note": "self-hash omitted to avoid circular dependency",
+      "sha256": null
+    },
+    {
+      "name": "release_evidence_index.md",
+      "note": "hash finalized after markdown write",
+      "sha256": "0f20b779e5824be995d40ecb951b3c241e5ade25e47de45cda42ccedd0463780"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "note": "canonical hash list for all export artifacts",
+      "sha256": null
+    }
+  ],
+  "failed_count": 0,
+  "index_hash": "4456d67447013fea732a432937a48131b41801b6e377b8e10acf048016422449",
+  "passed_count": 2,
+  "schema": {
+    "name": "release_evidence_index",
+    "version": "v1.12.0"
+  }
+}
