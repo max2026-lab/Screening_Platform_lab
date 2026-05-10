@@ -755,6 +755,31 @@ State:
 - detects duplicate evidence-list paths
 - does not change DB/schema/scoring/provider behavior
 
+## V1.12 Operator Release Evidence Index Export CLI
+
+V1.12 adds an offline CLI command that verifies and exports a release evidence index to deterministic artifacts.
+
+```powershell
+lawful-anomaly release-evidence-index-export --evidence-root downloaded-releases
+lawful-anomaly release-evidence-index-export --evidence-root downloaded-releases --format both
+lawful-anomaly release-evidence-index-export --evidence-list evidence-list.txt --output-dir ./export
+```
+
+State:
+- offline
+- no DB required
+- no network required
+- does not call GitHub
+- does not rerun Phase 28
+- reuses V1.11 release evidence index verifier logic
+- verifies all evidence directories before producing artifacts
+- fails nonzero without producing artifacts if verification fails
+- produces deterministic `release_evidence_index.json`, `release_evidence_index.md`, and `SHA256SUMS.txt`
+- JSON includes schema/version field for V1.12, index_hash, and per-directory status
+- markdown summarizes the index in operator-readable form
+- default format: both
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.

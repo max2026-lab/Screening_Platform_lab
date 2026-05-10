@@ -33,6 +33,7 @@ from .exports.bundle_verifier import (
     verify_export_bundle,
     verify_export_bundle_batch,
 )
+from .releases.evidence_index_exporter import export_release_evidence_index
 from .releases.evidence_index_verifier import (
     load_evidence_list,
     render_release_evidence_index_markdown,
@@ -411,6 +412,41 @@ def cmd_release_evidence_index_verify(args: argparse.Namespace) -> int:
     else:
         print(json.dumps(result, indent=2))
     return 0 if result["status"] == "pass" else 1
+
+
+def cmd_release_evidence_index_export(args: argparse.Namespace) -> int:
+    evidence_root = getattr(args, "evidence_root", None)
+    evidence_list_path = getattr(args, "evidence_list", None)
+    output_dir = getattr(args, "output_dir", None)
+    fmt = getattr(args, "format", "both")
+
+    if evidence_root and evidence_list_path:
+        print("Cannot use both --evidence-root and --evidence-list", file=sys.stderr)
+        return 1
+
+    root_path = None
+    evidence_list = None
+    if evidence_list_path:
+        evidence_list = load_evidence_list(Path(evidence_list_path))
+    else:
+        root_path = Path(evidence_root) if evidence_root else Path.cwd()
+
+    out_path = Path(output_dir) if output_dir else None
+
+    result = export_release_evidence_index(
+        evidence_root=root_path,
+        evidence_list=evidence_list,
+        evidence_list_path=evidence_list_path,
+        output_dir=out_path,
+        fmt=fmt,
+    )
+
+    if result["status"] != "pass":
+        print(json.dumps(result, indent=2))
+        return 1
+
+    print(json.dumps(result, indent=2))
+    return 0
 
 
 def cmd_export_create(args: argparse.Namespace) -> int:
@@ -3147,6 +3183,13 @@ def _add_release_evidence_index_verify_arguments(parser: argparse.ArgumentParser
     parser.add_argument("--fail-fast", action="store_true")
 
 
+def _add_release_evidence_index_export_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--evidence-root", default=None)
+    parser.add_argument("--evidence-list", default=None)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
+
+
 def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--audience", required=True)
@@ -3270,6 +3313,7 @@ def build_parser() -> argparse.ArgumentParser:
         "export-bundle-verify-batch": cmd_export_bundle_verify_batch,
         "release-evidence-verify": cmd_release_evidence_verify,
         "release-evidence-index-verify": cmd_release_evidence_index_verify,
+        "release-evidence-index-export": cmd_release_evidence_index_export,
         "export-create": cmd_export_create,
         "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
@@ -3319,6 +3363,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_release_evidence_verify_arguments(p)
         if name == "release-evidence-index-verify":
             _add_release_evidence_index_verify_arguments(p)
+        if name == "release-evidence-index-export":
+            _add_release_evidence_index_export_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
         if name == "run-summary":
