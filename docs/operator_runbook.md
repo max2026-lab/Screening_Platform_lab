@@ -783,6 +783,29 @@ State:
 - default format: both
 - does not change DB/schema/scoring/provider behavior
 
+## V1.13 Release Evidence Index Export Verifier
+
+V1.13 adds an offline CLI command that verifies artifacts produced by V1.12 `release-evidence-index-export`.
+
+```powershell
+lawful-anomaly release-evidence-index-export-verify --export-dir ./export
+```
+
+State:
+- offline
+- no DB required
+- no network required
+- does not call GitHub
+- validates `SHA256SUMS.txt` exists and hashes all produced artifacts
+- validates `SHA256SUMS.txt` does not include itself
+- supports all V1.12 output formats (`json`, `markdown`, `both`)
+- if JSON exists: requires `schema.version == v1.12.0`, `index_hash`, `evidence_directories`, `export_artifacts`, and null self-hash with self-reference note
+- if Markdown exists: requires heading, index hash line, Evidence Directories section, and Exported Artifacts section
+- cross-checks markdown hash in JSON against `SHA256SUMS.txt`
+- returns exit code 0 only when verification passes
+- does not modify V1.12 exporter behavior
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.

@@ -25,3 +25,4 @@ exports/*
 *.egg-info/
 .release-evidence/
 .test-release-evidence-index-export/
+.test-release-evidence-index-export-verify/

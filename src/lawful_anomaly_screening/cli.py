@@ -34,6 +34,7 @@ from .exports.bundle_verifier import (
     verify_export_bundle_batch,
 )
 from .releases.evidence_index_exporter import export_release_evidence_index
+from .releases.evidence_index_export_verifier import verify_release_evidence_index_export
 from .releases.evidence_index_verifier import (
     load_evidence_list,
     render_release_evidence_index_markdown,
@@ -447,6 +448,16 @@ def cmd_release_evidence_index_export(args: argparse.Namespace) -> int:
 
     print(json.dumps(result, indent=2))
     return 0
+
+
+def cmd_release_evidence_index_export_verify(args: argparse.Namespace) -> int:
+    export_dir = getattr(args, "export_dir", None)
+    if not export_dir:
+        print("--export-dir is required", file=sys.stderr)
+        return 1
+    result = verify_release_evidence_index_export(Path(export_dir))
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] == "pass" else 1
 
 
 def cmd_export_create(args: argparse.Namespace) -> int:
@@ -3190,6 +3201,10 @@ def _add_release_evidence_index_export_arguments(parser: argparse.ArgumentParser
     parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
 
 
+def _add_release_evidence_index_export_verify_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--export-dir", required=True)
+
+
 def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--audience", required=True)
@@ -3314,6 +3329,7 @@ def build_parser() -> argparse.ArgumentParser:
         "release-evidence-verify": cmd_release_evidence_verify,
         "release-evidence-index-verify": cmd_release_evidence_index_verify,
         "release-evidence-index-export": cmd_release_evidence_index_export,
+        "release-evidence-index-export-verify": cmd_release_evidence_index_export_verify,
         "export-create": cmd_export_create,
         "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
@@ -3365,6 +3381,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_release_evidence_index_verify_arguments(p)
         if name == "release-evidence-index-export":
             _add_release_evidence_index_export_arguments(p)
+        if name == "release-evidence-index-export-verify":
+            _add_release_evidence_index_export_verify_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
         if name == "run-summary":
