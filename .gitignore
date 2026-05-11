@@ -30,3 +30,4 @@ exports/*
 .test-release-evidence-index-export-smoke-report/
 .operator-readiness/
 .test-operator-artifact-inventory/
+.review-package-readiness/

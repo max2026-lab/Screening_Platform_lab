@@ -958,6 +958,59 @@ State:
 - does not modify V1.16 operator readiness behavior
 - does not change DB/schema/scoring/provider behavior
 
+## V1.18 Review Package Readiness Check
+
+V1.18 adds an offline review package readiness check CLI command that produces a deterministic readiness report before exposing a screening run to analyst review.
+
+```powershell
+lawful-anomaly review-package-readiness-check --run-id <run_id>
+lawful-anomaly review-package-readiness-check --run-id <run_id> --artifact-root ./artifacts
+lawful-anomaly review-package-readiness-check --run-id <run_id> --format json
+lawful-anomaly review-package-readiness-check --run-id <run_id> --format both
+```
+
+State:
+- offline
+- no network required
+- does not call GitHub
+- does not require provider calls
+- does not mutate database
+- does not start workers
+- does not build or rewrite review packages
+- `--run-id` is required
+- `--artifact-root` is optional; if provided, artifact files are inspected read-only
+- `--output-dir` controls where report artifacts are written (default: `.review-package-readiness/`)
+- `--format` supports `json`, `markdown`, `both` (default: `both`)
+- report artifacts:
+  - `review_package_readiness_check.json`
+  - `review_package_readiness_check.md`
+  - `SHA256SUMS.txt`
+- `SHA256SUMS.txt` hashes only the JSON and Markdown report artifacts and never includes its own hash
+- checks include run metadata, legal/safety gate, candidate/review queue readiness, candidate score/duplicate checks, and optional artifact root scanning
+- fails if legal gate decision is not `pass`
+- fails if run is completed/review_ready but has neither candidates nor an allowed zero-candidate export path
+- warns if candidates exist but review queue is empty
+- warns if score or score breakdown is missing for candidates
+- warns if possible_duplicate flags are true
+- warns on geofence hits
+- warns on incomplete/temp artifacts when `--artifact-root` is provided
+- warns if public/obfuscated files contain exact/precise/reviewer_only in filename
+- result status:
+  - `pass` if required checks pass and there are no warnings
+  - `warn` if required checks pass but warnings exist
+  - `fail` if run missing, legal gate blocks review, artifact-root missing/not directory, or required review-readiness invariants fail
+- exit code 0 for `pass` and `warn`; nonzero for `fail`
+- does not modify release evidence commands
+- does not modify operator-readiness behavior
+- does not modify operator-artifact-inventory behavior
+- does not modify V1.12 exporter behavior
+- does not modify V1.13 verifier behavior
+- does not modify V1.14 smoke behavior
+- does not modify V1.15 smoke report behavior
+- does not modify V1.16 operator readiness behavior
+- does not modify V1.17 operator artifact inventory behavior
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.
