@@ -1064,6 +1064,64 @@ State:
 - does not modify V1.18 review package readiness behavior
 - does not change DB/schema/scoring/provider behavior
 
+## V1.20 Review Closeout Package
+
+V1.20 adds an offline review closeout package CLI command that produces a deterministic post-review closeout package before export, showing whether reviewer decisions are complete enough to proceed.
+
+```powershell
+lawful-anomaly review-closeout-package --run-id <run_id>
+lawful-anomaly review-closeout-package --run-id <run_id> --format json
+lawful-anomaly review-closeout-package --run-id <run_id> --format both
+lawful-anomaly review-closeout-package --run-id <run_id> --require-all-resolved
+```
+
+State:
+- offline
+- no network required
+- does not call GitHub
+- does not require provider calls
+- does not mutate database
+- does not start workers
+- does not create exports
+- does not change review decisions
+- `--run-id` is required
+- `--output-dir` controls where report artifacts are written (default: `.review-closeout/`)
+- `--format` supports `json`, `markdown`, `both` (default: `both`)
+- `--require-all-resolved` causes failure if any unresolved candidates remain
+- report artifacts:
+  - `review_closeout_package.json`
+  - `review_closeout_package.md`
+  - `SHA256SUMS.txt`
+- `SHA256SUMS.txt` hashes only the JSON and Markdown report artifacts and never includes its own hash
+- package content includes run summary, review closeout summary, decision completeness, and export readiness signals
+- counts candidates by current_state using existing schema values only
+- unresolved candidates are those in pending_review/watch
+- approved/exportable candidates are those in approved_for_archive_quote
+- warns if zero approved/exportable candidates but run has candidates
+- warns if possible_duplicate is true on approved/exportable candidates
+- warns if previous export records already exist for run
+- fails if `--require-all-resolved` is set and unresolved candidates exist
+- candidate rows include only candidate_id, current_state, possible_duplicate, and score; no exact coordinates, geometry, bounds, or centroids
+- result status:
+  - `pass` if run/legal checks pass, no warnings, and closeout is complete enough
+  - `warn` if required checks pass but warnings exist
+  - `fail` if run missing, DB read fails, legal gate blocks, or `--require-all-resolved` has unresolved candidates
+- exit code 0 for `pass` and `warn`; nonzero for `fail`
+- does not modify release evidence commands
+- does not modify operator-readiness behavior
+- does not modify operator-artifact-inventory behavior
+- does not modify review-package-readiness behavior
+- does not modify reviewer-handoff behavior
+- does not modify V1.12 exporter behavior
+- does not modify V1.13 verifier behavior
+- does not modify V1.14 smoke behavior
+- does not modify V1.15 smoke report behavior
+- does not modify V1.16 operator readiness behavior
+- does not modify V1.17 operator artifact inventory behavior
+- does not modify V1.18 review package readiness behavior
+- does not modify V1.19 reviewer handoff behavior
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.

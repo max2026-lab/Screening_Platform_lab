@@ -43,6 +43,7 @@ from .ops.operator_readiness import run_operator_readiness_check
 from .ops.operator_artifact_inventory import run_operator_artifact_inventory
 from .ops.review_package_readiness import run_review_package_readiness_check
 from .ops.reviewer_handoff import run_reviewer_handoff_package
+from .ops.review_closeout import run_review_closeout_package
 from .releases.evidence_index_verifier import (
     load_evidence_list,
     render_release_evidence_index_markdown,
@@ -573,6 +574,21 @@ def cmd_reviewer_handoff_package(args: argparse.Namespace) -> int:
         output_dir=output_dir,
         fmt=fmt,
         limit=limit,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] in ("pass", "warn") else 1
+
+
+def cmd_review_closeout_package(args: argparse.Namespace) -> int:
+    run_id = getattr(args, "run_id", None)
+    output_dir = getattr(args, "output_dir", None)
+    fmt = getattr(args, "format", "both")
+    require_all_resolved = getattr(args, "require_all_resolved", False)
+    result = run_review_closeout_package(
+        run_id=run_id,
+        output_dir=output_dir,
+        fmt=fmt,
+        require_all_resolved=require_all_resolved,
     )
     print(json.dumps(result, indent=2))
     return 0 if result["status"] in ("pass", "warn") else 1
@@ -3361,6 +3377,13 @@ def _add_reviewer_handoff_package_arguments(parser: argparse.ArgumentParser) -> 
     parser.add_argument("--limit", type=int, default=25)
 
 
+def _add_review_closeout_package_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
+    parser.add_argument("--require-all-resolved", action="store_true", default=False)
+
+
 def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--audience", required=True)
@@ -3492,6 +3515,7 @@ def build_parser() -> argparse.ArgumentParser:
         "operator-artifact-inventory": cmd_operator_artifact_inventory,
         "review-package-readiness-check": cmd_review_package_readiness_check,
         "reviewer-handoff-package": cmd_reviewer_handoff_package,
+        "review-closeout-package": cmd_review_closeout_package,
         "export-create": cmd_export_create,
         "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
@@ -3557,6 +3581,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_review_package_readiness_check_arguments(p)
         if name == "reviewer-handoff-package":
             _add_reviewer_handoff_package_arguments(p)
+        if name == "review-closeout-package":
+            _add_review_closeout_package_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
         if name == "run-summary":
