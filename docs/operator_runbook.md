@@ -1122,6 +1122,43 @@ State:
 - does not modify V1.19 reviewer handoff behavior
 - does not change DB/schema/scoring/provider behavior
 
+## V1.20 Operator Trial Pitfalls
+
+Common issues encountered during local operator trials of the V1.16–V1.20 workflow:
+
+### AOI GeoJSON encoding
+
+AOI GeoJSON files must be UTF-8 without BOM. PowerShell `Set-Content -Encoding UTF8` can write BOM in some environments.
+
+Recommended no-BOM writer:
+
+```powershell
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($aoiPath, $geojson, $utf8NoBom)
+```
+
+### Export bundle verification root
+
+If `export-create` returns `bundle_manifest_path` like `exports/reports/<name>.zip.manifest.json`, verify from repo root with:
+
+```powershell
+lawful-anomaly export-bundle-verify --bundle-manifest-path exports/reports/<name>.zip.manifest.json --export-root .
+```
+
+Do not use `--export-root "$trialRoot\exports"` with that relative path, because it resolves to `.trial-v1-20\exports\exports\reports\...`.
+
+### Trial artifact inventory warning
+
+During local operator trials, exports may be written under repo `exports/reports` while trial evidence lives under `.trial-v1-20`.
+
+`operator-artifact-inventory --root .trial-v1-20` may warn that no public/obfuscated/reviewer export subfolders exist.
+
+This is non-blocking if `export-bundle-verify` passes for the actual report bundle.
+
+### Scope disclaimer
+
+Synthetic non-zero-candidate AOIs validate workflow plumbing only; they do not prove detector quality.
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.
