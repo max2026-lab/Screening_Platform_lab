@@ -345,3 +345,80 @@ def test_no_db_mutation(monkeypatch, capsys, tmp_path):
 
     after_hash = _file_hash(db_path)
     assert before_hash == after_hash
+
+
+def test_no_v18_artifacts_created_explicit_output_dir(monkeypatch, capsys, tmp_path):
+    import shutil
+    if Path(".review-package-readiness").exists():
+        shutil.rmtree(".review-package-readiness")
+
+    db_path = tmp_path / "handoff_no_v18.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    bootstrap_minimal_run(
+        db_path,
+        processing_baseline_id="baseline_v1_5_default",
+        score_formula_version="v1.5.1-phase0",
+        source_scene_manifest_hash="manifest-hash-009",
+        source_endpoint_id="earth_search",
+        run_id="handoff-no-v18-001",
+        manifest_path="data/manifests/manifest-hash-009.json",
+        run_status="new",
+        aoi_hash="aoi-hash-no-v18",
+        start_date="2024-01-01",
+        end_date="2024-03-31",
+        legal_gate=_legal_gate_pass(),
+    )
+
+    out = tmp_path / "handoff-out"
+    result = main([
+        "reviewer-handoff-package",
+        "--run-id", "handoff-no-v18-001",
+        "--output-dir", str(out),
+        "--format", "json",
+    ])
+    assert result == 0
+    assert (out / "reviewer_handoff_package.json").exists()
+    assert not (out / "review_package_readiness_check.json").exists()
+    assert not Path(".review-package-readiness").exists()
+
+
+def test_no_v18_artifacts_created_default_output_dir(monkeypatch, capsys, tmp_path):
+    import shutil
+    if Path(".review-package-readiness").exists():
+        shutil.rmtree(".review-package-readiness")
+    if Path(".reviewer-handoff").exists():
+        shutil.rmtree(".reviewer-handoff")
+
+    db_path = tmp_path / "handoff_no_v18_default.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    bootstrap_minimal_run(
+        db_path,
+        processing_baseline_id="baseline_v1_5_default",
+        score_formula_version="v1.5.1-phase0",
+        source_scene_manifest_hash="manifest-hash-010",
+        source_endpoint_id="earth_search",
+        run_id="handoff-no-v18-default-001",
+        manifest_path="data/manifests/manifest-hash-010.json",
+        run_status="new",
+        aoi_hash="aoi-hash-no-v18-default",
+        start_date="2024-01-01",
+        end_date="2024-03-31",
+        legal_gate=_legal_gate_pass(),
+    )
+
+    result = main([
+        "reviewer-handoff-package",
+        "--run-id", "handoff-no-v18-default-001",
+        "--format", "json",
+    ])
+    assert result == 0
+    try:
+        assert (Path(".reviewer-handoff") / "reviewer_handoff_package.json").exists()
+        assert not Path(".review-package-readiness").exists()
+    finally:
+        if Path(".reviewer-handoff").exists():
+            shutil.rmtree(".reviewer-handoff")
+        if Path(".review-package-readiness").exists():
+            shutil.rmtree(".review-package-readiness")

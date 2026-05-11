@@ -8,7 +8,7 @@ from typing import Literal
 
 from ..db.repositories.run_repository import RunRepository
 from ..db.sqlite import connect
-from ..ops.review_package_readiness import run_review_package_readiness_check
+from ..ops.review_package_readiness import _build_review_package_readiness_result
 from ..settings import load_settings
 
 SCHEMA_VERSION = "v1.19.0"
@@ -173,11 +173,9 @@ def run_reviewer_handoff_package(
 
     try:
         # Step 1: reuse V1.18 readiness logic internally (read-only)
-        readiness_result = run_review_package_readiness_check(
+        readiness_result = _build_review_package_readiness_result(
             run_id=run_id,
             artifact_root=artifact_root,
-            output_dir=None,
-            fmt="json",
         )
         if readiness_result["status"] == "fail":
             failures.extend(readiness_result.get("failures", []))

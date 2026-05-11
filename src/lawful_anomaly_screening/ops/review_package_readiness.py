@@ -156,27 +156,13 @@ def _fetch_duplicate_flags(db_path: Path, run_id: str) -> list[str]:
     return warnings
 
 
-def run_review_package_readiness_check(
+def _build_review_package_readiness_result(
     run_id: str,
     artifact_root: str | Path | None = None,
-    output_dir: str | Path | None = None,
-    fmt: _FormatLiteral = "both",
 ) -> dict:
-    """Run an offline review package readiness check and write deterministic report artifacts.
-
-    Produces under <output_dir>/:
-    - review_package_readiness_check.json
-    - review_package_readiness_check.md
-    - SHA256SUMS.txt
-    """
+    """Pure read-only review package readiness check. No file writes."""
     settings = load_settings()
     db_path = settings.db_path
-
-    if output_dir is not None:
-        out_path = Path(output_dir).resolve()
-    else:
-        out_path = Path(".review-package-readiness").resolve()
-    out_path.mkdir(parents=True, exist_ok=True)
 
     warnings: list[str] = []
     failures: list[str] = []
@@ -223,7 +209,6 @@ def run_review_package_readiness_check(
             # Candidate/review queue readiness
             if run_status in ("completed", "review_ready"):
                 if candidate_count == 0:
-                    # Check if there's an allowed zero-candidate export path
                     with connect(db_path) as conn:
                         row = conn.execute(
                             "SELECT COUNT(*) FROM export_records WHERE run_id = ?",
@@ -277,6 +262,54 @@ def run_review_package_readiness_check(
     elif warnings:
         overall_status = "warn"
 
+    return {
+        "status": overall_status,
+        "warnings": warnings,
+        "failures": failures,
+        "checks": {
+            "run_exists": run_exists,
+            "run_status": run_status,
+            "aoi_hash": run.get("aoi_hash") if run else None,
+            "aoi_path": run.get("aoi_path") if run else None,
+            "start_date": run.get("start_date") if run else None,
+            "end_date": run.get("end_date") if run else None,
+            "legal_gate_decision": legal_decision,
+            "source_endpoint_id": run.get("source_endpoint_id") if run else None,
+            "source_scene_manifest_hash": run.get("source_scene_manifest_hash") if run else None,
+            "candidate_count": candidate_count,
+            "review_queue_count": review_queue_count,
+            "top_candidate_id": top_candidate_id,
+            "artifact_root": str(Path(artifact_root).resolve()).replace("\\", "/") if artifact_root else None,
+            "artifact_check": artifact_check,
+        },
+    }
+
+
+def run_review_package_readiness_check(
+    run_id: str,
+    artifact_root: str | Path | None = None,
+    output_dir: str | Path | None = None,
+    fmt: _FormatLiteral = "both",
+) -> dict:
+    """Run an offline review package readiness check and write deterministic report artifacts.
+
+    Produces under <output_dir>/:
+    - review_package_readiness_check.json
+    - review_package_readiness_check.md
+    - SHA256SUMS.txt
+    """
+    if output_dir is not None:
+        out_path = Path(output_dir).resolve()
+    else:
+        out_path = Path(".review-package-readiness").resolve()
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    result = _build_review_package_readiness_result(run_id, artifact_root)
+    overall_status = result["status"]
+    warnings = result["warnings"]
+    failures = result["failures"]
+    checks = result["checks"]
+
     write_json = fmt in ("json", "both")
     write_md = fmt in ("markdown", "both")
 
@@ -310,22 +343,7 @@ def run_review_package_readiness_check(
         },
         "run_id": run_id,
         "status": overall_status,
-        "checks": {
-            "run_exists": run_exists,
-            "run_status": run_status,
-            "aoi_hash": run.get("aoi_hash") if run else None,
-            "aoi_path": run.get("aoi_path") if run else None,
-            "start_date": run.get("start_date") if run else None,
-            "end_date": run.get("end_date") if run else None,
-            "legal_gate_decision": legal_decision,
-            "source_endpoint_id": run.get("source_endpoint_id") if run else None,
-            "source_scene_manifest_hash": run.get("source_scene_manifest_hash") if run else None,
-            "candidate_count": candidate_count,
-            "review_queue_count": review_queue_count,
-            "top_candidate_id": top_candidate_id,
-            "artifact_root": str(Path(artifact_root).resolve()).replace("\\", "/") if artifact_root else None,
-            "artifact_check": artifact_check,
-        },
+        "checks": checks,
         "warnings": warnings,
         "failures": failures,
         "reasons": warnings + failures,
