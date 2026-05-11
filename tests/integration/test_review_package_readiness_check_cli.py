@@ -355,3 +355,65 @@ def test_no_db_mutation(monkeypatch, capsys, tmp_path):
 
     after_hash = _file_hash(db_path)
     assert before_hash == after_hash
+
+
+def test_geojson_count_separate_from_json(monkeypatch, capsys, tmp_path):
+    db_path = tmp_path / "readiness_geojson.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+    init_db(db_path)
+    bootstrap_minimal_run(
+        db_path,
+        processing_baseline_id="baseline_v1_5_default",
+        score_formula_version="v1.5.1-phase0",
+        source_scene_manifest_hash="manifest-hash-009",
+        source_endpoint_id="earth_search",
+        run_id="readiness-geojson-001",
+        manifest_path="data/manifests/manifest-hash-009.json",
+        run_status="new",
+        aoi_hash="aoi-hash-geojson",
+        start_date="2024-01-01",
+        end_date="2024-03-31",
+        legal_gate=_legal_gate_pass(),
+    )
+
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / "data.geojson").write_text('{"type": "FeatureCollection"}', encoding="utf-8")
+    (artifact_root / "manifest.json").write_text('{"ok": true}', encoding="utf-8")
+
+    out = tmp_path / "readiness-out"
+    result = main([
+        "review-package-readiness-check",
+        "--run-id", "readiness-geojson-001",
+        "--artifact-root", str(artifact_root),
+        "--output-dir", str(out),
+        "--format", "json",
+    ])
+    assert result == 0
+    json_report = json.loads((out / "review_package_readiness_check.json").read_text(encoding="utf-8"))
+    assert json_report["status"] == "pass"
+    artifact_check = json_report["checks"]["artifact_check"]
+    assert artifact_check["file_counts"]["geojson"] == 1
+    assert artifact_check["file_counts"]["json"] == 1
+
+
+def test_db_read_failure(monkeypatch, capsys, tmp_path):
+    # Use a non-existent DB path to force a read failure
+    db_path = tmp_path / "nonexistent" / "readiness.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+
+    out = tmp_path / "readiness-out"
+    result = main([
+        "review-package-readiness-check",
+        "--run-id", "readiness-dbfail-001",
+        "--output-dir", str(out),
+        "--format", "json",
+    ])
+    assert result != 0
+    stdout = capsys.readouterr().out
+    payload = json.loads(stdout)
+    assert payload["status"] == "fail"
+    assert any("db read failed" in f.lower() for f in payload["failures"])
+    assert (out / "review_package_readiness_check.json").exists()
+    # Ensure DB file was not created
+    assert not db_path.exists()

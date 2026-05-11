@@ -50,14 +50,14 @@ def _scan_artifact_root(root: Path) -> dict:
             continue
         name_lower = item.name.lower()
         if item.is_file():
-            if name_lower.endswith(".json"):
+            if name_lower.endswith(".geojson"):
+                geojson_count += 1
+            elif name_lower.endswith(".json"):
                 json_count += 1
             elif name_lower.endswith(".md"):
                 md_count += 1
             elif name_lower.endswith((".png", ".jpg", ".jpeg", ".tiff", ".tif")):
                 image_count += 1
-            elif name_lower.endswith(".geojson"):
-                geojson_count += 1
             elif name_lower.endswith(".zip"):
                 zip_count += 1
 
@@ -178,69 +178,81 @@ def run_review_package_readiness_check(
         out_path = Path(".review-package-readiness").resolve()
     out_path.mkdir(parents=True, exist_ok=True)
 
-    run_repo = RunRepository(db_path)
-    review_repo = ReviewRepository(db_path)
-
-    run = run_repo.fetch_run(run_id)
-
     warnings: list[str] = []
     failures: list[str] = []
 
-    # Run metadata
-    run_exists = run is not None
-    run_status = run.get("status") if run else None
-    candidate_count = run_repo.count_candidates(run_id) if run_exists else 0
-    review_queue = review_repo.list_review_queue(run_id=run_id) if run_exists else []
-    review_queue_count = len(review_queue)
-    top_candidate_id = run_repo.fetch_top_candidate_id(run_id) if run_exists else None
+    run_exists = False
+    run_status = None
+    candidate_count = 0
+    review_queue_count = 0
+    top_candidate_id = None
+    legal_decision = None
+    run: dict | None = None
+    legal_gate: dict | None = None
+    artifact_check: dict | None = None
 
-    # Legal/safety
-    legal_gate = run.get("legal_gate") if run else None
-    legal_decision = legal_gate.get("decision") if legal_gate else None
+    try:
+        run_repo = RunRepository(db_path)
+        review_repo = ReviewRepository(db_path)
 
-    if not run_exists:
-        failures.append(f"Run not found: {run_id}")
-    else:
-        if legal_decision is None:
-            warnings.append("Legal gate decision is missing")
-        elif legal_decision != "pass":
-            failures.append(f"Legal gate decision is '{legal_decision}'; expected 'pass'")
+        run = run_repo.fetch_run(run_id)
+
+        # Run metadata
+        run_exists = run is not None
+        run_status = run.get("status") if run else None
+        candidate_count = run_repo.count_candidates(run_id) if run_exists else 0
+        review_queue = review_repo.list_review_queue(run_id=run_id) if run_exists else []
+        review_queue_count = len(review_queue)
+        top_candidate_id = run_repo.fetch_top_candidate_id(run_id) if run_exists else None
+
+        # Legal/safety
+        legal_gate = run.get("legal_gate") if run else None
+        legal_decision = legal_gate.get("decision") if legal_gate else None
+
+        if not run_exists:
+            failures.append(f"Run not found: {run_id}")
         else:
-            if legal_gate.get("geofence_status") in ("missing", "unknown"):
-                warnings.append("Legal gate geofence status is missing or unknown")
+            if legal_decision is None:
+                warnings.append("Legal gate decision is missing")
+            elif legal_decision != "pass":
+                failures.append(f"Legal gate decision is '{legal_decision}'; expected 'pass'")
+            else:
+                if legal_gate.get("geofence_status") in ("missing", "unknown"):
+                    warnings.append("Legal gate geofence status is missing or unknown")
 
-        # Candidate/review queue readiness
-        if run_status in ("completed", "review_ready"):
-            if candidate_count == 0:
-                # Check if there's an allowed zero-candidate export path
-                with connect(db_path) as conn:
-                    row = conn.execute(
-                        "SELECT COUNT(*) FROM export_records WHERE run_id = ?",
-                        (run_id,),
-                    ).fetchone()
-                    export_count = int(row[0]) if row else 0
-                if export_count == 0:
-                    failures.append(
-                        "Run is completed/review_ready but has no candidates and no export records"
+            # Candidate/review queue readiness
+            if run_status in ("completed", "review_ready"):
+                if candidate_count == 0:
+                    # Check if there's an allowed zero-candidate export path
+                    with connect(db_path) as conn:
+                        row = conn.execute(
+                            "SELECT COUNT(*) FROM export_records WHERE run_id = ?",
+                            (run_id,),
+                        ).fetchone()
+                        export_count = int(row[0]) if row else 0
+                    if export_count == 0:
+                        failures.append(
+                            "Run is completed/review_ready but has no candidates and no export records"
+                        )
+
+            if candidate_count > 0 and review_queue_count == 0:
+                warnings.append("Candidates exist but review queue is empty")
+
+            # Candidate readiness
+            warnings.extend(_fetch_candidate_score_gaps(db_path, run_id))
+            warnings.extend(_fetch_duplicate_flags(db_path, run_id))
+
+            # Geofence hits
+            geofence_hits = _fetch_geofence_hits(db_path, run_id)
+            if geofence_hits:
+                for hit in geofence_hits:
+                    warnings.append(
+                        f"Geofence hit detected: {hit['hit_type']} ({hit['geofence_hit_id']})"
                     )
-
-        if candidate_count > 0 and review_queue_count == 0:
-            warnings.append("Candidates exist but review queue is empty")
-
-        # Candidate readiness
-        warnings.extend(_fetch_candidate_score_gaps(db_path, run_id))
-        warnings.extend(_fetch_duplicate_flags(db_path, run_id))
-
-        # Geofence hits
-        geofence_hits = _fetch_geofence_hits(db_path, run_id)
-        if geofence_hits:
-            for hit in geofence_hits:
-                warnings.append(
-                    f"Geofence hit detected: {hit['hit_type']} ({hit['geofence_hit_id']})"
-                )
+    except Exception as exc:
+        failures.append(f"DB read failed: {exc}")
 
     # Artifact root checks
-    artifact_check: dict | None = None
     if artifact_root is not None:
         root_path = Path(artifact_root).resolve()
         if not root_path.exists():
