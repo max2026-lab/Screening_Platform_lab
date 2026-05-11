@@ -9,6 +9,11 @@ def _stable_json(payload: dict) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
 
 
+MIN_REVIEW_CANDIDATE_PIXEL_COUNT = 3
+MIN_REVIEW_CANDIDATE_AREA_M2 = 1e-6
+MIN_REVIEW_CANDIDATE_PERIMETER_M = 1e-6
+
+
 def _bounds_area(bounds: tuple[float, float, float, float]) -> float:
     min_x, min_y, max_x, max_y = bounds
     return max(0.0, max_x - min_x) * max(0.0, max_y - min_y)
@@ -738,6 +743,28 @@ def _perimeter(bounds: tuple[float, float, float, float]) -> float:
     return (2.0 * width) + (2.0 * height)
 
 
+def _passes_candidate_sanity_filter(candidate_record: dict) -> bool:
+    """Return True if the candidate is non-degenerate and reviewable."""
+    if candidate_record["pixel_count"] < MIN_REVIEW_CANDIDATE_PIXEL_COUNT:
+        return False
+    if candidate_record["area_m2"] <= MIN_REVIEW_CANDIDATE_AREA_M2:
+        return False
+    if candidate_record["perimeter_m"] <= MIN_REVIEW_CANDIDATE_PERIMETER_M:
+        return False
+    bounds = candidate_record["bounds"]
+    if bounds[2] <= bounds[0] or bounds[3] <= bounds[1]:
+        return False
+    clipped_geometry = candidate_record.get("clipped_geometry")
+    if clipped_geometry is not None:
+        geom_area = _geometry_area(clipped_geometry)
+        if geom_area <= 0.0:
+            return False
+        for rect in _geometry_rectangles(clipped_geometry):
+            if rect[2] <= rect[0] or rect[3] <= rect[1]:
+                return False
+    return True
+
+
 def _touches_bounds_edge(
     bounds: tuple[float, float, float, float],
     container_bounds: tuple[float, float, float, float],
@@ -803,7 +830,7 @@ def build_candidate_polygon_records(
             "clipped_geometry": clipped_geometry,
             "area_m2": round(area_m2, 6),
             "perimeter_m": round(perimeter_m, 6),
-            "pixel_count": max(1, int(round(area_m2 / 100.0))),
+            "pixel_count": max(0, int(round(area_m2 / 100.0))),
             "boundary_touching": (
                 _touches_bounds_edge(polygon_bounds, full_aoi_bounds)
                 or polygon.get("aoi_boundary_touching", False)
@@ -820,7 +847,8 @@ def build_candidate_polygon_records(
             polygonization_manifest_cache_key,
             candidate_record,
         )
-        candidate_records.append(candidate_record)
+        if _passes_candidate_sanity_filter(candidate_record):
+            candidate_records.append(candidate_record)
     return candidate_records
 
 

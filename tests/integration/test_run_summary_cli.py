@@ -9,7 +9,7 @@ from lawful_anomaly_screening.settings import REPO_ROOT
 def test_run_summary_returns_expected_json_for_run_with_candidates(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "summary_candidates.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
 
     assert main(["init-db"]) == 0
     capsys.readouterr()

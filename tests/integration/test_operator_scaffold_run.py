@@ -22,7 +22,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     db_path = tmp_path / "operator.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
 
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
     common_args = [
         "--aoi-path", str(aoi_path),
         "--start-date", "2024-01-01",
@@ -397,7 +397,7 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
 
     assert run_cli("init-db").strip() == "ok"
 
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
     create_run_payload = json.loads(
         run_cli(
             "create-run",

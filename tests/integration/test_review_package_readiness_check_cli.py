@@ -38,7 +38,7 @@ def _legal_gate_fail() -> dict:
 def test_happy_path_with_candidates(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "readiness_candidates.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
 
     assert main(["init-db"]) == 0
     capsys.readouterr()
@@ -138,7 +138,7 @@ def test_legal_blocked_run(monkeypatch, capsys, tmp_path):
 def test_candidates_exist_but_queue_empty(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "readiness_queue.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
 
     assert main(["init-db"]) == 0
     capsys.readouterr()

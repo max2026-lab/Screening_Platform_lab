@@ -37,7 +37,7 @@ def _legal_gate_fail() -> dict:
 def test_happy_path_with_candidates(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "handoff_candidates.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
 
     assert main(["init-db"]) == 0
     capsys.readouterr()
@@ -213,7 +213,7 @@ def test_artifact_safety_warning(monkeypatch, capsys, tmp_path):
 def test_limit_behavior(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "handoff_limit.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
 
     assert main(["init-db"]) == 0
     capsys.readouterr()

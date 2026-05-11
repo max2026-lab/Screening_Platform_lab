@@ -37,7 +37,7 @@ def _legal_gate_fail() -> dict:
 def test_happy_path_all_resolved(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "closeout_happy.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
 
     assert main(["init-db"]) == 0
     capsys.readouterr()
@@ -150,7 +150,7 @@ def test_legal_blocked_run(monkeypatch, capsys, tmp_path):
 def test_unresolved_candidates_warn(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "closeout_unresolved.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
 
     assert main(["init-db"]) == 0
     capsys.readouterr()
@@ -187,7 +187,7 @@ def test_unresolved_candidates_warn(monkeypatch, capsys, tmp_path):
 def test_unresolved_candidates_fail_with_require_all_resolved(monkeypatch, capsys, tmp_path):
     db_path = tmp_path / "closeout_required.sqlite3"
     monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
-    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi.geojson"
+    aoi_path = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_large.geojson"
 
     assert main(["init-db"]) == 0
     capsys.readouterr()
