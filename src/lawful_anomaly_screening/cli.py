@@ -42,6 +42,7 @@ from .releases.evidence_index_export_smoke_report import (
 from .ops.operator_readiness import run_operator_readiness_check
 from .ops.operator_artifact_inventory import run_operator_artifact_inventory
 from .ops.review_package_readiness import run_review_package_readiness_check
+from .ops.reviewer_handoff import run_reviewer_handoff_package
 from .releases.evidence_index_verifier import (
     load_evidence_list,
     render_release_evidence_index_markdown,
@@ -555,6 +556,23 @@ def cmd_review_package_readiness_check(args: argparse.Namespace) -> int:
         artifact_root=artifact_root,
         output_dir=output_dir,
         fmt=fmt,
+    )
+    print(json.dumps(result, indent=2))
+    return 0 if result["status"] in ("pass", "warn") else 1
+
+
+def cmd_reviewer_handoff_package(args: argparse.Namespace) -> int:
+    run_id = getattr(args, "run_id", None)
+    artifact_root = getattr(args, "artifact_root", None)
+    output_dir = getattr(args, "output_dir", None)
+    fmt = getattr(args, "format", "both")
+    limit = getattr(args, "limit", 25)
+    result = run_reviewer_handoff_package(
+        run_id=run_id,
+        artifact_root=artifact_root,
+        output_dir=output_dir,
+        fmt=fmt,
+        limit=limit,
     )
     print(json.dumps(result, indent=2))
     return 0 if result["status"] in ("pass", "warn") else 1
@@ -3335,6 +3353,14 @@ def _add_review_package_readiness_check_arguments(parser: argparse.ArgumentParse
     parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
 
 
+def _add_reviewer_handoff_package_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--artifact-root", default=None)
+    parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--format", choices=["json", "markdown", "both"], default="both")
+    parser.add_argument("--limit", type=int, default=25)
+
+
 def _add_export_create_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--audience", required=True)
@@ -3465,6 +3491,7 @@ def build_parser() -> argparse.ArgumentParser:
         "operator-readiness-check": cmd_operator_readiness_check,
         "operator-artifact-inventory": cmd_operator_artifact_inventory,
         "review-package-readiness-check": cmd_review_package_readiness_check,
+        "reviewer-handoff-package": cmd_reviewer_handoff_package,
         "export-create": cmd_export_create,
         "run-summary": cmd_run_summary,
         "paid-quote-create": cmd_paid_quote_create,
@@ -3528,6 +3555,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_operator_artifact_inventory_arguments(p)
         if name == "review-package-readiness-check":
             _add_review_package_readiness_check_arguments(p)
+        if name == "reviewer-handoff-package":
+            _add_reviewer_handoff_package_arguments(p)
         if name == "export-create":
             _add_export_create_arguments(p)
         if name == "run-summary":

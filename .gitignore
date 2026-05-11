@@ -31,3 +31,4 @@ exports/*
 .operator-readiness/
 .test-operator-artifact-inventory/
 .review-package-readiness/
+.reviewer-handoff/

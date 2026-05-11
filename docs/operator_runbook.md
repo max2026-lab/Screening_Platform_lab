@@ -1011,6 +1011,59 @@ State:
 - does not modify V1.17 operator artifact inventory behavior
 - does not change DB/schema/scoring/provider behavior
 
+## V1.19 Reviewer Handoff Package
+
+V1.19 adds an offline reviewer handoff package CLI command that produces a deterministic handoff package after V1.18 readiness passes/warns, without changing review decisions or exporting sensitive data.
+
+```powershell
+lawful-anomaly reviewer-handoff-package --run-id <run_id>
+lawful-anomaly reviewer-handoff-package --run-id <run_id> --artifact-root ./artifacts
+lawful-anomaly reviewer-handoff-package --run-id <run_id> --format json
+lawful-anomaly reviewer-handoff-package --run-id <run_id> --format both
+lawful-anomaly reviewer-handoff-package --run-id <run_id> --limit 50
+```
+
+State:
+- offline
+- no network required
+- does not call GitHub
+- does not require provider calls
+- does not mutate database
+- does not start workers
+- does not create/rewrite review packages
+- `--run-id` is required
+- `--artifact-root` is optional; if provided, artifact files are inspected read-only
+- `--output-dir` controls where report artifacts are written (default: `.reviewer-handoff/`)
+- `--format` supports `json`, `markdown`, `both` (default: `both`)
+- `--limit` caps queued candidate rows (default: `25`)
+- report artifacts:
+  - `reviewer_handoff_package.json`
+  - `reviewer_handoff_package.md`
+  - `SHA256SUMS.txt`
+- `SHA256SUMS.txt` hashes only the JSON and Markdown report artifacts and never includes its own hash
+- package content includes run summary, readiness status, review queue summary, queued candidate rows, and optional artifact references
+- internally reuses V1.18 review package readiness logic in a read-only way
+- if readiness fails, handoff status is fail
+- warns on incomplete/temp artifacts when `--artifact-root` is provided
+- warns if public/obfuscated files contain exact/precise/reviewer_only in filename
+- result status:
+  - `pass` if readiness passes and there are no warnings
+  - `warn` if readiness passes/warns and warnings exist
+  - `fail` if run missing, DB read fails, readiness fails, or artifact-root missing/not directory
+- exit code 0 for `pass` and `warn`; nonzero for `fail`
+- does not modify release evidence commands
+- does not modify operator-readiness behavior
+- does not modify operator-artifact-inventory behavior
+- does not modify review-package-readiness behavior
+- does not modify V1.12 exporter behavior
+- does not modify V1.13 verifier behavior
+- does not modify V1.14 smoke behavior
+- does not modify V1.15 smoke report behavior
+- does not modify V1.16 operator readiness behavior
+- does not modify V1.17 operator artifact inventory behavior
+- does not modify V1.18 review package readiness behavior
+- does not change DB/schema/scoring/provider behavior
+
 ## V1.10 Release Candidate
 
 The V1.10 release candidate scope, release gate, limitations, rollback point, and next step are locked in `docs/V1_10_RELEASE_NOTES.md`.
