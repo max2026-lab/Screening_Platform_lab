@@ -81,6 +81,11 @@ def test_happy_path_with_candidates(monkeypatch, capsys, tmp_path):
     assert json_report["handoff"]["readiness"]["status"] in ("pass", "warn")
     assert json_report["handoff"]["review_queue_summary"]["candidate_count"] > 0
     assert len(json_report["handoff"]["queued_candidates"]) > 0
+    first_queued = json_report["handoff"]["queued_candidates"][0]
+    assert "is_landscape_scale" in first_queued
+    assert first_queued["landscape_scale_threshold_m2"] == 250000.0
+    assert first_queued["landscape_scale_area_ha"] > 25.0
+    assert first_queued["is_landscape_scale"] is True
 
 
 def test_missing_run(monkeypatch, capsys, tmp_path):

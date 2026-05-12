@@ -78,6 +78,10 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert main(["review-queue", "--run-id", "run-001", "--limit", "10"]) == 0
     review_queue_run_1_payload = json.loads(capsys.readouterr().out)
     assert review_queue_run_1_payload
+    assert "is_landscape_scale" in review_queue_run_1_payload[0]
+    assert review_queue_run_1_payload[0]["landscape_scale_threshold_m2"] == 250000.0
+    assert review_queue_run_1_payload[0]["landscape_scale_area_ha"] > 25.0
+    assert review_queue_run_1_payload[0]["is_landscape_scale"] is True
 
     assert main(["review-queue", "--run-id", "run-002", "--limit", "10"]) == 0
     review_queue_run_2_payload = json.loads(capsys.readouterr().out)
@@ -110,6 +114,10 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
 
     assert main(["review-show", "--candidate-id", approved_candidate_id]) == 0
     run_1_candidate_payload = json.loads(capsys.readouterr().out)
+    assert "is_landscape_scale" in run_1_candidate_payload["candidate"]
+    assert run_1_candidate_payload["candidate"]["landscape_scale_threshold_m2"] == 250000.0
+    assert run_1_candidate_payload["candidate"]["landscape_scale_area_ha"] > 25.0
+    assert run_1_candidate_payload["candidate"]["is_landscape_scale"] is True
 
     assert main(["review-show", "--candidate-id", run_2_top_candidate_id]) == 0
     run_2_candidate_payload = json.loads(capsys.readouterr().out)
@@ -165,6 +173,10 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert export_payload["audit_manifest"]["candidate_score_formula_versions"] == ["v1.5.1-phase0"]
     assert export_payload["audit_manifest"]["audit_manifest_hash"]
     assert export_payload["candidates"]
+    assert "is_landscape_scale" in export_payload["candidates"][0]
+    assert export_payload["candidates"][0]["landscape_scale_threshold_m2"] == 250000.0
+    assert export_payload["candidates"][0]["landscape_scale_area_ha"] > 25.0
+    assert export_payload["candidates"][0]["is_landscape_scale"] is True
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2
     assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"

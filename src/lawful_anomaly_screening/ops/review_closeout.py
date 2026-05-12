@@ -266,6 +266,9 @@ def run_review_closeout_package(
                     "candidate_id": c["candidate_id"],
                     "possible_duplicate": c["possible_duplicate"],
                     "candidate_score": c["candidate_score"],
+                    "is_landscape_scale": c["is_landscape_scale"],
+                    "landscape_scale_threshold_m2": c["landscape_scale_threshold_m2"],
+                    "landscape_scale_area_ha": c["landscape_scale_area_ha"],
                 }
                 for c in approved_candidates
             ],

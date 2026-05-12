@@ -80,6 +80,9 @@ def test_happy_path_with_candidates(monkeypatch, capsys, tmp_path):
     assert json_report["run_id"] == "readiness-candidates-001"
     assert json_report["checks"]["run_exists"] is True
     assert json_report["checks"]["candidate_count"] > 0
+    assert json_report["checks"]["landscape_scale_threshold_m2"] == 250000.0
+    assert json_report["checks"]["landscape_scale_candidate_count"] > 0
+    assert json_report["status"] in ("pass", "warn")
 
 
 def test_missing_run(monkeypatch, capsys, tmp_path):

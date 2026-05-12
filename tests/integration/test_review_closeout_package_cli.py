@@ -92,6 +92,12 @@ def test_happy_path_all_resolved(monkeypatch, capsys, tmp_path):
     assert json_report["closeout"]["run_summary"]["run_id"] == "closeout-happy-001"
     assert json_report["closeout"]["review_summary"]["approved_for_archive_quote"] > 0
     assert json_report["closeout"]["unresolved_candidates"] == []
+    approved = json_report["closeout"]["approved_candidates"]
+    assert len(approved) > 0
+    assert "is_landscape_scale" in approved[0]
+    assert approved[0]["landscape_scale_threshold_m2"] == 250000.0
+    assert approved[0]["landscape_scale_area_ha"] > 25.0
+    assert approved[0]["is_landscape_scale"] is True
 
 
 def test_missing_run(monkeypatch, capsys, tmp_path):
