@@ -10,6 +10,7 @@ from typing import Literal
 from ..db.repositories.run_repository import RunRepository
 from ..db.repositories.review_repository import ReviewRepository
 from ..db.sqlite import connect
+from ..domain.candidate_flags import LANDSCAPE_SCALE_THRESHOLD_M2
 from ..settings import load_settings
 
 SCHEMA_VERSION = "v1.18.0"
@@ -173,6 +174,7 @@ def _build_review_package_readiness_result(
     review_queue_count = 0
     top_candidate_id = None
     legal_decision = None
+    landscape_scale_candidate_count = 0
     run: dict | None = None
     legal_gate: dict | None = None
     artifact_check: dict | None = None
@@ -190,6 +192,14 @@ def _build_review_package_readiness_result(
         review_queue = review_repo.list_review_queue(run_id=run_id) if run_exists else []
         review_queue_count = len(review_queue)
         top_candidate_id = run_repo.fetch_top_candidate_id(run_id) if run_exists else None
+        landscape_scale_candidate_count = 0
+        if run_exists:
+            with connect(db_path) as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM candidate_polygons WHERE run_id = ? AND area_m2 > ?",
+                    (run_id, LANDSCAPE_SCALE_THRESHOLD_M2),
+                ).fetchone()
+                landscape_scale_candidate_count = int(row[0]) if row else 0
 
         # Legal/safety
         legal_gate = run.get("legal_gate") if run else None
@@ -279,6 +289,8 @@ def _build_review_package_readiness_result(
             "candidate_count": candidate_count,
             "review_queue_count": review_queue_count,
             "top_candidate_id": top_candidate_id,
+            "landscape_scale_threshold_m2": LANDSCAPE_SCALE_THRESHOLD_M2,
+            "landscape_scale_candidate_count": landscape_scale_candidate_count,
             "artifact_root": str(Path(artifact_root).resolve()).replace("\\", "/") if artifact_root else None,
             "artifact_check": artifact_check,
         },

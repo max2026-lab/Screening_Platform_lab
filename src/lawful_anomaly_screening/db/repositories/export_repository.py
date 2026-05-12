@@ -9,6 +9,7 @@ import zipfile
 from lawful_anomaly_screening.db.sqlite import connect, insert_export_record
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
 from lawful_anomaly_screening.db.repositories.run_repository import RunRepository
+from lawful_anomaly_screening.domain.candidate_flags import compute_landscape_scale_fields
 from lawful_anomaly_screening.exports.precision_policy import (
     build_artifact_name,
     build_bundle_name,
@@ -353,6 +354,7 @@ class ExportRepository:
                 boundary_touching=bool(candidate.get("boundary_touching")),
                 area_m2=candidate.get("area_m2"),
             )
+            candidate.update(compute_landscape_scale_fields(float(candidate["area_m2"])))
             candidates.append(candidate)
         return candidates
 

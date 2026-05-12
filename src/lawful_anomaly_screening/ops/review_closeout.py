@@ -8,6 +8,7 @@ from typing import Literal
 
 from ..db.repositories.run_repository import RunRepository
 from ..db.sqlite import connect
+from ..domain.candidate_flags import compute_landscape_scale_fields
 from ..settings import load_settings
 
 SCHEMA_VERSION = "v1.20.0"
@@ -44,7 +45,7 @@ def _fetch_unresolved_candidates(db_path: Path, run_id: str, limit: int = 50) ->
         conn.row_factory = sqlite3.Row
         result = conn.execute(
             """
-            SELECT candidate_id, current_state, possible_duplicate
+            SELECT candidate_id, current_state, possible_duplicate, area_m2
             FROM candidate_polygons
             WHERE run_id = ? AND current_state IN ('pending_review', 'watch')
             ORDER BY candidate_id ASC
@@ -53,11 +54,13 @@ def _fetch_unresolved_candidates(db_path: Path, run_id: str, limit: int = 50) ->
             (run_id, limit),
         ).fetchall()
     for row in result:
-        rows.append({
+        record = {
             "candidate_id": row["candidate_id"],
             "current_state": row["current_state"],
             "possible_duplicate": bool(row["possible_duplicate"]),
-        })
+        }
+        record.update(compute_landscape_scale_fields(float(row["area_m2"])))
+        rows.append(record)
     return rows
 
 
@@ -67,7 +70,7 @@ def _fetch_approved_candidates(db_path: Path, run_id: str) -> list[dict]:
         conn.row_factory = sqlite3.Row
         result = conn.execute(
             """
-            SELECT cp.candidate_id, cp.possible_duplicate, cs.candidate_score
+            SELECT cp.candidate_id, cp.possible_duplicate, cp.area_m2, cs.candidate_score
             FROM candidate_polygons cp
             LEFT JOIN candidate_scores cs
                 ON cs.candidate_id = cp.candidate_id
@@ -78,11 +81,13 @@ def _fetch_approved_candidates(db_path: Path, run_id: str) -> list[dict]:
             (run_id,),
         ).fetchall()
     for row in result:
-        rows.append({
+        record = {
             "candidate_id": row["candidate_id"],
             "possible_duplicate": bool(row["possible_duplicate"]),
             "candidate_score": row["candidate_score"],
-        })
+        }
+        record.update(compute_landscape_scale_fields(float(row["area_m2"])))
+        rows.append(record)
     return rows
 
 

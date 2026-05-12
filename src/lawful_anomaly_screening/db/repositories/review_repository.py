@@ -7,6 +7,7 @@ import sqlite3
 from lawful_anomaly_screening.db.sqlite import connect, insert_review_action
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
 from lawful_anomaly_screening.exceptions import ReviewDecisionError, ReviewStateError
+from lawful_anomaly_screening.domain.candidate_flags import compute_landscape_scale_fields
 from lawful_anomaly_screening.sources.candidate_explainability import (
     build_candidate_scoring_explanation,
     rank_items_by_score,
@@ -94,6 +95,7 @@ class ReviewRepository:
                     cp.possible_duplicate,
                     cp.duplicate_resolution_action,
                     cp.run_id,
+                    cp.area_m2,
                     r.status AS run_status,
                     cs.parent_tile_score,
                     cs.candidate_score
@@ -117,7 +119,10 @@ class ReviewRepository:
                 """,
                 tuple(params_list),
             ).fetchall()
-        return [dict(row) for row in rows]
+        queue = [dict(row) for row in rows]
+        for item in queue:
+            item.update(compute_landscape_scale_fields(float(item["area_m2"])))
+        return queue
 
     def fetch_candidate(self, candidate_id: str, run_id: str | None = None) -> dict | None:
         run_filter_clause = ""
@@ -194,6 +199,7 @@ class ReviewRepository:
             json.loads(score_breakdown_json) if score_breakdown_json is not None else None
         )
         candidate["scoring_explanation"] = self._build_scoring_explanation(candidate)
+        candidate.update(compute_landscape_scale_fields(float(candidate["area_m2"])))
         return candidate
 
     def _build_scoring_explanation(self, candidate: dict) -> dict:

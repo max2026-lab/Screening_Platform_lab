@@ -4,6 +4,8 @@ import json
 import math
 from hashlib import sha256
 
+from lawful_anomaly_screening.domain.candidate_flags import compute_landscape_scale_fields
+
 
 def _stable_json(payload: dict) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -829,6 +831,7 @@ def build_candidate_polygon_records(
             "centroid": [round(value, 6) for value in polygon["centroid"]],
             "clipped_geometry": clipped_geometry,
             "area_m2": round(area_m2, 6),
+            **compute_landscape_scale_fields(area_m2),
             "perimeter_m": round(perimeter_m, 6),
             "pixel_count": max(0, int(round(area_m2 / 100.0))),
             "boundary_touching": (
