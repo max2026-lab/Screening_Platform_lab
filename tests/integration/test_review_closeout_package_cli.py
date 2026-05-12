@@ -98,6 +98,9 @@ def test_happy_path_all_resolved(monkeypatch, capsys, tmp_path):
     assert approved[0]["landscape_scale_threshold_m2"] == 250000.0
     assert approved[0]["landscape_scale_area_ha"] > 25.0
     assert approved[0]["is_landscape_scale"] is True
+    assert approved[0]["reviewer_review_track"] == "landscape_scale_separate_review"
+    assert approved[0]["reviewer_rubric_label"] == "Landscape-scale candidate"
+    assert "25 ha" in approved[0]["reviewer_rubric_guidance"]
 
 
 def test_missing_run(monkeypatch, capsys, tmp_path):

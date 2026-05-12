@@ -82,6 +82,9 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert review_queue_run_1_payload[0]["landscape_scale_threshold_m2"] == 250000.0
     assert review_queue_run_1_payload[0]["landscape_scale_area_ha"] > 25.0
     assert review_queue_run_1_payload[0]["is_landscape_scale"] is True
+    assert review_queue_run_1_payload[0]["reviewer_review_track"] == "landscape_scale_separate_review"
+    assert review_queue_run_1_payload[0]["reviewer_rubric_label"] == "Landscape-scale candidate"
+    assert "25 ha" in review_queue_run_1_payload[0]["reviewer_rubric_guidance"]
 
     assert main(["review-queue", "--run-id", "run-002", "--limit", "10"]) == 0
     review_queue_run_2_payload = json.loads(capsys.readouterr().out)
@@ -118,6 +121,9 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert run_1_candidate_payload["candidate"]["landscape_scale_threshold_m2"] == 250000.0
     assert run_1_candidate_payload["candidate"]["landscape_scale_area_ha"] > 25.0
     assert run_1_candidate_payload["candidate"]["is_landscape_scale"] is True
+    assert run_1_candidate_payload["candidate"]["reviewer_review_track"] == "landscape_scale_separate_review"
+    assert run_1_candidate_payload["candidate"]["reviewer_rubric_label"] == "Landscape-scale candidate"
+    assert "25 ha" in run_1_candidate_payload["candidate"]["reviewer_rubric_guidance"]
 
     assert main(["review-show", "--candidate-id", run_2_top_candidate_id]) == 0
     run_2_candidate_payload = json.loads(capsys.readouterr().out)
@@ -177,6 +183,9 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert export_payload["candidates"][0]["landscape_scale_threshold_m2"] == 250000.0
     assert export_payload["candidates"][0]["landscape_scale_area_ha"] > 25.0
     assert export_payload["candidates"][0]["is_landscape_scale"] is True
+    assert export_payload["candidates"][0]["reviewer_review_track"] == "landscape_scale_separate_review"
+    assert export_payload["candidates"][0]["reviewer_rubric_label"] == "Landscape-scale candidate"
+    assert "25 ha" in export_payload["candidates"][0]["reviewer_rubric_guidance"]
     assert len(export_payload["candidates"][0]["bounds"]) == 4
     assert len(export_payload["candidates"][0]["centroid"]) == 2
     assert export_payload["candidates"][0]["clipped_geometry"]["type"] == "MultiPolygon"
