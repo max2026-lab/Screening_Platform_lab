@@ -156,10 +156,10 @@ def derive_execution_geometry_summary(
     )
     hash_width_bias = int(geometry_digest[:2], 16) % 2
     hash_height_bias = int(geometry_digest[2:4], 16) % 2
-    width = max(2, min(8, int(round(span_lon)) + 2 + hash_width_bias))
+    width = max(4, min(8, int(round(span_lon * 5)) + 4 + hash_width_bias))
     height = max(
-        2,
-        min(8, int(round(span_lat)) + 2 + (1 if geometry_complexity > 5 else 0) + hash_height_bias),
+        4,
+        min(8, int(round(span_lat * 5)) + 4 + (1 if geometry_complexity > 5 else 0) + hash_height_bias),
     )
     expansion_x = 1.0 + ((int(geometry_digest[4:6], 16) % 3) / 14.0)
     expansion_y = 1.0 + ((int(geometry_digest[6:8], 16) % 3) / 14.0)

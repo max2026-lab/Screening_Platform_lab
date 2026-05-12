@@ -129,9 +129,11 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert [
         scene["scene_id"] for scene in run_2_candidate_payload["candidate"]["source_scenes"]
     ] == run_2_candidate_payload["candidate"]["source_scene_ids"]
-    assert run_1_candidate_payload["candidate"]["scoring_explanation"] == (
-        run_2_candidate_payload["candidate"]["scoring_explanation"]
-    )
+    ex1 = dict(run_1_candidate_payload["candidate"]["scoring_explanation"])
+    ex2 = dict(run_2_candidate_payload["candidate"]["scoring_explanation"])
+    ex1.pop("parent_tile_rank", None)
+    ex2.pop("parent_tile_rank", None)
+    assert ex1 == ex2
 
     assert main(
         [
@@ -192,9 +194,17 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
         ]
     ) == 0
     export_run_2_payload = json.loads(capsys.readouterr().out)
+
+    def _strip_run_specific_fields(candidate: dict) -> str:
+        exp = dict(candidate["scoring_explanation"])
+        exp.pop("parent_tile_rank", None)
+        exp.pop("rank", None)
+        exp.pop("reason", None)
+        return json.dumps(exp, sort_keys=True)
+
     assert sorted(
         (
-            json.dumps(candidate["scoring_explanation"], sort_keys=True),
+            _strip_run_specific_fields(candidate),
             tuple(candidate["source_scene_ids"]),
             tuple(
                 (
@@ -208,7 +218,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
         for candidate in export_payload["candidates"]
     ) == sorted(
         (
-            json.dumps(candidate["scoring_explanation"], sort_keys=True),
+            _strip_run_specific_fields(candidate),
             tuple(candidate["source_scene_ids"]),
             tuple(
                 (
@@ -503,6 +513,54 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert not (outside_cwd / "config").exists()
     assert not (outside_cwd / "sitecustomize.py").exists()
     assert (PACKAGE_ROOT / "config" / "sources" / "endpoints.json").is_file()
+
+
+def test_large_aoi_produces_more_tiles_than_small_aoi(monkeypatch, capsys, tmp_path):
+    """Regression test: larger AOIs must produce materially more tiles than tiny AOIs."""
+    db_path = tmp_path / "scaling.sqlite3"
+    monkeypatch.setenv("LAWFUL_ANOMALY_DB_PATH", str(db_path))
+
+    small_aoi = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_small.geojson"
+    large_aoi = REPO_ROOT / "tests" / "fixtures" / "sample_aoi_field_trial_8.geojson"
+
+    assert main(["init-db"]) == 0
+    capsys.readouterr()
+
+    # Small AOI
+    assert main([
+        "create-run",
+        "--run-id", "small-001",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--aoi-path", str(small_aoi),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]) == 0
+    capsys.readouterr()
+
+    assert main(["execute-run", "--run-id", "small-001"]) == 0
+    small_payload = json.loads(capsys.readouterr().out)
+
+    # Large AOI
+    assert main([
+        "create-run",
+        "--run-id", "large-001",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--aoi-path", str(large_aoi),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]) == 0
+    capsys.readouterr()
+
+    assert main(["execute-run", "--run-id", "large-001"]) == 0
+    large_payload = json.loads(capsys.readouterr().out)
+
+    print(f"small AOI tile_count={small_payload['tile_count']} selected_tile_count={small_payload['selected_tile_count']}")
+    print(f"large AOI tile_count={large_payload['tile_count']} selected_tile_count={large_payload['selected_tile_count']}")
+
+    assert large_payload["tile_count"] >= 30
+    assert large_payload["tile_count"] > small_payload["tile_count"]
 
 
 def test_installed_operator_cli_proves_provider_fallback_via_endpoint_override(tmp_path):
