@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 import os
 import subprocess
-import sys
 
 from lawful_anomaly_screening.cli import main
 from lawful_anomaly_screening.settings import REPO_ROOT, PACKAGE_ROOT
@@ -195,16 +194,14 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     ) == 0
     export_run_2_payload = json.loads(capsys.readouterr().out)
 
-    def _strip_run_specific_fields(candidate: dict) -> str:
+    def _strip_parent_tile_rank(candidate: dict) -> str:
         exp = dict(candidate["scoring_explanation"])
         exp.pop("parent_tile_rank", None)
-        exp.pop("rank", None)
-        exp.pop("reason", None)
         return json.dumps(exp, sort_keys=True)
 
     assert sorted(
         (
-            _strip_run_specific_fields(candidate),
+            _strip_parent_tile_rank(candidate),
             tuple(candidate["source_scene_ids"]),
             tuple(
                 (
@@ -218,7 +215,7 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
         for candidate in export_payload["candidates"]
     ) == sorted(
         (
-            _strip_run_specific_fields(candidate),
+            _strip_parent_tile_rank(candidate),
             tuple(candidate["source_scene_ids"]),
             tuple(
                 (
@@ -561,6 +558,7 @@ def test_large_aoi_produces_more_tiles_than_small_aoi(monkeypatch, capsys, tmp_p
 
     assert large_payload["tile_count"] >= 30
     assert large_payload["tile_count"] > small_payload["tile_count"]
+    assert large_payload["selected_tile_count"] > small_payload["selected_tile_count"]
 
 
 def test_installed_operator_cli_proves_provider_fallback_via_endpoint_override(tmp_path):
