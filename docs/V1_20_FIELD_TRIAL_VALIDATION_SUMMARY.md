@@ -1,54 +1,54 @@
 # V1.20 Field Trial Validation Summary
 
-## Inherited release
+## Current locked baseline
 
-- v1.19.0
+- locked main-line HEAD: `ab65bb39e6d939d5cf67a9644623f57debc4274c`
+- latest evidence tag: `baseline-v1.20-reviewer-rubric-cli-evidence-2026-05-12`
+- documentation branch for this cleanup: `docs/v1.20-field-trial-validation-summary`
 
-## Base commit
+## What was validated
 
-- `ab65bb39e6d939d5cf67a9644623f57debc4274c`
+- V1.20 operator workflow
+- degenerate one-pixel / zero-area candidate filter
+- Field Trial 2 and 3 rechecks
+- Field Trials 4-6 zero-candidate exports
+- large AOI tile-scaling fix
+- Field Trial 8 rerun with tile_count `42` and selected_tile_count `5`
+- known-nonzero reference with candidate_count `2`
+- landscape-scale candidate flagging
+- reviewer rubric guidance
+- real CLI evidence for reviewer rubric fields
 
-## Baseline tag
+## Key evidence values
 
-- `baseline-v1.20-reviewer-rubric-cli-evidence-2026-05-12`
+- Field Trial 8 rerun: tile_count `42`, selected_tile_count `5`, candidate_count `0`
+- known nonzero reference: tile_count `64`, selected_tile_count `8`, candidate_count `2`
+- landscape candidates observed at about `57 ha` and `107 ha`
+- reviewer track used for these cases: `landscape_scale_separate_review`
 
-## V1.20 branch
+## Current product truth
 
-- `docs/v1.20-field-trial-validation-summary`
+- bad tiny artifacts are suppressed
+- large AOIs scale correctly
+- valid large candidates remain visible
+- large candidates are flagged
+- reviewers get guidance not to fast-track paid imagery solely from automated score
 
-## Validation scope
+## Known limitations
 
-- documents the V1.20 local field-trial validation summary for the reviewer-facing closeout workflow
-- confirms the trial remains offline and operator-runbook driven
-- records the known local trial-path caveat for export bundle verification
-- records the known non-blocking artifact inventory warning during local trial layouts
-- preserves the existing V1.20 scope disclaimer that synthetic non-zero-candidate AOIs validate workflow plumbing only and do not prove detector quality
+- no real-world object-scale nonzero field candidate has been captured yet
+- landscape-scale candidates are flagged but not suppressed
+- scoring thresholds are unchanged
+- reviewer rubric is guidance only, not enforcement
 
-## Field-trial summary
+## Operator caveats
 
-- V1.20 field-trial validation is centered on operator workflow confirmation, not model-quality re-evaluation
-- export bundle verification must be run from repo root when `export-create` returns a relative `bundle_manifest_path`
-- using `--export-root "$trialRoot\exports"` with a relative manifest path is invalid because it resolves to `.trial-v1-20\exports\exports\reports\...`
-- `operator-artifact-inventory --root .trial-v1-20` may warn when export artifacts live under repo `exports/reports` instead of inside `.trial-v1-20`
-- that inventory warning is non-blocking when `export-bundle-verify` passes for the actual report bundle
+- if `export-create` returns a relative `bundle_manifest_path`, run `export-bundle-verify` from repo root with `--export-root .`
+- do not point `--export-root` at `"$trialRoot\exports"` when the manifest path is already relative to repo `exports/reports`
+- `operator-artifact-inventory --root .trial-v1-20` may warn when trial evidence lives under `.trial-v1-20` but export artifacts live under repo `exports/reports`
+- that inventory warning is non-blocking when `export-bundle-verify` passes for the actual bundle
 
-## Operator commands
+## Recommended next build target
 
-```powershell
-lawful-anomaly export-bundle-verify --bundle-manifest-path exports/reports/<name>.zip.manifest.json --export-root .
-lawful-anomaly operator-artifact-inventory --root .trial-v1-20
-```
-
-## Acceptance notes
-
-- field-trial validation is acceptable when bundle verification passes against the actual exported report bundle
-- artifact inventory warnings caused only by the split between `.trial-v1-20` evidence and repo `exports/reports` output are non-blocking
-- no network, GitHub, database, provider, scoring, calibration, or schema changes are introduced by this documentation update
-
-## Rollback point
-
-- v1.19.0
-
-## Next step
-
-- keep this summary with the V1.20 release package so operators have one place to reference the field-trial caveats before final release tagging
+- `feat/reviewer-closeout-landscape-scale-decision-path`
+- no scoring or suppression change should happen until reviewer decision workflow is clearer
