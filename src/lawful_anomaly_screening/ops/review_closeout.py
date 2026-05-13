@@ -8,7 +8,10 @@ from typing import Literal
 
 from ..db.repositories.run_repository import RunRepository
 from ..db.sqlite import connect
-from ..domain.candidate_flags import compute_landscape_scale_fields
+from ..domain.candidate_flags import (
+    compute_landscape_scale_closeout_fields,
+    compute_landscape_scale_fields,
+)
 from ..settings import load_settings
 
 SCHEMA_VERSION = "v1.20.0"
@@ -60,6 +63,12 @@ def _fetch_unresolved_candidates(db_path: Path, run_id: str, limit: int = 50) ->
             "possible_duplicate": bool(row["possible_duplicate"]),
         }
         record.update(compute_landscape_scale_fields(float(row["area_m2"])))
+        record.update(
+            compute_landscape_scale_closeout_fields(
+                bool(record["is_landscape_scale"]),
+                str(record["current_state"]),
+            )
+        )
         rows.append(record)
     return rows
 
@@ -71,6 +80,7 @@ def _fetch_approved_candidates(db_path: Path, run_id: str) -> list[dict]:
         result = conn.execute(
             """
             SELECT cp.candidate_id, cp.possible_duplicate, cp.area_m2, cs.candidate_score
+            , cp.current_state
             FROM candidate_polygons cp
             LEFT JOIN candidate_scores cs
                 ON cs.candidate_id = cp.candidate_id
@@ -83,12 +93,83 @@ def _fetch_approved_candidates(db_path: Path, run_id: str) -> list[dict]:
     for row in result:
         record = {
             "candidate_id": row["candidate_id"],
+            "current_state": row["current_state"],
             "possible_duplicate": bool(row["possible_duplicate"]),
             "candidate_score": row["candidate_score"],
         }
         record.update(compute_landscape_scale_fields(float(row["area_m2"])))
+        record.update(
+            compute_landscape_scale_closeout_fields(
+                bool(record["is_landscape_scale"]),
+                str(record["current_state"]),
+            )
+        )
         rows.append(record)
     return rows
+
+
+def _fetch_landscape_scale_state_rows(db_path: Path, run_id: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    with connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        result = conn.execute(
+            """
+            SELECT candidate_id, current_state, area_m2
+            FROM candidate_polygons
+            WHERE run_id = ?
+            ORDER BY candidate_id ASC
+            """,
+            (run_id,),
+        ).fetchall()
+    for row in result:
+        landscape_fields = compute_landscape_scale_fields(float(row["area_m2"]))
+        rows.append(
+            {
+                "candidate_id": row["candidate_id"],
+                "current_state": row["current_state"],
+                "is_landscape_scale": landscape_fields["is_landscape_scale"],
+            }
+        )
+    return rows
+
+
+def _compute_landscape_scale_summary(
+    candidate_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    landscape_scale_candidates = [
+        candidate for candidate in candidate_rows if candidate.get("is_landscape_scale") is True
+    ]
+    unresolved_count = sum(
+        1
+        for candidate in landscape_scale_candidates
+        if candidate.get("current_state") == "pending_review"
+    )
+    watch_count = sum(
+        1
+        for candidate in landscape_scale_candidates
+        if candidate.get("current_state") == "watch"
+    )
+    rejected_count = sum(
+        1
+        for candidate in landscape_scale_candidates
+        if candidate.get("current_state") == "rejected"
+    )
+    approved_count = sum(
+        1
+        for candidate in landscape_scale_candidates
+        if candidate.get("current_state") == "approved_for_archive_quote"
+    )
+    requires_context_review_count = approved_count
+
+    return {
+        "landscape_scale_candidate_count": len(landscape_scale_candidates),
+        "landscape_scale_unresolved_count": unresolved_count,
+        "landscape_scale_watch_count": watch_count,
+        "landscape_scale_rejected_count": rejected_count,
+        "landscape_scale_approved_for_archive_quote_count": approved_count,
+        "landscape_scale_closeout_requires_context_review_count": requires_context_review_count,
+        "landscape_scale_closeout_ready": unresolved_count == 0,
+    }
 
 
 def _fetch_export_record_count(db_path: Path, run_id: str) -> int:
@@ -154,6 +235,7 @@ def run_review_closeout_package(
     candidate_counts: dict[str, int] = {}
     unresolved_candidates: list[dict] = []
     approved_candidates: list[dict] = []
+    landscape_scale_rows: list[dict[str, object]] = []
     export_record_count = 0
     review_action_count = 0
 
@@ -162,6 +244,7 @@ def run_review_closeout_package(
             candidate_counts = _fetch_candidate_state_counts(db_path, run_id)
             unresolved_candidates = _fetch_unresolved_candidates(db_path, run_id)
             approved_candidates = _fetch_approved_candidates(db_path, run_id)
+            landscape_scale_rows = _fetch_landscape_scale_state_rows(db_path, run_id)
             export_record_count = _fetch_export_record_count(db_path, run_id)
             review_action_count = _fetch_review_action_count(db_path, run_id)
         except Exception as exc:
@@ -174,6 +257,7 @@ def run_review_closeout_package(
     watch_count = candidate_counts.get("watch", 0)
     pending_count = candidate_counts.get("pending_review", 0)
     other_count = total_candidates - unresolved_count - approved_count - rejected_count
+    landscape_scale_summary = _compute_landscape_scale_summary(landscape_scale_rows)
 
     # Decision completeness
     if unresolved_count > 0:
@@ -260,10 +344,12 @@ def run_review_closeout_package(
                 "other": other_count,
                 "review_action_count": review_action_count,
             },
+            "landscape_scale_closeout_summary": landscape_scale_summary,
             "unresolved_candidates": unresolved_candidates,
             "approved_candidates": [
                 {
                     "candidate_id": c["candidate_id"],
+                    "current_state": c["current_state"],
                     "possible_duplicate": c["possible_duplicate"],
                     "candidate_score": c["candidate_score"],
                     "is_landscape_scale": c["is_landscape_scale"],
@@ -272,6 +358,9 @@ def run_review_closeout_package(
                     "reviewer_review_track": c["reviewer_review_track"],
                     "reviewer_rubric_label": c["reviewer_rubric_label"],
                     "reviewer_rubric_guidance": c["reviewer_rubric_guidance"],
+                    "landscape_scale_closeout_path": c["landscape_scale_closeout_path"],
+                    "landscape_scale_closeout_label": c["landscape_scale_closeout_label"],
+                    "landscape_scale_closeout_guidance": c["landscape_scale_closeout_guidance"],
                 }
                 for c in approved_candidates
             ],
@@ -376,12 +465,35 @@ def _render_report_markdown(payload: dict) -> str:
     lines.append(f"- Review actions: {review.get('review_action_count', 0)}")
     lines.append("")
 
+    landscape = payload.get("closeout", {}).get("landscape_scale_closeout_summary", {})
+    lines.append("## Landscape-Scale Closeout Summary")
+    lines.append(f"- Landscape-scale candidates: {landscape.get('landscape_scale_candidate_count', 0)}")
+    lines.append(f"- Landscape-scale unresolved: {landscape.get('landscape_scale_unresolved_count', 0)}")
+    lines.append(f"- Landscape-scale watch: {landscape.get('landscape_scale_watch_count', 0)}")
+    lines.append(f"- Landscape-scale rejected: {landscape.get('landscape_scale_rejected_count', 0)}")
+    lines.append(
+        "- Landscape-scale approved for archive/quote: "
+        f"{landscape.get('landscape_scale_approved_for_archive_quote_count', 0)}"
+    )
+    lines.append(
+        "- Landscape-scale requiring context review before paid escalation: "
+        f"{landscape.get('landscape_scale_closeout_requires_context_review_count', 0)}"
+    )
+    lines.append(
+        "- Landscape-scale closeout ready: "
+        f"`{landscape.get('landscape_scale_closeout_ready', False)}`"
+    )
+    lines.append("")
+
     unresolved = payload.get("closeout", {}).get("unresolved_candidates", [])
     if unresolved:
         lines.append("## Unresolved Candidates")
         lines.append("")
         for c in unresolved:
             lines.append(f"- `{c['candidate_id']}` (state: `{c['current_state']}`)")
+            lines.append(
+                f"  - closeout path: `{c['landscape_scale_closeout_path']}`"
+            )
         lines.append("")
 
     approved = payload.get("closeout", {}).get("approved_candidates", [])
@@ -390,6 +502,9 @@ def _render_report_markdown(payload: dict) -> str:
         lines.append("")
         for c in approved:
             lines.append(f"- `{c['candidate_id']}`")
+            lines.append(
+                f"  - closeout path: `{c['landscape_scale_closeout_path']}`"
+            )
             if c.get("possible_duplicate"):
                 lines.append("  - possible_duplicate: true")
         lines.append("")

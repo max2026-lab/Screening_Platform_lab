@@ -12,6 +12,27 @@ _STANDARD_GUIDANCE = (
     "Standard object-scale candidate. Follow normal review workflow."
 )
 
+_STANDARD_CLOSEOUT_GUIDANCE = (
+    "Standard candidate closeout. No separate landscape/context review is required."
+)
+
+_LANDSCAPE_UNRESOLVED_GUIDANCE = (
+    "Separate landscape/context review is still required before any paid escalation."
+)
+
+_LANDSCAPE_WATCH_GUIDANCE = (
+    "Candidate is deferred for separate landscape/context follow-up."
+)
+
+_LANDSCAPE_REJECTED_GUIDANCE = (
+    "No paid escalation is expected from this closeout."
+)
+
+_LANDSCAPE_APPROVED_GUIDANCE = (
+    "Approval should be treated as requiring separate landscape/context review "
+    "before paid imagery escalation."
+)
+
 
 def compute_landscape_scale_fields(area_m2: float) -> dict[str, object]:
     """Return landscape-scale flag and reviewer rubric fields for a candidate area.
@@ -37,4 +58,48 @@ def compute_landscape_scale_fields(area_m2: float) -> dict[str, object]:
         "landscape_scale_threshold_m2": LANDSCAPE_SCALE_THRESHOLD_M2,
         "landscape_scale_area_ha": round(area_m2 / 10000.0, 6),
         **rubric,
+    }
+
+
+def compute_landscape_scale_closeout_fields(
+    is_landscape_scale: bool,
+    current_state: str,
+) -> dict[str, str]:
+    """Return deterministic closeout messaging for landscape-scale handling."""
+    if not is_landscape_scale:
+        return {
+            "landscape_scale_closeout_path": "standard_candidate_closeout",
+            "landscape_scale_closeout_label": "Standard candidate closeout",
+            "landscape_scale_closeout_guidance": _STANDARD_CLOSEOUT_GUIDANCE,
+        }
+
+    if current_state == "pending_review":
+        return {
+            "landscape_scale_closeout_path": "landscape_scale_unresolved",
+            "landscape_scale_closeout_label": "Landscape-scale unresolved",
+            "landscape_scale_closeout_guidance": _LANDSCAPE_UNRESOLVED_GUIDANCE,
+        }
+    if current_state == "watch":
+        return {
+            "landscape_scale_closeout_path": "landscape_scale_watch",
+            "landscape_scale_closeout_label": "Landscape-scale watch",
+            "landscape_scale_closeout_guidance": _LANDSCAPE_WATCH_GUIDANCE,
+        }
+    if current_state == "rejected":
+        return {
+            "landscape_scale_closeout_path": "landscape_scale_rejected",
+            "landscape_scale_closeout_label": "Landscape-scale rejected",
+            "landscape_scale_closeout_guidance": _LANDSCAPE_REJECTED_GUIDANCE,
+        }
+    if current_state == "approved_for_archive_quote":
+        return {
+            "landscape_scale_closeout_path": "landscape_scale_paid_escalation_requires_context_review",
+            "landscape_scale_closeout_label": "Landscape-scale paid escalation requires context review",
+            "landscape_scale_closeout_guidance": _LANDSCAPE_APPROVED_GUIDANCE,
+        }
+
+    return {
+        "landscape_scale_closeout_path": "standard_candidate_closeout",
+        "landscape_scale_closeout_label": "Standard candidate closeout",
+        "landscape_scale_closeout_guidance": _STANDARD_CLOSEOUT_GUIDANCE,
     }

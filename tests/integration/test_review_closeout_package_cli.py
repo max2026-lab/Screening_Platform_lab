@@ -101,6 +101,21 @@ def test_happy_path_all_resolved(monkeypatch, capsys, tmp_path):
     assert approved[0]["reviewer_review_track"] == "landscape_scale_separate_review"
     assert approved[0]["reviewer_rubric_label"] == "Landscape-scale candidate"
     assert "25 ha" in approved[0]["reviewer_rubric_guidance"]
+    assert (
+        approved[0]["landscape_scale_closeout_path"]
+        == "landscape_scale_paid_escalation_requires_context_review"
+    )
+    assert (
+        approved[0]["landscape_scale_closeout_label"]
+        == "Landscape-scale paid escalation requires context review"
+    )
+    assert "context review" in approved[0]["landscape_scale_closeout_guidance"]
+    assert "paid imagery" in approved[0]["landscape_scale_closeout_guidance"]
+    landscape_summary = json_report["closeout"]["landscape_scale_closeout_summary"]
+    assert landscape_summary["landscape_scale_candidate_count"] > 0
+    assert landscape_summary["landscape_scale_approved_for_archive_quote_count"] > 0
+    assert landscape_summary["landscape_scale_closeout_requires_context_review_count"] > 0
+    assert landscape_summary["landscape_scale_closeout_ready"] is True
 
 
 def test_missing_run(monkeypatch, capsys, tmp_path):
@@ -191,6 +206,22 @@ def test_unresolved_candidates_warn(monkeypatch, capsys, tmp_path):
     assert json_report["status"] == "warn"
     assert any("unresolved" in w.lower() for w in json_report["warnings"])
     assert len(json_report["closeout"]["unresolved_candidates"]) > 0
+    unresolved = json_report["closeout"]["unresolved_candidates"]
+    landscape_unresolved = [c for c in unresolved if c["is_landscape_scale"] is True]
+    assert landscape_unresolved
+    assert (
+        landscape_unresolved[0]["landscape_scale_closeout_path"]
+        == "landscape_scale_unresolved"
+    )
+    assert (
+        landscape_unresolved[0]["landscape_scale_closeout_label"]
+        == "Landscape-scale unresolved"
+    )
+    assert "context review" in landscape_unresolved[0]["landscape_scale_closeout_guidance"]
+    assert "paid escalation" in landscape_unresolved[0]["landscape_scale_closeout_guidance"]
+    landscape_summary = json_report["closeout"]["landscape_scale_closeout_summary"]
+    assert landscape_summary["landscape_scale_unresolved_count"] > 0
+    assert landscape_summary["landscape_scale_closeout_ready"] is False
 
 
 def test_unresolved_candidates_fail_with_require_all_resolved(monkeypatch, capsys, tmp_path):
@@ -228,6 +259,9 @@ def test_unresolved_candidates_fail_with_require_all_resolved(monkeypatch, capsy
     json_report = json.loads((out / "review_closeout_package.json").read_text(encoding="utf-8"))
     assert json_report["status"] == "fail"
     assert any("unresolved" in f.lower() for f in json_report["failures"])
+    landscape_summary = json_report["closeout"]["landscape_scale_closeout_summary"]
+    assert landscape_summary["landscape_scale_unresolved_count"] > 0
+    assert landscape_summary["landscape_scale_closeout_ready"] is False
 
 
 def test_existing_export_records_warn(monkeypatch, capsys, tmp_path):
