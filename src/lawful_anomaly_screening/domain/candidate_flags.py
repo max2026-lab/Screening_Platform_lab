@@ -33,6 +33,14 @@ _LANDSCAPE_APPROVED_GUIDANCE = (
     "before paid imagery escalation."
 )
 
+_PAID_LANDSCAPE_WARNING_MESSAGE = (
+    "Candidate is landscape-scale / above the 25 ha threshold. "
+    "Context review is recommended before paid imagery escalation. "
+    "This is warning-only and does not block quote/order."
+)
+
+_PAID_STANDARD_MESSAGE = "No landscape-scale paid warning."
+
 
 def compute_landscape_scale_fields(area_m2: float) -> dict[str, object]:
     """Return landscape-scale flag and reviewer rubric fields for a candidate area.
@@ -102,4 +110,23 @@ def compute_landscape_scale_closeout_fields(
         "landscape_scale_closeout_path": "standard_candidate_closeout",
         "landscape_scale_closeout_label": "Standard candidate closeout",
         "landscape_scale_closeout_guidance": _STANDARD_CLOSEOUT_GUIDANCE,
+    }
+
+
+def compute_paid_landscape_scale_warning_fields(
+    is_landscape_scale: bool,
+) -> dict[str, object]:
+    """Return warning-only paid escalation metadata for landscape-scale candidates."""
+    if is_landscape_scale:
+        return {
+            "paid_landscape_scale_warning": True,
+            "paid_landscape_scale_warning_code": "landscape_scale_context_review_recommended",
+            "paid_landscape_scale_warning_message": _PAID_LANDSCAPE_WARNING_MESSAGE,
+            "paid_landscape_scale_context_review_recommended": True,
+        }
+    return {
+        "paid_landscape_scale_warning": False,
+        "paid_landscape_scale_warning_code": "none",
+        "paid_landscape_scale_warning_message": _PAID_STANDARD_MESSAGE,
+        "paid_landscape_scale_context_review_recommended": False,
     }

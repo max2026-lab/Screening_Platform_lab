@@ -271,6 +271,27 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     ) == 0
     paid_quote_payload = json.loads(capsys.readouterr().out)
     assert paid_quote_payload["candidate_id"] == approved_candidate_id
+    assert paid_quote_payload["paid_landscape_scale_warning"] is True
+    assert (
+        paid_quote_payload["paid_landscape_scale_warning_code"]
+        == "landscape_scale_context_review_recommended"
+    )
+    assert paid_quote_payload["paid_landscape_scale_context_review_recommended"] is True
+    assert "warning-only" in paid_quote_payload["paid_landscape_scale_warning_message"]
+
+    assert main(
+        [
+            "paid-quote-show",
+            "--provider-quote-id",
+            "quote-smoke-001",
+        ]
+    ) == 0
+    paid_quote_show_payload = json.loads(capsys.readouterr().out)
+    assert paid_quote_show_payload["paid_landscape_scale_warning"] is True
+    assert (
+        paid_quote_show_payload["paid_landscape_scale_warning_code"]
+        == "landscape_scale_context_review_recommended"
+    )
 
     assert main(
         [
@@ -287,6 +308,26 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     ) == 0
     paid_order_payload = json.loads(capsys.readouterr().out)
     assert paid_order_payload["candidate_id"] == approved_candidate_id
+    assert paid_order_payload["paid_landscape_scale_warning"] is True
+    assert (
+        paid_order_payload["paid_landscape_scale_warning_code"]
+        == "landscape_scale_context_review_recommended"
+    )
+    assert paid_order_payload["paid_landscape_scale_context_review_recommended"] is True
+
+    assert main(
+        [
+            "paid-order-show",
+            "--provider-order-id",
+            "order-smoke-001",
+        ]
+    ) == 0
+    paid_order_show_payload = json.loads(capsys.readouterr().out)
+    assert paid_order_show_payload["paid_landscape_scale_warning"] is True
+    assert (
+        paid_order_show_payload["paid_landscape_scale_warning_code"]
+        == "landscape_scale_context_review_recommended"
+    )
 
     assert main(
         [

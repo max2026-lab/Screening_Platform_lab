@@ -6,6 +6,10 @@ from lawful_anomaly_screening.db.repositories.review_repository import (
     CANDIDATE_STATE_APPROVED_FOR_ARCHIVE_QUOTE,
     ReviewRepository,
 )
+from lawful_anomaly_screening.domain.candidate_flags import (
+    compute_landscape_scale_fields,
+    compute_paid_landscape_scale_warning_fields,
+)
 from lawful_anomaly_screening.exceptions import PaidOrderStateError
 from lawful_anomaly_screening.paid.quote_service import QUOTE_STATUS_ORDERED, QUOTE_STATUS_RECEIVED
 from lawful_anomaly_screening.paid.up42_archive import Up42ArchiveClient
@@ -166,14 +170,22 @@ class OrderService:
         run: dict | None,
         export_audit_manifest: dict | None,
     ) -> dict:
+        candidate_with_landscape = dict(candidate) if candidate is not None else None
+        if candidate_with_landscape is not None and "is_landscape_scale" not in candidate_with_landscape:
+            candidate_with_landscape.update(
+                compute_landscape_scale_fields(float(candidate_with_landscape["area_m2"]))
+            )
         gate_reasons = (
             self._order_gate_failures(
-                candidate=candidate or {},
+                candidate=candidate_with_landscape or {},
                 run=run,
                 export_audit_manifest=export_audit_manifest,
             )
-            if candidate is not None
+            if candidate_with_landscape is not None
             else ["candidate not found for paid order record"]
+        )
+        warning_fields = compute_paid_landscape_scale_warning_fields(
+            bool((candidate_with_landscape or {}).get("is_landscape_scale"))
         )
         return {
             **order_record,
@@ -183,4 +195,5 @@ class OrderService:
                 export_audit_manifest.get("audit_manifest_hash") if export_audit_manifest else None
             ),
             "reasons": gate_reasons or ["Paid archive order checks passed"],
+            **warning_fields,
         }

@@ -6,6 +6,10 @@ from lawful_anomaly_screening.db.repositories.review_repository import (
     CANDIDATE_STATE_APPROVED_FOR_ARCHIVE_QUOTE,
     ReviewRepository,
 )
+from lawful_anomaly_screening.domain.candidate_flags import (
+    compute_landscape_scale_fields,
+    compute_paid_landscape_scale_warning_fields,
+)
 from lawful_anomaly_screening.exceptions import PaidQuoteEligibilityError, PaidQuoteStateError
 from lawful_anomaly_screening.paid.up42_archive import Up42ArchiveClient
 
@@ -122,16 +126,29 @@ class QuoteService:
         candidate: dict | None,
         run: dict | None,
     ) -> dict:
+        candidate_with_landscape = dict(candidate) if candidate is not None else None
+        if candidate_with_landscape is not None and "is_landscape_scale" not in candidate_with_landscape:
+            candidate_with_landscape.update(
+                compute_landscape_scale_fields(float(candidate_with_landscape["area_m2"]))
+            )
         gate_reasons = (
-            self._quote_gate_failures(candidate=candidate or {}, run=run)
-            if candidate is not None
+            self._quote_gate_failures(candidate=candidate_with_landscape or {}, run=run)
+            if candidate_with_landscape is not None
             else ["candidate not found for paid quote record"]
+        )
+        warning_fields = compute_paid_landscape_scale_warning_fields(
+            bool((candidate_with_landscape or {}).get("is_landscape_scale"))
         )
         return {
             **quote_record,
             "quote_id": quote_record["provider_quote_id"],
-            "current_review_state": candidate.get("current_state") if candidate is not None else None,
+            "current_review_state": (
+                candidate_with_landscape.get("current_state")
+                if candidate_with_landscape is not None
+                else None
+            ),
             "legal_gate": (run or {}).get("legal_gate"),
             "paid_escalation_ready": len(gate_reasons) == 0,
             "reasons": gate_reasons or ["Paid archive escalation checks passed"],
+            **warning_fields,
         }
