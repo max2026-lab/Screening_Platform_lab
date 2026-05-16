@@ -1,7 +1,6 @@
 import json
 import io
 from contextlib import redirect_stdout
-from pathlib import Path
 from lawful_anomaly_screening.cli import main
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
 from lawful_anomaly_screening.settings import Settings
@@ -66,6 +65,7 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     
     summary = json.loads(f.getvalue())
     assert "run_metadata" in summary
+    assert "candidate_generation_diagnostics" in summary
     assert summary["run_metadata"]["run_id"] == "test-run-001"
     assert summary["run_metadata"]["start_date"] == "2024-01-01"
     assert summary["run_metadata"]["status"] == "review_ready"
@@ -75,6 +75,18 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert summary["run_metadata"]["legal_gate"]["geofence_status"] == "clear"
     assert summary["run_metadata"]["aoi_geometry"] == aoi_data
     assert summary["run_metadata"]["composite_quality"]["cloud_policy_decision"] in {"pass", "warn"}
+    assert (
+        summary["candidate_generation_diagnostics"]["final_candidate_count"]
+        == summary["candidate_count"]
+    )
+    assert (
+        summary["candidate_generation_diagnostics"]["zero_candidate_reason"]
+        == "candidates_generated"
+    )
+    assert (
+        summary["run_metadata"]["candidate_generation_diagnostics"]
+        == summary["candidate_generation_diagnostics"]
+    )
     assert summary["run_metadata"]["composite_quality"]["scene_count"] == summary["scene_summary"]["scene_count"]
     assert summary["scene_summary"]["scene_count"] == 3
     assert len(summary["scene_summary"]["scene_ids"]) == 3
@@ -393,6 +405,40 @@ def test_acceptance_check_regression(tmp_path, monkeypatch):
     export_audit_check = next((c for c in summary["checks"] if c["name"] == "export_audit_ready"), None)
     assert export_audit_check is not None
     assert export_audit_check["status"] == "warn"
+
+
+def test_execute_run_zero_candidate_diagnostics_reason(tmp_path, monkeypatch):
+    setup_mocks(tmp_path, monkeypatch)
+
+    aoi_path = tmp_path / "tiny_aoi.geojson"
+    aoi_path.write_text(
+        json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]],
+            }
+        )
+    )
+
+    assert main([
+        "create-run",
+        "--run-id", "tiny-zero-001",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--aoi-path", str(aoi_path),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]) == 0
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["execute-run", "--run-id", "tiny-zero-001"]) == 0
+
+    summary = json.loads(output.getvalue())
+    diagnostics = summary["candidate_generation_diagnostics"]
+    assert summary["candidate_count"] == 0
+    assert diagnostics["final_candidate_count"] == summary["candidate_count"]
+    assert diagnostics["zero_candidate_reason"]
 
 
 def test_acceptance_check_fails_clearly_for_legal_denial(tmp_path, monkeypatch):

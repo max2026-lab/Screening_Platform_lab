@@ -69,6 +69,15 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
     assert scaffold_run_1_payload["candidate_count"] > 0
     assert scaffold_run_1_payload["tile_count"] > 0
     assert scaffold_run_1_payload["selected_tile_count"] > 0
+    assert "candidate_generation_diagnostics" in scaffold_run_1_payload
+    assert (
+        scaffold_run_1_payload["candidate_generation_diagnostics"]["final_candidate_count"]
+        == scaffold_run_1_payload["candidate_count"]
+    )
+    assert (
+        scaffold_run_1_payload["candidate_generation_diagnostics"]["zero_candidate_reason"]
+        == "candidates_generated"
+    )
 
     assert main(["scaffold-run", "--run-id", "run-002"]) == 0
     scaffold_run_2_payload = json.loads(capsys.readouterr().out)
@@ -504,6 +513,19 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert execute_run_payload["run_metadata"]["status"] == "review_ready"
     assert execute_run_payload["run_metadata"]["cache_status"] == "warm"
     assert execute_run_payload["run_metadata"]["legal_gate"]["decision"] == "pass"
+    assert "candidate_generation_diagnostics" in execute_run_payload
+    assert (
+        execute_run_payload["candidate_generation_diagnostics"]["final_candidate_count"]
+        == execute_run_payload["candidate_count"]
+    )
+    assert (
+        execute_run_payload["candidate_generation_diagnostics"]["zero_candidate_reason"]
+        == "candidates_generated"
+    )
+    assert (
+        execute_run_payload["run_metadata"]["candidate_generation_diagnostics"]
+        == execute_run_payload["candidate_generation_diagnostics"]
+    )
     assert execute_run_payload["run_metadata"]["composite_quality"]["cloud_policy_decision"] in {"pass", "warn"}
     assert execute_run_payload["scene_summary"]["scene_count"] > 0
     assert execute_run_payload["scene_summary"]["composite_quality"] == execute_run_payload["run_metadata"]["composite_quality"]

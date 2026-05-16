@@ -40,6 +40,8 @@ def execute_run(
         raise ValueError(f"run not found: {run_id}")
     run_metadata = dict(refreshed_run_metadata)
     run_metadata["composite_quality"] = composite_quality
+    if "candidate_generation_diagnostics" in summary:
+        run_metadata["candidate_generation_diagnostics"] = summary["candidate_generation_diagnostics"]
     summary["run_metadata"] = run_metadata
     summary["scene_summary"] = {
         "scene_count": len(scenes),

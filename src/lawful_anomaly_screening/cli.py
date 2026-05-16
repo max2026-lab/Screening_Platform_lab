@@ -85,7 +85,6 @@ from .orchestration.acceptance import (
     render_calibration_pack_markdown,
     render_acceptance_summary_markdown,
     reproducibility_check,
-    top10_stability_rate,
 )
 
 
@@ -231,7 +230,7 @@ def cmd_create_run(_: argparse.Namespace) -> int:
         )
         raise LegalGateError(legal_gate["reason"])
 
-    registry = load_endpoint_registry()
+    load_endpoint_registry()
     manifest = build_manifest(
         source_endpoint_id=_.source_endpoint_id,
         aoi_hash=aoi_metadata.get("aoi_hash"),
@@ -1665,7 +1664,6 @@ def _verify_calibration_registry_snapshot(snapshot_dir: Path) -> dict:
 
     md_text = texts.get("calibration_artifact_registry.md", "")
     md_snapshot_hash = None
-    md_valid = True
     if md_text:
         required_md_sections = [
             "# Calibration Registry Snapshot",
@@ -1677,14 +1675,12 @@ def _verify_calibration_registry_snapshot(snapshot_dir: Path) -> dict:
         ]
         for section in required_md_sections:
             if section not in md_text:
-                md_valid = False
                 reasons.append(f"Markdown missing required section: {section}")
 
         match = re.search(r"(?m)^- Snapshot hash: `([^`]+)`\s*$", md_text)
         if match:
             md_snapshot_hash = match.group(1)
         else:
-            md_valid = False
             reasons.append("Markdown missing Snapshot hash line")
 
     snapshot_hash_valid = True
@@ -2303,7 +2299,8 @@ def _diff_calibration_registry_snapshots(
                 "include_pending": before_artifact["include_pending"],
             })
 
-    sort_key = lambda a: (a.get("run_id", ""), a.get("artifact_hash", ""))
+    def sort_key(a: dict) -> tuple[str, str]:
+        return (a.get("run_id", ""), a.get("artifact_hash", ""))
     added.sort(key=sort_key)
     removed.sort(key=sort_key)
     unchanged.sort(key=sort_key)

@@ -651,8 +651,10 @@ def deduplicate_polygon_candidates(
     selected_tiles: list[dict],
     *,
     aoi_geometry: dict | None = None,
-) -> list[dict]:
+    return_diagnostics: bool = False,
+) -> list[dict] | tuple[list[dict], dict[str, int]]:
     deduplicated: list[dict] = []
+    duplicate_merged_count = 0
     for candidate in sorted(
         polygon_candidates,
         key=lambda item: (item["source_region_ids"], item["polygon_id"]),
@@ -675,6 +677,7 @@ def deduplicate_polygon_candidates(
                 )
                 if merged_candidate is not None:
                     deduplicated[index] = merged_candidate
+                    duplicate_merged_count += 1
                 merged = True
                 break
             if 0.10 <= iou < 0.30:
@@ -683,18 +686,30 @@ def deduplicate_polygon_candidates(
         if not merged:
             deduplicated.append(current_candidate)
 
-    return sorted(deduplicated, key=lambda item: item["polygon_id"])
+    deduplicated = sorted(deduplicated, key=lambda item: item["polygon_id"])
+    diagnostics = {
+        "duplicate_merged_count": duplicate_merged_count,
+        "possible_duplicate_count": sum(
+            1 for item in deduplicated if item["possible_duplicate"]
+        ),
+    }
+    if return_diagnostics:
+        return deduplicated, diagnostics
+    return deduplicated
 
 
 def polygonize_full_aoi(
     full_aoi_anomaly_raster_manifest: dict,
     anomaly_regions: list[dict] | None = None,
-) -> list[dict]:
+    *,
+    return_diagnostics: bool = False,
+) -> list[dict] | tuple[list[dict], dict[str, int]]:
     selected_tiles = list(full_aoi_anomaly_raster_manifest["selected_tiles"])
     aoi_geometry = full_aoi_anomaly_raster_manifest.get("aoi_geometry")
     regions = anomaly_regions or build_default_anomaly_regions(full_aoi_anomaly_raster_manifest)
 
     polygon_candidates = []
+    dropped_tile_edge_eligibility_count = 0
     for region in sorted(regions, key=lambda item: item["region_id"]):
         candidate = _build_polygon_candidate(
             polygon_bounds=tuple(region["bounds"]),
@@ -704,12 +719,23 @@ def polygonize_full_aoi(
         )
         if candidate is not None:
             polygon_candidates.append(candidate)
+        else:
+            dropped_tile_edge_eligibility_count += 1
 
-    return deduplicate_polygon_candidates(
+    deduplicated, dedup_diagnostics = deduplicate_polygon_candidates(
         polygon_candidates,
         selected_tiles,
         aoi_geometry=aoi_geometry,
+        return_diagnostics=True,
     )
+    diagnostics = {
+        "raw_polygon_count": len(regions),
+        "dropped_tile_edge_eligibility_count": dropped_tile_edge_eligibility_count,
+        **dedup_diagnostics,
+    }
+    if return_diagnostics:
+        return deduplicated, diagnostics
+    return deduplicated
 
 
 def build_polygonization_manifest(
@@ -718,9 +744,10 @@ def build_polygonization_manifest(
     *,
     anomaly_regions: list[dict] | None = None,
 ) -> dict:
-    polygons = polygonize_full_aoi(
+    polygons, polygonization_diagnostics = polygonize_full_aoi(
         full_aoi_anomaly_raster_manifest,
         anomaly_regions=anomaly_regions,
+        return_diagnostics=True,
     )
     return {
         "manifest_version": "phase1-polygonization-v1",
@@ -733,6 +760,7 @@ def build_polygonization_manifest(
         "aoi_bbox": full_aoi_anomaly_raster_manifest.get("aoi_bbox"),
         "full_aoi_bounds": list(full_aoi_anomaly_raster_manifest["full_aoi_bounds"]),
         "polygon_count": len(polygons),
+        "polygonization_diagnostics": polygonization_diagnostics,
         "polygons": polygons,
     }
 
@@ -799,10 +827,13 @@ def build_candidate_polygon_records(
     run_id: str | None = None,
     source_scene_ids: list[str] | None = None,
     tile_source_scene_ids_by_tile_id: dict[str, list[str]] | None = None,
-) -> list[dict]:
+    return_diagnostics: bool = False,
+) -> list[dict] | tuple[list[dict], dict[str, int]]:
     full_aoi_bounds = tuple(polygonization_manifest["full_aoi_bounds"])
     candidate_source_scene_ids = list(sorted(source_scene_ids or []))
     candidate_records = []
+    dropped_below_min_area_count = 0
+    dropped_below_pixel_floor_count = 0
     for polygon in sorted(
         polygonization_manifest["polygons"],
         key=lambda item: (item["parent_tile_id"] or "", item["polygon_id"]),
@@ -849,6 +880,17 @@ def build_candidate_polygon_records(
         )
         if _passes_candidate_sanity_filter(candidate_record):
             candidate_records.append(candidate_record)
+            continue
+        if candidate_record["area_m2"] <= MIN_REVIEW_CANDIDATE_AREA_M2:
+            dropped_below_min_area_count += 1
+        if candidate_record["pixel_count"] < MIN_REVIEW_CANDIDATE_PIXEL_COUNT:
+            dropped_below_pixel_floor_count += 1
+    diagnostics = {
+        "dropped_below_min_area_count": dropped_below_min_area_count,
+        "dropped_below_pixel_floor_count": dropped_below_pixel_floor_count,
+    }
+    if return_diagnostics:
+        return candidate_records, diagnostics
     return candidate_records
 
 

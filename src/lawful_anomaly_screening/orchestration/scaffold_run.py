@@ -42,6 +42,29 @@ def _stable_scene_digest(*parts: str) -> str:
     return sha256("::".join(parts).encode("utf-8")).hexdigest()
 
 
+def _zero_candidate_reason(diagnostics: dict[str, object]) -> str:
+    final_candidate_count = int(diagnostics["final_candidate_count"])
+    if final_candidate_count > 0:
+        return "candidates_generated"
+
+    raw_polygon_count = int(diagnostics["raw_polygon_count"])
+    dropped_below_min_area_count = int(diagnostics["dropped_below_min_area_count"])
+    dropped_below_pixel_floor_count = int(diagnostics["dropped_below_pixel_floor_count"])
+    dropped_tile_edge_eligibility_count = int(
+        diagnostics["dropped_tile_edge_eligibility_count"]
+    )
+
+    if raw_polygon_count == 0:
+        return "no_raw_polygons"
+    if raw_polygon_count == dropped_below_min_area_count:
+        return "all_polygons_dropped_below_min_area"
+    if raw_polygon_count == dropped_below_pixel_floor_count:
+        return "all_polygons_dropped_below_pixel_floor"
+    if raw_polygon_count == dropped_tile_edge_eligibility_count:
+        return "all_polygons_dropped_by_tile_edge_eligibility"
+    return "candidates_removed_by_multiple_filters"
+
+
 def build_tile_scene_attribution(
     *,
     source_scene_manifest_hash: str,
@@ -235,11 +258,12 @@ def scaffold_run_for_run_id(
     )
     polygonization_record = cache_repository.persist_polygonization_manifest(polygonization_manifest)
 
-    candidate_records = build_candidate_polygon_records(
+    candidate_records, candidate_filter_diagnostics = build_candidate_polygon_records(
         polygonization_manifest,
         polygonization_record["cache_key"],
         run_id=run_id,
         tile_source_scene_ids_by_tile_id=tile_source_scene_ids_by_tile_id,
+        return_diagnostics=True,
     )
     feature_records = build_candidate_feature_records(candidate_records)
     score_records = rank_candidate_scores(
@@ -305,6 +329,36 @@ def scaffold_run_for_run_id(
         conn.commit()
 
     selected_tiles = [tile for tile in flagged_tiles if tile["selected_for_polygonization"]]
+    polygonization_diagnostics = polygonization_manifest.get(
+        "polygonization_diagnostics",
+        {},
+    )
+    candidate_generation_diagnostics = {
+        "diagnostic_version": "v1",
+        "tile_count": len(tile_grid),
+        "valid_tile_count": sum(1 for tile in tile_grid if tile["is_valid"]),
+        "selected_tile_count": len(selected_tiles),
+        "raw_polygon_count": int(polygonization_diagnostics.get("raw_polygon_count", 0)),
+        "dropped_below_min_area_count": int(
+            candidate_filter_diagnostics.get("dropped_below_min_area_count", 0)
+        ),
+        "dropped_below_pixel_floor_count": int(
+            candidate_filter_diagnostics.get("dropped_below_pixel_floor_count", 0)
+        ),
+        "dropped_tile_edge_eligibility_count": int(
+            polygonization_diagnostics.get("dropped_tile_edge_eligibility_count", 0)
+        ),
+        "duplicate_merged_count": int(
+            polygonization_diagnostics.get("duplicate_merged_count", 0)
+        ),
+        "possible_duplicate_count": int(
+            polygonization_diagnostics.get("possible_duplicate_count", 0)
+        ),
+        "final_candidate_count": len(candidate_records),
+    }
+    candidate_generation_diagnostics["zero_candidate_reason"] = _zero_candidate_reason(
+        candidate_generation_diagnostics
+    )
     return {
         "run_id": run_id,
         "source_scene_manifest_hash": run_context["source_scene_manifest_hash"],
@@ -318,6 +372,7 @@ def scaffold_run_for_run_id(
         "tile_count": len(tile_grid),
         "selected_tile_count": len(selected_tiles),
         "candidate_count": len(candidate_records),
+        "candidate_generation_diagnostics": candidate_generation_diagnostics,
         "candidate_ids": [record["candidate_id"] for record in score_records],
         "top_candidate_id": score_records[0]["candidate_id"] if score_records else None,
     }
