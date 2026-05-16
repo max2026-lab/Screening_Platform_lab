@@ -6,7 +6,12 @@ import json
 from pathlib import Path
 
 from lawful_anomaly_screening.settings import load_settings
-from lawful_anomaly_screening.sources.earth_search import discover_scenes, load_endpoint_registry, _SceneList
+from lawful_anomaly_screening.sources.earth_search import (
+    EndpointRegistry,
+    _SceneList,
+    discover_scenes,
+    load_endpoint_registry,
+)
 from lawful_anomaly_screening.exceptions import SourceError
 
 RETAINED_TILE_SCORE_FIELDS = (

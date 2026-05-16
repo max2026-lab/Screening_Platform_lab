@@ -1,8 +1,10 @@
 import json
 import io
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
+import sqlite3
 from lawful_anomaly_screening.cli import main
 from lawful_anomaly_screening.db.repositories.manifest_repository import ManifestRepository
+from lawful_anomaly_screening.db.repositories.run_repository import RunRepository
 from lawful_anomaly_screening.settings import Settings
 
 
@@ -169,6 +171,161 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
         summary["run_metadata"]["source_scene_manifest_hash"]
     )
     assert [scene["scene_id"] for scene in persisted_scenes] == summary["scene_summary"]["scene_ids"]
+
+
+def test_scene_window_precheck_reports_quality_without_execution(tmp_path, monkeypatch):
+    db_path = setup_mocks(tmp_path, monkeypatch)
+
+    aoi_path = tmp_path / "precheck_aoi.geojson"
+    aoi_path.write_text(
+        json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]],
+            }
+        )
+    )
+
+    assert main([
+        "create-run",
+        "--run-id", "precheck-run-001",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--aoi-path", str(aoi_path),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]) == 0
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["scene-window-precheck", "--run-id", "precheck-run-001"]) == 0
+
+    payload = json.loads(output.getvalue())
+    assert payload == {
+        "run_id": "precheck-run-001",
+        "source_endpoint_id": payload["source_endpoint_id"],
+        "source_scene_manifest_hash": payload["source_scene_manifest_hash"],
+        "start_date": "2024-01-01",
+        "end_date": "2024-03-31",
+        "scene_count": payload["scene_count"],
+        "clear_scene_count": payload["clear_scene_count"],
+        "cloudy_scene_count": payload["cloudy_scene_count"],
+        "mean_cloud_cover": payload["mean_cloud_cover"],
+        "max_cloud_cover": payload["max_cloud_cover"],
+        "cloud_policy_decision": payload["cloud_policy_decision"],
+        "cloud_policy_reason": payload["cloud_policy_reason"],
+        "recommendation": payload["recommendation"],
+        "recommendation_reason": payload["recommendation_reason"],
+    }
+    assert "candidate_generation_diagnostics" not in payload
+    assert payload["recommendation"] in {"proceed", "proceed_with_caution"}
+
+    run_metadata = RunRepository(db_path).fetch_run("precheck-run-001")
+    assert run_metadata is not None
+    assert run_metadata["status"] == "new"
+    assert RunRepository(db_path).count_candidates("precheck-run-001") == 0
+
+
+def test_scene_window_precheck_unknown_run_returns_clear_error(tmp_path, monkeypatch):
+    setup_mocks(tmp_path, monkeypatch)
+
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
+        assert main(["scene-window-precheck", "--run-id", "missing-run-001"]) == 1
+
+    assert stderr.getvalue().strip() == "run not found: missing-run-001"
+
+
+def test_scene_window_precheck_recommends_widen_date_window_for_low_clear_scene_count(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = setup_mocks(tmp_path, monkeypatch)
+
+    aoi_path = tmp_path / "low_clear_aoi.geojson"
+    aoi_path.write_text(
+        json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]],
+            }
+        )
+    )
+
+    assert main([
+        "create-run",
+        "--run-id", "precheck-low-clear-001",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--aoi-path", str(aoi_path),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]) == 0
+
+    run_metadata = RunRepository(db_path).fetch_run("precheck-low-clear-001")
+    assert run_metadata is not None
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE discovered_scenes
+            SET cloud_cover = 30.0
+            WHERE source_scene_manifest_hash = ?
+            """,
+            (run_metadata["source_scene_manifest_hash"],),
+        )
+        conn.commit()
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        assert main(["scene-window-precheck", "--run-id", "precheck-low-clear-001"]) == 0
+
+    payload = json.loads(output.getvalue())
+    assert payload["clear_scene_count"] == 0
+    assert payload["recommendation"] == "widen_date_window"
+    assert payload["recommendation_reason"] == (
+        "No clear scenes are available in the current date window."
+    )
+
+
+def test_scene_window_precheck_invalid_manifest_returns_nonzero(tmp_path, monkeypatch):
+    db_path = setup_mocks(tmp_path, monkeypatch)
+
+    aoi_path = tmp_path / "invalid_manifest_aoi.geojson"
+    aoi_path.write_text(
+        json.dumps(
+            {
+                "type": "Polygon",
+                "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]],
+            }
+        )
+    )
+
+    assert main([
+        "create-run",
+        "--run-id", "invalid-manifest-001",
+        "--attestation", "present",
+        "--geofence", "clear",
+        "--aoi-path", str(aoi_path),
+        "--start-date", "2024-01-01",
+        "--end-date", "2024-03-31",
+    ]) == 0
+
+    run_metadata = RunRepository(db_path).fetch_run("invalid-manifest-001")
+    assert run_metadata is not None
+    manifest_row = ManifestRepository(db_path).fetch_manifest_row(
+        run_metadata["source_scene_manifest_hash"]
+    )
+    assert manifest_row is not None
+    manifest_path = manifest_row["manifest_path"]
+    assert manifest_path
+    with open(manifest_path, "w", encoding="utf-8") as handle:
+        handle.write("{invalid json")
+
+    stderr = io.StringIO()
+    with redirect_stderr(stderr):
+        assert main(["scene-window-precheck", "--run-id", "invalid-manifest-001"]) == 1
+
+    assert "source scene manifest is invalid JSON" in stderr.getvalue()
 
 
 def test_same_bbox_different_geometry_changes_execute_run_layout(tmp_path, monkeypatch):

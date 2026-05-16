@@ -55,7 +55,7 @@ from .releases.evidence_verifier import (
 )
 from .exports.precision_policy import normalize_export_tier
 from .orchestration.scaffold_run import scaffold_run_for_run_id
-from .orchestration.run_pipeline import execute_run
+from .orchestration.run_pipeline import build_scene_window_precheck, execute_run
 from .legal import (
     LEGAL_GATE_DECISION_PASS,
     LEGAL_OUTCOME_ALLOWED,
@@ -300,6 +300,20 @@ def cmd_execute_run(args: argparse.Namespace) -> int:
 
     try:
         summary = execute_run(
+            settings.db_path,
+            run_id=args.run_id,
+        )
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
+def cmd_scene_window_precheck(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    try:
+        summary = build_scene_window_precheck(
             settings.db_path,
             run_id=args.run_id,
         )
@@ -3239,6 +3253,10 @@ def _add_scaffold_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
 
 
+def _add_scene_window_precheck_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--run-id", required=True)
+
+
 def _add_execute_run_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--run-id", required=True)
 
@@ -3496,6 +3514,7 @@ def build_parser() -> argparse.ArgumentParser:
         "legal-check": cmd_legal_check,
         "create-run": cmd_create_run,
         "scaffold-run": cmd_scaffold_run,
+        "scene-window-precheck": cmd_scene_window_precheck,
         "execute-run": cmd_execute_run,
         "review-queue": cmd_review_queue,
         "review-show": cmd_review_show,
@@ -3548,6 +3567,8 @@ def build_parser() -> argparse.ArgumentParser:
             _add_review_queue_arguments(p)
         if name == "scaffold-run":
             _add_scaffold_run_arguments(p)
+        if name == "scene-window-precheck":
+            _add_scene_window_precheck_arguments(p)
         if name == "execute-run":
             _add_execute_run_arguments(p)
         if name == "review-show":
