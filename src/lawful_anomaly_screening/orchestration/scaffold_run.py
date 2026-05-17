@@ -355,6 +355,10 @@ def scaffold_run_for_run_id(
             polygonization_diagnostics.get("possible_duplicate_count", 0)
         ),
         "final_candidate_count": len(candidate_records),
+        "raw_polygonization_diagnostics": polygonization_diagnostics.get(
+            "raw_polygonization_diagnostics",
+            {},
+        ),
     }
     candidate_generation_diagnostics["zero_candidate_reason"] = _zero_candidate_reason(
         candidate_generation_diagnostics

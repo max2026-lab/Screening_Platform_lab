@@ -537,6 +537,68 @@ def build_default_anomaly_regions(full_aoi_anomaly_raster_manifest: dict) -> lis
     return regions
 
 
+def build_default_anomaly_regions_with_diagnostics(
+    full_aoi_anomaly_raster_manifest: dict,
+) -> tuple[list[dict], dict[str, int | float | str | None]]:
+    regions = []
+    aoi_geometry = full_aoi_anomaly_raster_manifest.get("aoi_geometry")
+    default_region_attempt_count = 0
+    default_region_clipped_out_by_aoi_count = 0
+    default_region_zero_area_after_margin_count = 0
+    for selected_tile in full_aoi_anomaly_raster_manifest["selected_tiles"]:
+        default_region_attempt_count += 1
+        clipped_tile_bounds, _ = _clipped_bounds_from_geometry(
+            tuple(selected_tile["bounds"]),
+            aoi_geometry,
+        )
+        if clipped_tile_bounds is None:
+            default_region_clipped_out_by_aoi_count += 1
+            continue
+        min_x, min_y, max_x, max_y = clipped_tile_bounds
+        margin_x = (max_x - min_x) * 0.15
+        margin_y = (max_y - min_y) * 0.15
+        region_bounds = [
+            round(min_x + margin_x, 6),
+            round(min_y + margin_y, 6),
+            round(max_x - margin_x, 6),
+            round(max_y - margin_y, 6),
+        ]
+        if region_bounds[2] <= region_bounds[0] or region_bounds[3] <= region_bounds[1]:
+            default_region_zero_area_after_margin_count += 1
+        regions.append(
+            {
+                "region_id": f"region-{selected_tile['tile_id'][:12]}",
+                "bounds": region_bounds,
+            }
+        )
+    selected_tiles = list(full_aoi_anomaly_raster_manifest["selected_tiles"])
+    selected_tile_scores = sorted(float(tile["tile_score"]) for tile in selected_tiles)
+    selected_tile_score_mean = (
+        round(sum(selected_tile_scores) / len(selected_tile_scores), 6)
+        if selected_tile_scores
+        else None
+    )
+    diagnostics: dict[str, int | float | str | None] = {
+        "diagnostic_version": "v1",
+        "anomaly_region_source": "default_selected_tile_regions",
+        "selected_tile_count": len(selected_tiles),
+        "selected_tile_score_min": selected_tile_scores[0] if selected_tile_scores else None,
+        "selected_tile_score_max": selected_tile_scores[-1] if selected_tile_scores else None,
+        "selected_tile_score_mean": selected_tile_score_mean,
+        "selected_tile_bounds_count": sum(
+            1 for tile in selected_tiles if tile.get("bounds") is not None
+        ),
+        "default_region_attempt_count": default_region_attempt_count,
+        "default_region_created_count": len(regions),
+        "default_region_clipped_out_by_aoi_count": default_region_clipped_out_by_aoi_count,
+        "default_region_zero_area_after_margin_count": default_region_zero_area_after_margin_count,
+        "anomaly_region_input_count": len(regions),
+        "raw_polygon_count": len(regions),
+        "raw_polygon_zero_reason": "",
+    }
+    return regions, diagnostics
+
+
 def _selected_overlap_ratio(
     polygon_bounds: tuple[float, float, float, float],
     selected_tiles: list[dict],
@@ -706,7 +768,37 @@ def polygonize_full_aoi(
 ) -> list[dict] | tuple[list[dict], dict[str, int]]:
     selected_tiles = list(full_aoi_anomaly_raster_manifest["selected_tiles"])
     aoi_geometry = full_aoi_anomaly_raster_manifest.get("aoi_geometry")
-    regions = anomaly_regions or build_default_anomaly_regions(full_aoi_anomaly_raster_manifest)
+    selected_tile_scores = sorted(float(tile["tile_score"]) for tile in selected_tiles)
+    raw_polygonization_diagnostics: dict[str, int | float | str | None] = {
+        "diagnostic_version": "v1",
+        "anomaly_region_source": "provided_anomaly_regions" if anomaly_regions is not None else "default_selected_tile_regions",
+        "selected_tile_count": len(selected_tiles),
+        "selected_tile_score_min": selected_tile_scores[0] if selected_tile_scores else None,
+        "selected_tile_score_max": selected_tile_scores[-1] if selected_tile_scores else None,
+        "selected_tile_score_mean": (
+            round(sum(selected_tile_scores) / len(selected_tile_scores), 6)
+            if selected_tile_scores
+            else None
+        ),
+        "selected_tile_bounds_count": sum(
+            1 for tile in selected_tiles if tile.get("bounds") is not None
+        ),
+        "default_region_attempt_count": 0,
+        "default_region_created_count": 0,
+        "default_region_clipped_out_by_aoi_count": 0,
+        "default_region_zero_area_after_margin_count": 0,
+        "anomaly_region_input_count": 0,
+        "raw_polygon_count": 0,
+        "raw_polygon_zero_reason": "",
+    }
+    if anomaly_regions is None:
+        regions, raw_polygonization_diagnostics = build_default_anomaly_regions_with_diagnostics(
+            full_aoi_anomaly_raster_manifest
+        )
+    else:
+        regions = anomaly_regions
+        raw_polygonization_diagnostics["anomaly_region_input_count"] = len(regions)
+        raw_polygonization_diagnostics["raw_polygon_count"] = len(regions)
 
     polygon_candidates = []
     dropped_tile_edge_eligibility_count = 0
@@ -731,8 +823,27 @@ def polygonize_full_aoi(
     diagnostics = {
         "raw_polygon_count": len(regions),
         "dropped_tile_edge_eligibility_count": dropped_tile_edge_eligibility_count,
+        "raw_polygonization_diagnostics": raw_polygonization_diagnostics,
         **dedup_diagnostics,
     }
+    raw_polygon_zero_reason = "no_anomaly_regions_generated"
+    if int(raw_polygonization_diagnostics["raw_polygon_count"] or 0) > 0:
+        raw_polygon_zero_reason = "raw_polygons_generated"
+    elif int(raw_polygonization_diagnostics["selected_tile_count"] or 0) == 0:
+        raw_polygon_zero_reason = "no_selected_tiles"
+    elif (
+        int(raw_polygonization_diagnostics["default_region_attempt_count"] or 0) > 0
+        and int(raw_polygonization_diagnostics["default_region_created_count"] or 0) == 0
+        and int(raw_polygonization_diagnostics["default_region_clipped_out_by_aoi_count"] or 0) > 0
+    ):
+        raw_polygon_zero_reason = "selected_tiles_clipped_out_by_aoi"
+    elif (
+        int(raw_polygonization_diagnostics["default_region_attempt_count"] or 0) > 0
+        and int(raw_polygonization_diagnostics["default_region_created_count"] or 0) == 0
+        and int(raw_polygonization_diagnostics["default_region_zero_area_after_margin_count"] or 0) > 0
+    ):
+        raw_polygon_zero_reason = "selected_tiles_zero_area_after_margin"
+    raw_polygonization_diagnostics["raw_polygon_zero_reason"] = raw_polygon_zero_reason
     if return_diagnostics:
         return deduplicated, diagnostics
     return deduplicated

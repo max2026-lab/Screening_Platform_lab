@@ -1,7 +1,6 @@
 from lawful_anomaly_screening.sources.manifest_builder import (
     build_composite_metadata_manifest,
     build_preprocessing_manifest,
-    build_tile_feature_input,
     create_cache_key,
     flag_top_valid_tiles,
     generate_fixed_tile_grid,
@@ -239,6 +238,35 @@ def test_polygonization_manifest_uses_full_aoi_scaffold_rules():
         "selected-core",
         "selected-overlap",
     ]
+    diagnostics = polygonization_manifest["polygonization_diagnostics"]
+    raw_diagnostics = diagnostics["raw_polygonization_diagnostics"]
+    assert raw_diagnostics["anomaly_region_source"] == "provided_anomaly_regions"
+    assert raw_diagnostics["raw_polygon_count"] == diagnostics["raw_polygon_count"]
+    assert raw_diagnostics["raw_polygon_zero_reason"] == "raw_polygons_generated"
+
+
+def test_polygonization_manifest_reports_zero_raw_polygon_reason_for_zero_selected_tiles():
+    composite_manifest, composite_cache_key, tile_records = _selected_tile_records()
+    for tile_record in tile_records:
+        tile_record["selected_for_polygonization"] = False
+        tile_record["tile_score"] = 0.0
+    full_aoi_manifest = build_full_aoi_anomaly_raster_manifest(
+        composite_manifest,
+        composite_cache_key,
+        tile_records,
+    )
+
+    polygonization_manifest = build_polygonization_manifest(
+        full_aoi_manifest,
+        "full-aoi-cache-key-001",
+    )
+
+    diagnostics = polygonization_manifest["polygonization_diagnostics"]
+    raw_diagnostics = diagnostics["raw_polygonization_diagnostics"]
+    assert diagnostics["raw_polygon_count"] == 0
+    assert raw_diagnostics["anomaly_region_source"] == "default_selected_tile_regions"
+    assert raw_diagnostics["raw_polygon_count"] == diagnostics["raw_polygon_count"]
+    assert raw_diagnostics["raw_polygon_zero_reason"] == "no_selected_tiles"
 
 
 def _candidate_records_for_aoi(aoi_geometry: dict, aoi_bbox: list[float]) -> list[dict]:
