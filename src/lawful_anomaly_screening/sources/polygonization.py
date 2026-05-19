@@ -249,6 +249,17 @@ def _clipped_bounds_from_geometry(
     return clipped_bounds, boundary_touching
 
 
+def tile_intersects_aoi(
+    bounds: tuple[float, float, float, float] | list[float],
+    aoi_geometry: dict | None,
+) -> bool:
+    clipped_bounds, _ = _clipped_bounds_from_geometry(
+        tuple(float(value) for value in bounds),
+        aoi_geometry,
+    )
+    return clipped_bounds is not None
+
+
 def _subdivision_count(bounds: tuple[float, float, float, float]) -> int:
     width = max(0.0, bounds[2] - bounds[0])
     height = max(0.0, bounds[3] - bounds[1])

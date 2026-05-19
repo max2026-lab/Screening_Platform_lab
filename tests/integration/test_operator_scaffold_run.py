@@ -92,6 +92,12 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
         scaffold_run_1_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["aoi_tile_alignment_diagnostics"]["alignment_warning"]
         in {"none", "selected_tiles_partially_intersect_aoi"}
     )
+    alignment = (
+        scaffold_run_1_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["aoi_tile_alignment_diagnostics"]
+    )
+    if alignment["selected_tile_count"] > 0:
+        assert alignment["selected_tile_intersects_aoi_count"] > 0
+        assert alignment["alignment_warning"] != "selected_tiles_do_not_intersect_aoi"
 
     assert main(["scaffold-run", "--run-id", "run-002"]) == 0
     scaffold_run_2_payload = json.loads(capsys.readouterr().out)
@@ -549,6 +555,12 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
         execute_run_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["aoi_tile_alignment_diagnostics"]["alignment_warning"]
         in {"none", "selected_tiles_partially_intersect_aoi"}
     )
+    execute_alignment = (
+        execute_run_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["aoi_tile_alignment_diagnostics"]
+    )
+    if execute_alignment["selected_tile_count"] > 0:
+        assert execute_alignment["selected_tile_intersects_aoi_count"] > 0
+        assert execute_alignment["alignment_warning"] != "selected_tiles_do_not_intersect_aoi"
     assert execute_run_payload["candidate_ids"] == scaffold_run_payload["candidate_ids"]
     assert (
         execute_run_payload["run_metadata"]["candidate_generation_diagnostics"]

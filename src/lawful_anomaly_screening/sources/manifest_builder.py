@@ -13,6 +13,7 @@ from lawful_anomaly_screening.sources.earth_search import (
     load_endpoint_registry,
 )
 from lawful_anomaly_screening.exceptions import SourceError
+from lawful_anomaly_screening.sources.polygonization import tile_intersects_aoi
 
 RETAINED_TILE_SCORE_FIELDS = (
     "optical_anomaly",
@@ -593,6 +594,7 @@ def score_retained_tile(tile_feature_input: dict) -> dict:
     )
     return {
         "tile_id": tile_feature_input["tile_id"],
+        "bounds": tile_feature_input["bounds"],
         "source_scene_manifest_hash": tile_feature_input["source_scene_manifest_hash"],
         "source_endpoint_id": tile_feature_input["source_endpoint_id"],
         "composite_metadata_cache_key": tile_feature_input["composite_metadata_cache_key"],
@@ -612,6 +614,38 @@ def flag_top_valid_tiles(tile_records: list[dict]) -> list[dict]:
     selected_count = 0 if not valid_tiles else max(1, math.ceil(len(valid_tiles) * 0.15))
     ranked_valid = sorted(
         valid_tiles,
+        key=lambda tile: (-tile["tile_score"], tile["tile_id"]),
+    )
+    selected_ids = {tile["tile_id"] for tile in ranked_valid[:selected_count]}
+
+    flagged_tiles = []
+    for tile in tile_records:
+        updated = dict(tile)
+        updated["selected_for_polygonization"] = tile["tile_id"] in selected_ids
+        flagged_tiles.append(updated)
+    return flagged_tiles
+
+
+def flag_top_valid_tiles_for_aoi(
+    tile_records: list[dict],
+    aoi_geometry: dict | None = None,
+) -> list[dict]:
+    if aoi_geometry is None:
+        return flag_top_valid_tiles(tile_records)
+
+    valid_tiles = [tile for tile in tile_records if tile["is_valid"]]
+    intersecting_valid_tiles = [
+        tile
+        for tile in valid_tiles
+        if tile_intersects_aoi(tile.get("bounds") or (), aoi_geometry)
+    ]
+    selected_count = (
+        0
+        if not intersecting_valid_tiles
+        else max(1, math.ceil(len(intersecting_valid_tiles) * 0.15))
+    )
+    ranked_valid = sorted(
+        intersecting_valid_tiles,
         key=lambda tile: (-tile["tile_score"], tile["tile_id"]),
     )
     selected_ids = {tile["tile_id"] for tile in ranked_valid[:selected_count]}

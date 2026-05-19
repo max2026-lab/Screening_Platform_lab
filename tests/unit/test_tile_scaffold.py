@@ -11,6 +11,7 @@ from lawful_anomaly_screening.sources.manifest_builder import (
     compute_tile_score,
     create_cache_key,
     flag_top_valid_tiles,
+    flag_top_valid_tiles_for_aoi,
     generate_fixed_tile_grid,
     score_retained_tile,
 )
@@ -191,6 +192,141 @@ def test_top_valid_tile_selection_flags_only_top_15_percent():
     assert sorted(tile["tile_id"] for tile in selected_tiles) == sorted(
         tile["tile_id"] for tile in ranked_valid[:3]
     )
+
+
+def test_aoi_aware_selection_prefers_intersecting_valid_tiles_over_higher_non_intersecting_tiles():
+    tiles = [
+        {
+            "tile_id": "tile-high-outside",
+            "bounds": [0.0, 0.0, 10.0, 10.0],
+            "is_valid": True,
+            "tile_score": 99.0,
+            "selected_for_polygonization": False,
+        },
+        {
+            "tile_id": "tile-mid-inside",
+            "bounds": [100.0, 100.0, 110.0, 110.0],
+            "is_valid": True,
+            "tile_score": 75.0,
+            "selected_for_polygonization": False,
+        },
+        {
+            "tile_id": "tile-low-inside",
+            "bounds": [110.0, 100.0, 120.0, 110.0],
+            "is_valid": True,
+            "tile_score": 65.0,
+            "selected_for_polygonization": False,
+        },
+    ]
+    aoi_geometry = {
+        "type": "Polygon",
+        "coordinates": [[[100.0, 100.0], [120.0, 100.0], [120.0, 120.0], [100.0, 120.0], [100.0, 100.0]]],
+    }
+
+    flagged_tiles = flag_top_valid_tiles_for_aoi(tiles, aoi_geometry)
+    selected_ids = {
+        tile["tile_id"] for tile in flagged_tiles if tile["selected_for_polygonization"]
+    }
+
+    assert selected_ids == {"tile-mid-inside"}
+
+
+def test_aoi_aware_selection_counts_only_intersecting_valid_tiles():
+    aoi_geometry = {
+        "type": "Polygon",
+        "coordinates": [[[100.0, 100.0], [120.0, 100.0], [120.0, 120.0], [100.0, 120.0], [100.0, 100.0]]],
+    }
+    tiles = []
+    for index in range(12):
+        tiles.append(
+            {
+                "tile_id": f"tile-inside-{index:02d}",
+                "bounds": [100.0 + index, 100.0, 101.0 + index, 101.0],
+                "is_valid": True,
+                "tile_score": float(100 - index),
+                "selected_for_polygonization": False,
+            }
+        )
+    for index in range(8):
+        tiles.append(
+            {
+                "tile_id": f"tile-outside-{index:02d}",
+                "bounds": [0.0 + index, 0.0, 1.0 + index, 1.0],
+                "is_valid": True,
+                "tile_score": float(200 - index),
+                "selected_for_polygonization": False,
+            }
+        )
+
+    flagged_tiles = flag_top_valid_tiles_for_aoi(tiles, aoi_geometry)
+    selected_ids = [
+        tile["tile_id"] for tile in flagged_tiles if tile["selected_for_polygonization"]
+    ]
+
+    assert len(selected_ids) == 2
+    assert selected_ids == ["tile-inside-00", "tile-inside-01"]
+
+
+def test_aoi_aware_selection_preserves_no_aoi_behavior():
+    tiles = [
+        {
+            "tile_id": "tile-a",
+            "bounds": [0.0, 0.0, 1.0, 1.0],
+            "is_valid": True,
+            "tile_score": 90.0,
+            "selected_for_polygonization": False,
+        },
+        {
+            "tile_id": "tile-b",
+            "bounds": [1.0, 0.0, 2.0, 1.0],
+            "is_valid": True,
+            "tile_score": 80.0,
+            "selected_for_polygonization": False,
+        },
+        {
+            "tile_id": "tile-c",
+            "bounds": [2.0, 0.0, 3.0, 1.0],
+            "is_valid": True,
+            "tile_score": 70.0,
+            "selected_for_polygonization": False,
+        },
+        {
+            "tile_id": "tile-d",
+            "bounds": [3.0, 0.0, 4.0, 1.0],
+            "is_valid": False,
+            "tile_score": 95.0,
+            "selected_for_polygonization": False,
+        },
+    ]
+
+    assert flag_top_valid_tiles_for_aoi(tiles, None) == flag_top_valid_tiles(tiles)
+
+
+def test_aoi_aware_selection_returns_zero_selected_when_no_valid_tile_intersects():
+    tiles = [
+        {
+            "tile_id": "tile-a",
+            "bounds": [0.0, 0.0, 10.0, 10.0],
+            "is_valid": True,
+            "tile_score": 90.0,
+            "selected_for_polygonization": False,
+        },
+        {
+            "tile_id": "tile-b",
+            "bounds": [10.0, 0.0, 20.0, 10.0],
+            "is_valid": True,
+            "tile_score": 80.0,
+            "selected_for_polygonization": False,
+        },
+    ]
+    aoi_geometry = {
+        "type": "Polygon",
+        "coordinates": [[[100.0, 100.0], [110.0, 100.0], [110.0, 110.0], [100.0, 110.0], [100.0, 100.0]]],
+    }
+
+    flagged_tiles = flag_top_valid_tiles_for_aoi(tiles, aoi_geometry)
+
+    assert not any(tile["selected_for_polygonization"] for tile in flagged_tiles)
 
 
 def test_same_aoi_geometry_yields_same_tile_layout():

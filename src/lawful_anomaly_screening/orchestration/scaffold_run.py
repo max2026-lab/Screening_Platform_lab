@@ -26,7 +26,7 @@ from lawful_anomaly_screening.sources.candidate_scoring import (
 from lawful_anomaly_screening.sources.manifest_builder import (
     build_composite_metadata_manifest,
     build_preprocessing_manifest,
-    flag_top_valid_tiles,
+    flag_top_valid_tiles_for_aoi,
     generate_fixed_tile_grid,
     score_retained_tile,
 )
@@ -170,7 +170,10 @@ def scaffold_run_for_run_id(
         tile["tile_feature_input_cache_key"] = tile_feature_record["cache_key"]
         scored_tiles.append(score_retained_tile(tile))
 
-    flagged_tiles = flag_top_valid_tiles(scored_tiles)
+    flagged_tiles = flag_top_valid_tiles_for_aoi(
+        scored_tiles,
+        run_context.get("aoi_geometry"),
+    )
     scored_by_id = {tile["tile_id"]: tile for tile in flagged_tiles}
     tile_attribution_seed_keys = {
         tile["tile_id"]: f"{tile['x_index']}:{tile['y_index']}"

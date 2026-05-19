@@ -101,6 +101,9 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
         "none",
         "selected_tiles_partially_intersect_aoi",
     }
+    if alignment_diagnostics["selected_tile_count"] > 0:
+        assert alignment_diagnostics["selected_tile_intersects_aoi_count"] > 0
+        assert alignment_diagnostics["alignment_warning"] != "selected_tiles_do_not_intersect_aoi"
     assert (
         summary["run_metadata"]["candidate_generation_diagnostics"]
         == summary["candidate_generation_diagnostics"]
@@ -619,6 +622,9 @@ def test_execute_run_zero_candidate_diagnostics_reason(tmp_path, monkeypatch):
     assert raw_polygonization_diagnostics["raw_polygon_count"] == diagnostics["raw_polygon_count"]
     assert raw_polygonization_diagnostics["raw_polygon_zero_reason"]
     assert alignment_diagnostics["alignment_warning"]
+    if alignment_diagnostics["selected_tile_count"] > 0:
+        assert alignment_diagnostics["selected_tile_intersects_aoi_count"] > 0
+        assert alignment_diagnostics["alignment_warning"] != "selected_tiles_do_not_intersect_aoi"
 
 
 def test_acceptance_check_fails_clearly_for_legal_denial(tmp_path, monkeypatch):
