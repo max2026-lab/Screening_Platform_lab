@@ -7,6 +7,7 @@ from lawful_anomaly_screening.sources.manifest_builder import (
     score_retained_tile,
 )
 from lawful_anomaly_screening.sources.polygonization import (
+    MIN_REVIEW_CANDIDATE_PIXEL_COUNT,
     assign_parent_tile,
     build_candidate_polygon_records,
     build_full_aoi_anomaly_raster_manifest,
@@ -510,4 +511,101 @@ def test_concave_aoi_clipped_geometry_is_not_just_envelope():
 
     assert candidates
     assert any(len(candidate["clipped_geometry"]["coordinates"]) > 1 for candidate in candidates)
+
+
+def test_candidate_polygon_record_diagnostics_report_all_polygons_below_pixel_floor():
+    polygonization_manifest = {
+        "source_scene_manifest_hash": "manifest-hash-001",
+        "source_endpoint_id": "earth_search",
+        "full_aoi_bounds": [0.0, 0.0, 100.0, 100.0],
+        "polygons": [
+            {
+                "polygon_id": "tiny-poly-001",
+                "parent_tile_id": "tile-a",
+                "bounds": [0.0, 0.0, 10.0, 10.0],
+                "centroid": [5.0, 5.0],
+                "clipped_geometry": {
+                    "type": "MultiPolygon",
+                    "coordinates": [[[
+                        [0.0, 0.0],
+                        [10.0, 0.0],
+                        [10.0, 10.0],
+                        [0.0, 10.0],
+                        [0.0, 0.0],
+                    ]]],
+                },
+                "aoi_boundary_touching": False,
+                "possible_duplicate": False,
+                "source_region_ids": ["tiny-region-001"],
+            }
+        ],
+    }
+
+    candidate_records, diagnostics = build_candidate_polygon_records(
+        polygonization_manifest,
+        "polygonization-cache-key-001",
+        return_diagnostics=True,
+    )
+
+    pixel_floor_diagnostics = diagnostics["pixel_floor_diagnostics"]
+    assert candidate_records == []
+    assert diagnostics["dropped_below_pixel_floor_count"] == 1
+    assert pixel_floor_diagnostics == {
+        "diagnostic_version": "v1",
+        "min_review_candidate_pixel_count": MIN_REVIEW_CANDIDATE_PIXEL_COUNT,
+        "pre_filter_polygon_count": 1,
+        "retained_candidate_count": 0,
+        "dropped_below_pixel_floor_count": 1,
+        "dropped_below_min_area_count": 0,
+        "pixel_count_min": 1,
+        "pixel_count_max": 1,
+        "pixel_count_mean": 1.0,
+        "dropped_pixel_count_min": 1,
+        "dropped_pixel_count_max": 1,
+        "dropped_pixel_count_mean": 1.0,
+        "below_floor_pixel_count_histogram": {"1": 1},
+        "area_m2_min": 100.0,
+        "area_m2_max": 100.0,
+        "area_m2_mean": 100.0,
+        "dropped_area_m2_min": 100.0,
+        "dropped_area_m2_max": 100.0,
+        "dropped_area_m2_mean": 100.0,
+        "all_polygons_below_pixel_floor": True,
+        "pixel_floor_warning": "all_polygons_below_pixel_floor",
+    }
+    assert "bounds" not in pixel_floor_diagnostics
+    assert "centroid" not in pixel_floor_diagnostics
+    assert "clipped_geometry" not in pixel_floor_diagnostics
+
+
+def test_candidate_polygon_record_diagnostics_preserve_retained_candidate_ids():
+    geometry = {
+        "type": "Polygon",
+        "coordinates": [[[3000, 1000], [4000, 1000], [4000, 2000], [3000, 2000], [3000, 1000]]],
+    }
+    bbox = [3000.0, 1000.0, 4000.0, 2000.0]
+
+    polygonization_manifest, candidate_records = _candidate_polygon_records_for_aoi(
+        geometry,
+        bbox,
+    )
+    candidate_records_with_diagnostics, diagnostics = build_candidate_polygon_records(
+        polygonization_manifest,
+        "polygonization-cache-key-001",
+        return_diagnostics=True,
+    )
+
+    assert [candidate["candidate_id"] for candidate in candidate_records] == [
+        "0f0fe312700c3eff5d1587fdf31fb26d3d2ad8d7aa46d82cae61728a88b71b3a",
+        "2fdbb64314abb9853ca48793d56421859ca1324719044a5b3db563be8f852223",
+    ]
+    assert [candidate["candidate_id"] for candidate in candidate_records_with_diagnostics] == [
+        candidate["candidate_id"] for candidate in candidate_records
+    ]
+    pixel_floor_diagnostics = diagnostics["pixel_floor_diagnostics"]
+    assert pixel_floor_diagnostics["retained_candidate_count"] == len(candidate_records)
+    assert pixel_floor_diagnostics["pixel_floor_warning"] in {
+        "none",
+        "some_polygons_below_pixel_floor",
+    }
 

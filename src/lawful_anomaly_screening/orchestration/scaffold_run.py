@@ -362,6 +362,10 @@ def scaffold_run_for_run_id(
             "raw_polygonization_diagnostics",
             {},
         ),
+        "pixel_floor_diagnostics": candidate_filter_diagnostics.get(
+            "pixel_floor_diagnostics",
+            {},
+        ),
     }
     candidate_generation_diagnostics["zero_candidate_reason"] = _zero_candidate_reason(
         candidate_generation_diagnostics

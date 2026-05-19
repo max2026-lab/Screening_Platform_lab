@@ -78,7 +78,20 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
         scaffold_run_1_payload["candidate_generation_diagnostics"]["zero_candidate_reason"]
         == "candidates_generated"
     )
+    assert "pixel_floor_diagnostics" in scaffold_run_1_payload["candidate_generation_diagnostics"]
     assert "raw_polygonization_diagnostics" in scaffold_run_1_payload["candidate_generation_diagnostics"]
+    scaffold_pixel_floor = scaffold_run_1_payload["candidate_generation_diagnostics"][
+        "pixel_floor_diagnostics"
+    ]
+    assert scaffold_pixel_floor["retained_candidate_count"] == scaffold_run_1_payload["candidate_count"]
+    assert (
+        scaffold_pixel_floor["dropped_below_pixel_floor_count"]
+        == scaffold_run_1_payload["candidate_generation_diagnostics"]["dropped_below_pixel_floor_count"]
+    )
+    assert scaffold_pixel_floor["pixel_floor_warning"] in {
+        "none",
+        "some_polygons_below_pixel_floor",
+    }
     assert (
         scaffold_run_1_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["raw_polygon_count"]
         == scaffold_run_1_payload["candidate_generation_diagnostics"]["raw_polygon_count"]
@@ -542,7 +555,22 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
         execute_run_payload["candidate_generation_diagnostics"]["zero_candidate_reason"]
         == "candidates_generated"
     )
+    assert "pixel_floor_diagnostics" in execute_run_payload["candidate_generation_diagnostics"]
     assert "raw_polygonization_diagnostics" in execute_run_payload["candidate_generation_diagnostics"]
+    execute_pixel_floor = execute_run_payload["candidate_generation_diagnostics"][
+        "pixel_floor_diagnostics"
+    ]
+    assert execute_pixel_floor["retained_candidate_count"] == execute_run_payload["candidate_count"]
+    assert (
+        execute_pixel_floor["dropped_below_pixel_floor_count"]
+        == execute_run_payload["candidate_generation_diagnostics"]["dropped_below_pixel_floor_count"]
+    )
+    assert execute_pixel_floor["pixel_floor_warning"] in {
+        "none",
+        "some_polygons_below_pixel_floor",
+    }
+    for forbidden_key in ("bounds", "centroid", "clipped_geometry", "coordinates"):
+        assert forbidden_key not in execute_pixel_floor
     assert (
         execute_run_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["raw_polygon_count"]
         == execute_run_payload["candidate_generation_diagnostics"]["raw_polygon_count"]

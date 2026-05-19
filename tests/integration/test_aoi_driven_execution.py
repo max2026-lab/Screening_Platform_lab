@@ -69,6 +69,7 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     assert "run_metadata" in summary
     assert "candidate_generation_diagnostics" in summary
     assert "raw_polygonization_diagnostics" in summary["candidate_generation_diagnostics"]
+    assert "pixel_floor_diagnostics" in summary["candidate_generation_diagnostics"]
     assert summary["run_metadata"]["run_id"] == "test-run-001"
     assert summary["run_metadata"]["start_date"] == "2024-01-01"
     assert summary["run_metadata"]["status"] == "review_ready"
@@ -89,6 +90,9 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     raw_polygonization_diagnostics = summary["candidate_generation_diagnostics"][
         "raw_polygonization_diagnostics"
     ]
+    pixel_floor_diagnostics = summary["candidate_generation_diagnostics"][
+        "pixel_floor_diagnostics"
+    ]
     alignment_diagnostics = raw_polygonization_diagnostics[
         "aoi_tile_alignment_diagnostics"
     ]
@@ -97,6 +101,18 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
         == summary["candidate_generation_diagnostics"]["raw_polygon_count"]
     )
     assert raw_polygonization_diagnostics["raw_polygon_zero_reason"] == "raw_polygons_generated"
+    assert pixel_floor_diagnostics["retained_candidate_count"] == summary["candidate_count"]
+    assert (
+        pixel_floor_diagnostics["dropped_below_pixel_floor_count"]
+        == summary["candidate_generation_diagnostics"]["dropped_below_pixel_floor_count"]
+    )
+    assert pixel_floor_diagnostics["pre_filter_polygon_count"] >= summary["candidate_count"]
+    assert pixel_floor_diagnostics["pixel_floor_warning"] in {
+        "none",
+        "some_polygons_below_pixel_floor",
+    }
+    for forbidden_key in ("bounds", "centroid", "clipped_geometry", "coordinates"):
+        assert forbidden_key not in pixel_floor_diagnostics
     assert alignment_diagnostics["alignment_warning"] in {
         "none",
         "selected_tiles_partially_intersect_aoi",
@@ -613,12 +629,20 @@ def test_execute_run_zero_candidate_diagnostics_reason(tmp_path, monkeypatch):
     summary = json.loads(output.getvalue())
     diagnostics = summary["candidate_generation_diagnostics"]
     raw_polygonization_diagnostics = diagnostics["raw_polygonization_diagnostics"]
+    pixel_floor_diagnostics = diagnostics["pixel_floor_diagnostics"]
     alignment_diagnostics = raw_polygonization_diagnostics[
         "aoi_tile_alignment_diagnostics"
     ]
     assert summary["candidate_count"] == 0
     assert diagnostics["final_candidate_count"] == summary["candidate_count"]
     assert diagnostics["zero_candidate_reason"]
+    assert pixel_floor_diagnostics["retained_candidate_count"] == summary["candidate_count"]
+    assert (
+        pixel_floor_diagnostics["dropped_below_pixel_floor_count"]
+        == diagnostics["dropped_below_pixel_floor_count"]
+    )
+    assert pixel_floor_diagnostics["pixel_floor_warning"] == "all_polygons_below_pixel_floor"
+    assert pixel_floor_diagnostics["all_polygons_below_pixel_floor"] is True
     assert raw_polygonization_diagnostics["raw_polygon_count"] == diagnostics["raw_polygon_count"]
     assert raw_polygonization_diagnostics["raw_polygon_zero_reason"]
     assert alignment_diagnostics["alignment_warning"]

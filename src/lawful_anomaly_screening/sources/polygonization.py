@@ -971,6 +971,34 @@ def _perimeter(bounds: tuple[float, float, float, float]) -> float:
     return (2.0 * width) + (2.0 * height)
 
 
+def _summary_min(values: list[float | int]) -> float | int | None:
+    return min(values) if values else None
+
+
+def _summary_max(values: list[float | int]) -> float | int | None:
+    return max(values) if values else None
+
+
+def _summary_mean(values: list[float | int]) -> float | None:
+    if not values:
+        return None
+    return round(sum(values) / len(values), 6)
+
+
+def _pixel_floor_warning(
+    *,
+    pre_filter_polygon_count: int,
+    dropped_below_pixel_floor_count: int,
+) -> str:
+    if pre_filter_polygon_count == 0:
+        return "no_polygons_evaluated"
+    if dropped_below_pixel_floor_count == 0:
+        return "none"
+    if pre_filter_polygon_count == dropped_below_pixel_floor_count:
+        return "all_polygons_below_pixel_floor"
+    return "some_polygons_below_pixel_floor"
+
+
 def _passes_candidate_sanity_filter(candidate_record: dict) -> bool:
     """Return True if the candidate is non-degenerate and reviewable."""
     if candidate_record["pixel_count"] < MIN_REVIEW_CANDIDATE_PIXEL_COUNT:
@@ -1034,10 +1062,17 @@ def build_candidate_polygon_records(
     candidate_records = []
     dropped_below_min_area_count = 0
     dropped_below_pixel_floor_count = 0
+    pre_filter_polygon_count = 0
+    evaluated_pixel_counts: list[int] = []
+    evaluated_area_m2_values: list[float] = []
+    dropped_pixel_counts: list[int] = []
+    dropped_area_m2_values: list[float] = []
+    below_floor_pixel_count_histogram: dict[str, int] = {}
     for polygon in sorted(
         polygonization_manifest["polygons"],
         key=lambda item: (item["parent_tile_id"] or "", item["polygon_id"]),
     ):
+        pre_filter_polygon_count += 1
         polygon_bounds = tuple(polygon["bounds"])
         clipped_geometry = polygon.get("clipped_geometry")
         area_m2 = _geometry_area(clipped_geometry) if clipped_geometry is not None else _bounds_area(polygon_bounds)
@@ -1078,16 +1113,56 @@ def build_candidate_polygon_records(
             polygonization_manifest_cache_key,
             candidate_record,
         )
+        evaluated_pixel_counts.append(int(candidate_record["pixel_count"]))
+        evaluated_area_m2_values.append(float(candidate_record["area_m2"]))
         if _passes_candidate_sanity_filter(candidate_record):
             candidate_records.append(candidate_record)
             continue
+        dropped_pixel_counts.append(int(candidate_record["pixel_count"]))
+        dropped_area_m2_values.append(float(candidate_record["area_m2"]))
         if candidate_record["area_m2"] <= MIN_REVIEW_CANDIDATE_AREA_M2:
             dropped_below_min_area_count += 1
         if candidate_record["pixel_count"] < MIN_REVIEW_CANDIDATE_PIXEL_COUNT:
             dropped_below_pixel_floor_count += 1
+            histogram_key = str(candidate_record["pixel_count"])
+            below_floor_pixel_count_histogram[histogram_key] = (
+                below_floor_pixel_count_histogram.get(histogram_key, 0) + 1
+            )
+    pixel_floor_diagnostics = {
+        "diagnostic_version": "v1",
+        "min_review_candidate_pixel_count": MIN_REVIEW_CANDIDATE_PIXEL_COUNT,
+        "pre_filter_polygon_count": pre_filter_polygon_count,
+        "retained_candidate_count": len(candidate_records),
+        "dropped_below_pixel_floor_count": dropped_below_pixel_floor_count,
+        "dropped_below_min_area_count": dropped_below_min_area_count,
+        "pixel_count_min": _summary_min(evaluated_pixel_counts),
+        "pixel_count_max": _summary_max(evaluated_pixel_counts),
+        "pixel_count_mean": _summary_mean(evaluated_pixel_counts),
+        "dropped_pixel_count_min": _summary_min(dropped_pixel_counts),
+        "dropped_pixel_count_max": _summary_max(dropped_pixel_counts),
+        "dropped_pixel_count_mean": _summary_mean(dropped_pixel_counts),
+        "below_floor_pixel_count_histogram": dict(
+            sorted(below_floor_pixel_count_histogram.items(), key=lambda item: int(item[0]))
+        ),
+        "area_m2_min": _summary_min(evaluated_area_m2_values),
+        "area_m2_max": _summary_max(evaluated_area_m2_values),
+        "area_m2_mean": _summary_mean(evaluated_area_m2_values),
+        "dropped_area_m2_min": _summary_min(dropped_area_m2_values),
+        "dropped_area_m2_max": _summary_max(dropped_area_m2_values),
+        "dropped_area_m2_mean": _summary_mean(dropped_area_m2_values),
+        "all_polygons_below_pixel_floor": (
+            pre_filter_polygon_count > 0
+            and pre_filter_polygon_count == dropped_below_pixel_floor_count
+        ),
+        "pixel_floor_warning": _pixel_floor_warning(
+            pre_filter_polygon_count=pre_filter_polygon_count,
+            dropped_below_pixel_floor_count=dropped_below_pixel_floor_count,
+        ),
+    }
     diagnostics = {
         "dropped_below_min_area_count": dropped_below_min_area_count,
         "dropped_below_pixel_floor_count": dropped_below_pixel_floor_count,
+        "pixel_floor_diagnostics": pixel_floor_diagnostics,
     }
     if return_diagnostics:
         return candidate_records, diagnostics
