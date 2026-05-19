@@ -89,11 +89,18 @@ def test_create_and_execute_run_aoi(tmp_path, monkeypatch):
     raw_polygonization_diagnostics = summary["candidate_generation_diagnostics"][
         "raw_polygonization_diagnostics"
     ]
+    alignment_diagnostics = raw_polygonization_diagnostics[
+        "aoi_tile_alignment_diagnostics"
+    ]
     assert (
         raw_polygonization_diagnostics["raw_polygon_count"]
         == summary["candidate_generation_diagnostics"]["raw_polygon_count"]
     )
     assert raw_polygonization_diagnostics["raw_polygon_zero_reason"] == "raw_polygons_generated"
+    assert alignment_diagnostics["alignment_warning"] in {
+        "none",
+        "selected_tiles_partially_intersect_aoi",
+    }
     assert (
         summary["run_metadata"]["candidate_generation_diagnostics"]
         == summary["candidate_generation_diagnostics"]
@@ -603,11 +610,15 @@ def test_execute_run_zero_candidate_diagnostics_reason(tmp_path, monkeypatch):
     summary = json.loads(output.getvalue())
     diagnostics = summary["candidate_generation_diagnostics"]
     raw_polygonization_diagnostics = diagnostics["raw_polygonization_diagnostics"]
+    alignment_diagnostics = raw_polygonization_diagnostics[
+        "aoi_tile_alignment_diagnostics"
+    ]
     assert summary["candidate_count"] == 0
     assert diagnostics["final_candidate_count"] == summary["candidate_count"]
     assert diagnostics["zero_candidate_reason"]
     assert raw_polygonization_diagnostics["raw_polygon_count"] == diagnostics["raw_polygon_count"]
     assert raw_polygonization_diagnostics["raw_polygon_zero_reason"]
+    assert alignment_diagnostics["alignment_warning"]
 
 
 def test_acceptance_check_fails_clearly_for_legal_denial(tmp_path, monkeypatch):

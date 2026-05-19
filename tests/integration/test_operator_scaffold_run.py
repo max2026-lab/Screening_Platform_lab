@@ -87,6 +87,11 @@ def test_operator_scaffold_run_populates_review_export_paid_and_acceptance_flows
         scaffold_run_1_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["raw_polygon_zero_reason"]
         == "raw_polygons_generated"
     )
+    assert "aoi_tile_alignment_diagnostics" in scaffold_run_1_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]
+    assert (
+        scaffold_run_1_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["aoi_tile_alignment_diagnostics"]["alignment_warning"]
+        in {"none", "selected_tiles_partially_intersect_aoi"}
+    )
 
     assert main(["scaffold-run", "--run-id", "run-002"]) == 0
     scaffold_run_2_payload = json.loads(capsys.readouterr().out)
@@ -539,6 +544,10 @@ def test_operator_cli_commands_work_from_outside_repo_root(tmp_path):
     assert (
         execute_run_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["raw_polygon_zero_reason"]
         == "raw_polygons_generated"
+    )
+    assert (
+        execute_run_payload["candidate_generation_diagnostics"]["raw_polygonization_diagnostics"]["aoi_tile_alignment_diagnostics"]["alignment_warning"]
+        in {"none", "selected_tiles_partially_intersect_aoi"}
     )
     assert execute_run_payload["candidate_ids"] == scaffold_run_payload["candidate_ids"]
     assert (

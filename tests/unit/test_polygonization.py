@@ -243,6 +243,11 @@ def test_polygonization_manifest_uses_full_aoi_scaffold_rules():
     assert raw_diagnostics["anomaly_region_source"] == "provided_anomaly_regions"
     assert raw_diagnostics["raw_polygon_count"] == diagnostics["raw_polygon_count"]
     assert raw_diagnostics["raw_polygon_zero_reason"] == "raw_polygons_generated"
+    assert "aoi_tile_alignment_diagnostics" in raw_diagnostics
+    assert raw_diagnostics["aoi_tile_alignment_diagnostics"]["alignment_warning"] in {
+        "none",
+        "selected_tiles_partially_intersect_aoi",
+    }
 
 
 def test_polygonization_manifest_reports_zero_raw_polygon_reason_for_zero_selected_tiles():
@@ -267,6 +272,49 @@ def test_polygonization_manifest_reports_zero_raw_polygon_reason_for_zero_select
     assert raw_diagnostics["anomaly_region_source"] == "default_selected_tile_regions"
     assert raw_diagnostics["raw_polygon_count"] == diagnostics["raw_polygon_count"]
     assert raw_diagnostics["raw_polygon_zero_reason"] == "no_selected_tiles"
+    assert raw_diagnostics["aoi_tile_alignment_diagnostics"]["alignment_warning"] == "no_selected_tiles"
+
+
+def test_polygonization_manifest_reports_alignment_when_selected_tiles_do_not_intersect_aoi():
+    full_aoi_manifest = {
+        "source_scene_manifest_hash": "manifest-hash-001",
+        "source_endpoint_id": "earth_search",
+        "composite_metadata_cache_key": "composite-cache-001",
+        "full_aoi_bounds": [0.0, 0.0, 200.0, 100.0],
+        "tile_count": 2,
+        "valid_tile_count": 2,
+        "selected_tile_count": 2,
+        "selected_tiles": [
+            {
+                "tile_id": "tile-a",
+                "tile_score": 80.0,
+                "bounds": [0.0, 0.0, 100.0, 100.0],
+            },
+            {
+                "tile_id": "tile-b",
+                "tile_score": 70.0,
+                "bounds": [100.0, 0.0, 200.0, 100.0],
+            },
+        ],
+        "aoi_geometry": {
+            "type": "Polygon",
+            "coordinates": [[[300.0, 300.0], [310.0, 300.0], [310.0, 310.0], [300.0, 310.0], [300.0, 300.0]]],
+        },
+        "aoi_bbox": [300.0, 300.0, 310.0, 310.0],
+    }
+
+    polygonization_manifest = build_polygonization_manifest(
+        full_aoi_manifest,
+        "full-aoi-cache-key-001",
+    )
+
+    raw_diagnostics = polygonization_manifest["polygonization_diagnostics"][
+        "raw_polygonization_diagnostics"
+    ]
+    alignment = raw_diagnostics["aoi_tile_alignment_diagnostics"]
+    assert raw_diagnostics["raw_polygon_zero_reason"] == "selected_tiles_clipped_out_by_aoi"
+    assert alignment["alignment_warning"] == "selected_tiles_do_not_intersect_aoi"
+    assert alignment["selected_tile_clipped_out_by_aoi_count"] == alignment["selected_tile_count"]
 
 
 def _candidate_records_for_aoi(aoi_geometry: dict, aoi_bbox: list[float]) -> list[dict]:

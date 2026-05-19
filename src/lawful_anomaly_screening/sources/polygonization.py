@@ -496,6 +496,7 @@ def build_full_aoi_anomaly_raster_manifest(
         "aoi_bbox": list(aoi_bbox) if aoi_bbox is not None else None,
         "full_aoi_bounds": list(full_aoi_bounds),
         "tile_count": len(sorted_tiles),
+        "valid_tile_count": sum(1 for tile in sorted_tiles if tile["is_valid"]),
         "selected_tile_count": len(selected_tiles),
         "selected_tile_ids": [tile["tile_id"] for tile in selected_tiles],
         "selected_tiles": [
@@ -595,8 +596,82 @@ def build_default_anomaly_regions_with_diagnostics(
         "anomaly_region_input_count": len(regions),
         "raw_polygon_count": len(regions),
         "raw_polygon_zero_reason": "",
+        "aoi_tile_alignment_diagnostics": _tile_alignment_stats(
+            full_aoi_anomaly_raster_manifest
+        ),
     }
     return regions, diagnostics
+
+
+def _tile_alignment_stats(
+    full_aoi_anomaly_raster_manifest: dict,
+) -> dict[str, int | float | str | bool | None]:
+    aoi_geometry = full_aoi_anomaly_raster_manifest.get("aoi_geometry")
+    selected_tiles = list(full_aoi_anomaly_raster_manifest["selected_tiles"])
+    selected_tile_scores = sorted(float(tile["tile_score"]) for tile in selected_tiles)
+    overlap_ratios: list[float] = []
+    selected_tile_centroid_inside_aoi_count = 0
+    selected_tile_intersects_aoi_count = 0
+    selected_tile_clipped_out_by_aoi_count = 0
+
+    for selected_tile in selected_tiles:
+        tile_bounds = tuple(float(value) for value in selected_tile["bounds"])
+        tile_area = _bounds_area(tile_bounds)
+        tile_centroid = _centroid(tile_bounds)
+        clipped_tile_bounds, _ = _clipped_bounds_from_geometry(tile_bounds, aoi_geometry)
+        if _point_in_geometry(tile_centroid, aoi_geometry):
+            selected_tile_centroid_inside_aoi_count += 1
+        if clipped_tile_bounds is None:
+            selected_tile_clipped_out_by_aoi_count += 1
+            overlap_ratios.append(0.0)
+            continue
+        selected_tile_intersects_aoi_count += 1
+        clipped_area = _bounds_area(clipped_tile_bounds)
+        overlap_ratios.append(
+            round(clipped_area / tile_area, 6) if tile_area > 0.0 else 0.0
+        )
+
+    if not selected_tiles:
+        alignment_warning = "no_selected_tiles"
+    elif selected_tile_intersects_aoi_count == 0:
+        alignment_warning = "selected_tiles_do_not_intersect_aoi"
+    elif selected_tile_intersects_aoi_count < len(selected_tiles):
+        alignment_warning = "selected_tiles_partially_intersect_aoi"
+    else:
+        alignment_warning = "none"
+
+    return {
+        "diagnostic_version": "v1",
+        "aoi_geometry_type": aoi_geometry.get("type") if isinstance(aoi_geometry, dict) else None,
+        "tile_count": int(full_aoi_anomaly_raster_manifest.get("tile_count", 0)),
+        "valid_tile_count": int(full_aoi_anomaly_raster_manifest.get("valid_tile_count", 0)),
+        "selected_tile_count": len(selected_tiles),
+        "selected_tile_with_bounds_count": sum(
+            1 for tile in selected_tiles if tile.get("bounds") is not None
+        ),
+        "selected_tile_centroid_inside_aoi_count": selected_tile_centroid_inside_aoi_count,
+        "selected_tile_intersects_aoi_count": selected_tile_intersects_aoi_count,
+        "selected_tile_clipped_out_by_aoi_count": selected_tile_clipped_out_by_aoi_count,
+        "selected_tile_overlap_ratio_min": min(overlap_ratios) if overlap_ratios else None,
+        "selected_tile_overlap_ratio_max": max(overlap_ratios) if overlap_ratios else None,
+        "selected_tile_overlap_ratio_mean": (
+            round(sum(overlap_ratios) / len(overlap_ratios), 6)
+            if overlap_ratios
+            else None
+        ),
+        "selected_tile_score_min": selected_tile_scores[0] if selected_tile_scores else None,
+        "selected_tile_score_max": selected_tile_scores[-1] if selected_tile_scores else None,
+        "selected_tile_score_mean": (
+            round(sum(selected_tile_scores) / len(selected_tile_scores), 6)
+            if selected_tile_scores
+            else None
+        ),
+        "derived_tile_bbox_present": bool(
+            full_aoi_anomaly_raster_manifest.get("full_aoi_bounds")
+        ),
+        "aoi_bbox_present": full_aoi_anomaly_raster_manifest.get("aoi_bbox") is not None,
+        "alignment_warning": alignment_warning,
+    }
 
 
 def _selected_overlap_ratio(
@@ -790,6 +865,9 @@ def polygonize_full_aoi(
         "anomaly_region_input_count": 0,
         "raw_polygon_count": 0,
         "raw_polygon_zero_reason": "",
+        "aoi_tile_alignment_diagnostics": _tile_alignment_stats(
+            full_aoi_anomaly_raster_manifest
+        ),
     }
     if anomaly_regions is None:
         regions, raw_polygonization_diagnostics = build_default_anomaly_regions_with_diagnostics(
